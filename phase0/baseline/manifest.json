@@ -1,0 +1,139 @@
+{
+  "schema_version": 1,
+  "source_revision": "720053bdf9b7a377ee45bd5bd573bc09a7df1743",
+  "environment_sha256": "b558168e438d592c2703044ef5654f43da942d9b92a22fa93f379d39cd537bab",
+  "commands": [
+    {
+      "name": "historical-pytest",
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3",
+        "-m",
+        "pytest"
+      ],
+      "cwd": "/Users/tunguz/Programming/scikit_learn_mps",
+      "exit_code": 1,
+      "duration_seconds": 62.688,
+      "log": "test.log",
+      "log_sha256": "c6b41ddc67f2f8e26a2b397c20f5ca1797a135b85b879c1fe5e561df25e1a1ec"
+    },
+    {
+      "name": "historical-fidelity-benchmark",
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3",
+        "-m",
+        "benchmarks.bench_runner",
+        "--warmup-iters",
+        "1",
+        "--measure-iters",
+        "1",
+        "--profiles",
+        "fidelity",
+        "--output",
+        "/Users/tunguz/Programming/mlxlearn/phase0/baseline/benchmark_results.json"
+      ],
+      "cwd": "/Users/tunguz/Programming/scikit_learn_mps",
+      "exit_code": 0,
+      "duration_seconds": 191.521,
+      "log": "benchmark.log",
+      "log_sha256": "512f68ab4920d9d32958d0fe4c046d5bc0e3f9d2128ee3226a8272bc5cc0ae55"
+    }
+  ],
+  "pytest": {
+    "summary": "1 failed, 187 passed, 1 warning in 61.04s (0:01:01)",
+    "failures": [
+      "tests/unit/test_runtime_diagnostics.py::test_pca_small_projection_prefers_sklearn_after_mps_fit"
+    ]
+  },
+  "benchmark_counts": {
+    "cells": 30,
+    "correct": 30,
+    "incorrect": 0,
+    "errors": 0,
+    "algorithms": {
+      "fidelity/linear_regression": {
+        "cells": 3,
+        "correct": 3,
+        "speedup_min": 2.9720902925149684,
+        "speedup_max": 16.79300143817938
+      },
+      "fidelity/elastic_net": {
+        "cells": 3,
+        "correct": 3,
+        "speedup_min": 0.738931624323872,
+        "speedup_max": 1.909385417169136
+      },
+      "fidelity/lasso": {
+        "cells": 3,
+        "correct": 3,
+        "speedup_min": 0.680221753960857,
+        "speedup_max": 1.9200375341151954
+      },
+      "fidelity/pca": {
+        "cells": 3,
+        "correct": 3,
+        "speedup_min": 0.5836442061498509,
+        "speedup_max": 1.1870436323682378
+      },
+      "fidelity/kmeans": {
+        "cells": 3,
+        "correct": 3,
+        "speedup_min": 0.7906087205239911,
+        "speedup_max": 1.4641179787862253
+      },
+      "fidelity/logistic_regression": {
+        "cells": 3,
+        "correct": 3,
+        "speedup_min": 1.0620860621990522,
+        "speedup_max": 5.818909571275192
+      },
+      "fidelity/knn": {
+        "cells": 3,
+        "correct": 3,
+        "speedup_min": 0.4036109254935416,
+        "speedup_max": 2.7768208113746544
+      },
+      "fidelity/random_forest": {
+        "cells": 3,
+        "correct": 3,
+        "speedup_min": 1.0252860713746421,
+        "speedup_max": 1.198438033436198
+      },
+      "fidelity/svm": {
+        "cells": 2,
+        "correct": 2,
+        "speedup_min": 0.08505796124265715,
+        "speedup_max": 1.3816796400677451
+      },
+      "fidelity/dbscan": {
+        "cells": 2,
+        "correct": 2,
+        "speedup_min": 3.174583051577124,
+        "speedup_max": 3.8898768057710025
+      },
+      "fidelity/tsne": {
+        "cells": 2,
+        "correct": 2,
+        "speedup_min": 1.720587185694168,
+        "speedup_max": 3.3377879880143597
+      }
+    }
+  },
+  "artifacts": {
+    "benchmark.log": {
+      "bytes": 610,
+      "sha256": "512f68ab4920d9d32958d0fe4c046d5bc0e3f9d2128ee3226a8272bc5cc0ae55"
+    },
+    "benchmark_results.json": {
+      "bytes": 30642,
+      "sha256": "a3c797975c36e7328580c5682f89b964148d91d42f550b6322383ba62a88cf46"
+    },
+    "environment.json": {
+      "bytes": 839,
+      "sha256": "b558168e438d592c2703044ef5654f43da942d9b92a22fa93f379d39cd537bab"
+    },
+    "test.log": {
+      "bytes": 29116,
+      "sha256": "c6b41ddc67f2f8e26a2b397c20f5ca1797a135b85b879c1fe5e561df25e1a1ec"
+    }
+  }
+}

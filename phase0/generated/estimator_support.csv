@@ -1,0 +1,26 @@
+estimator,source,release,disposition,implementation,required_gates
+KNeighborsClassifier,sklearnex/neighbors/knn_classification.py,0.1.0,port-first,MLX brute-force neighbors,indices; distances; stable ties; predictions; probabilities
+KNeighborsRegressor,sklearnex/neighbors/knn_regression.py,0.1.0,port-first,MLX brute-force neighbors,indices; distances; stable ties; uniform and distance weights
+NearestNeighbors,sklearnex/neighbors/knn_unsupervised.py,0.1.0,port-first,MLX brute-force neighbors,indices; distances; kneighbors; radius behavior
+LogisticRegression,sklearnex/linear_model/logistic_regression.py,0.1.0,port-second,typed MLX solver,objective; coefficients; probabilities; binary; multiclass
+SVC,sklearnex/svm/_classes.py,0.1.0,port-third,exact SVC,predictions; decision values; OVO; KKT; weights; calibration
+LinearRegression,sklearnex/linear_model/linear.py,0.2.x,second-wave,eager typed MLX solver,coefficients; intercept; rank; eager fit
+Ridge,sklearnex/linear_model/ridge.py,0.2.x,second-wave,typed MLX solver,coefficients; intercept; sample weights
+PCA,sklearnex/decomposition/pca.py,0.2.x,second-wave,eager typed MLX solver,components; variance; transform; inverse transform
+Lasso,sklearnex/linear_model/coordinate_descent.py,0.2.x,second-wave,fidelity audit required,objective; dual gap; coefficients
+ElasticNet,sklearnex/linear_model/coordinate_descent.py,0.2.x,second-wave,fidelity audit required,objective; dual gap; coefficients
+KMeans,sklearnex/cluster/k_means.py,0.2.x,second-wave,exact Lloyd only,labels; inertia; centers; determinism
+DBSCAN,sklearnex/cluster/dbscan.py,0.2.x,second-wave,fidelity audit required,labels; core indices; metric behavior
+TSNE,sklearnex/manifold/t_sne.py,0.2.x,second-wave,exact objective,KL divergence; trustworthiness; deterministic seed
+TSNEExactMPS,sklearnex/experimental/manifold.py,never,absorb-alias,Old MPS-specific alias is absorbed into mlxlearn.manifold.TSNE,covered by TSNE
+NuSVC,sklearnex/svm/_classes.py,deferred,defer,true objective required,objective and sklearn parity
+SVR,sklearnex/svm/_classes.py,deferred,rename-or-implement,current ridge surrogate cannot retain SVR name,epsilon-SVR objective and sklearn parity
+NuSVR,sklearnex/svm/_classes.py,deferred,rename-or-implement,current ridge surrogate cannot retain NuSVR name,nu-SVR objective and sklearn parity
+RandomForestClassifier,sklearnex/ensemble/_forest.py,never,drop,out of scope,none
+RandomForestRegressor,sklearnex/ensemble/_forest.py,never,drop,out of scope,none
+ExtraTreesClassifier,sklearnex/ensemble/_forest.py,never,drop,out of scope,none
+ExtraTreesRegressor,sklearnex/ensemble/_forest.py,never,drop,out of scope,none
+EmpiricalCovariance,sklearnex/covariance/covariance.py,never,drop,pass-through,none
+IncrementalEmpiricalCovariance,sklearnex/covariance/incremental_covariance.py,never,drop,pass-through,none
+DummyRegressor,sklearnex/dummy/_dummy.py,never,drop,pass-through,none
+LocalOutlierFactor,sklearnex/neighbors/_lof.py,never,drop,outside planned surface,none

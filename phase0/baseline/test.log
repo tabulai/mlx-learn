@@ -1,0 +1,326 @@
+$ /Library/Frameworks/Python.framework/Versions/3.13/bin/python3 -m pytest
+============================= test session starts ==============================
+platform darwin -- Python 3.13.3, pytest-9.0.2, pluggy-1.5.0 -- /Library/Frameworks/Python.framework/Versions/3.13/bin/python3
+cachedir: .pytest_cache
+Fugue tests will be initialized with options:
+rootdir: /Users/tunguz/Programming/scikit_learn_mps
+configfile: pyproject.toml
+testpaths: tests
+plugins: anyio-4.9.0, fugue-0.9.7, hydra-core-1.3.2
+collecting ... collected 188 items
+
+tests/accuracy/test_correctness.py::test_linear_regression_correctness[200-10] PASSED [  0%]
+tests/accuracy/test_correctness.py::test_linear_regression_correctness[1000-20] PASSED [  1%]
+tests/accuracy/test_correctness.py::test_elasticnet_fidelity[300-8] PASSED [  1%]
+tests/accuracy/test_correctness.py::test_elasticnet_fidelity[1000-16] PASSED [  2%]
+tests/accuracy/test_correctness.py::test_lasso_fidelity[300-8] PASSED    [  2%]
+tests/accuracy/test_correctness.py::test_lasso_fidelity[1000-16] PASSED  [  3%]
+tests/accuracy/test_correctness.py::test_elasticnet_positive_constraint_matches_sklearn PASSED [  3%]
+tests/accuracy/test_correctness.py::test_logistic_regression_binary_fidelity[400-12] PASSED [  4%]
+tests/accuracy/test_correctness.py::test_logistic_regression_binary_fidelity[1200-24] PASSED [  4%]
+tests/accuracy/test_correctness.py::test_logistic_regression_multiclass_fidelity[600-14] PASSED [  5%]
+tests/accuracy/test_correctness.py::test_logistic_regression_multiclass_fidelity[1800-30] PASSED [  5%]
+tests/accuracy/test_correctness.py::test_random_forest_classifier_fidelity[500-12-gini] PASSED [  6%]
+tests/accuracy/test_correctness.py::test_random_forest_classifier_fidelity[500-12-entropy] PASSED [  6%]
+tests/accuracy/test_correctness.py::test_random_forest_classifier_fidelity[500-12-log_loss] PASSED [  7%]
+tests/accuracy/test_correctness.py::test_random_forest_classifier_fidelity[1400-24-gini] PASSED [  7%]
+tests/accuracy/test_correctness.py::test_random_forest_classifier_fidelity[1400-24-entropy] PASSED [  8%]
+tests/accuracy/test_correctness.py::test_random_forest_classifier_fidelity[1400-24-log_loss] PASSED [  9%]
+tests/accuracy/test_correctness.py::test_svc_binary_fidelity[500-12] PASSED [  9%]
+tests/accuracy/test_correctness.py::test_svc_binary_fidelity[1400-24] PASSED [ 10%]
+tests/accuracy/test_correctness.py::test_svc_multiclass_fidelity[700-14] PASSED [ 10%]
+tests/accuracy/test_correctness.py::test_svc_multiclass_fidelity[1800-30] PASSED [ 11%]
+tests/accuracy/test_correctness.py::test_svc_builtin_kernel_fidelity[linear-params0-0.008] PASSED [ 11%]
+tests/accuracy/test_correctness.py::test_svc_builtin_kernel_fidelity[rbf-params1-0.003] PASSED [ 12%]
+tests/accuracy/test_correctness.py::test_svc_builtin_kernel_fidelity[poly-params2-0.008] PASSED [ 12%]
+tests/accuracy/test_correctness.py::test_svc_builtin_kernel_fidelity[sigmoid-params3-0.005] PASSED [ 13%]
+tests/accuracy/test_correctness.py::test_svc_weighted_probability_fidelity PASSED [ 13%]
+tests/accuracy/test_correctness.py::test_pca_covariance_similarity[300-8] PASSED [ 14%]
+tests/accuracy/test_correctness.py::test_pca_covariance_similarity[1000-16] PASSED [ 14%]
+tests/accuracy/test_correctness.py::test_kmeans_fidelity[300-8] PASSED   [ 15%]
+tests/accuracy/test_correctness.py::test_kmeans_fidelity[1000-16] PASSED [ 15%]
+tests/accuracy/test_correctness.py::test_dbscan_fidelity[300-8] PASSED   [ 16%]
+tests/accuracy/test_correctness.py::test_dbscan_fidelity[1000-16] PASSED [ 17%]
+tests/accuracy/test_correctness.py::test_knn_classifier_exactness[400-10] PASSED [ 17%]
+tests/accuracy/test_correctness.py::test_knn_classifier_exactness[1400-24] PASSED [ 18%]
+tests/accuracy/test_correctness.py::test_knn_regressor_exactness[360-8] PASSED [ 18%]
+tests/accuracy/test_correctness.py::test_knn_regressor_exactness[1200-18] PASSED [ 19%]
+tests/accuracy/test_correctness.py::test_nearest_neighbors_exact_distances[320-9] PASSED [ 19%]
+tests/accuracy/test_correctness.py::test_nearest_neighbors_exact_distances[900-20] PASSED [ 20%]
+tests/benchmarks/test_benchmark_gates.py::test_profile_rows_and_summaries PASSED [ 20%]
+tests/benchmarks/test_benchmark_gates.py::test_parse_algo_thresholds PASSED [ 21%]
+tests/benchmarks/test_benchmark_interfaces.py::test_profile_parser_rejects_unknown_values PASSED [ 21%]
+tests/benchmarks/test_benchmark_interfaces.py::test_report_renders_profiles PASSED [ 22%]
+tests/integration/test_knn_exact_mps.py::test_knn_classifier_exact_mps_parity[uniform] PASSED [ 22%]
+tests/integration/test_knn_exact_mps.py::test_knn_classifier_exact_mps_parity[distance] PASSED [ 23%]
+tests/integration/test_knn_exact_mps.py::test_knn_regressor_exact_mps_parity[uniform] PASSED [ 23%]
+tests/integration/test_knn_exact_mps.py::test_knn_regressor_exact_mps_parity[distance] PASSED [ 24%]
+tests/integration/test_knn_exact_mps.py::test_nearest_neighbors_self_query_matches_sklearn PASSED [ 25%]
+tests/integration/test_knn_exact_mps.py::test_knn_classifier_adversarial_large_n_is_exact_on_mps PASSED [ 25%]
+tests/integration/test_knn_exact_mps.py::test_knn_classifier_uniform_boundary_tie_matches_sklearn PASSED [ 26%]
+tests/integration/test_patch_and_estimators.py::test_patch_map_contains_remaining_estimators PASSED [ 26%]
+tests/integration/test_patch_and_estimators.py::test_estimators_fit_after_patching[<lambda>-reg0] PASSED [ 27%]
+tests/integration/test_patch_and_estimators.py::test_estimators_fit_after_patching[<lambda>-reg1] PASSED [ 27%]
+tests/integration/test_patch_and_estimators.py::test_estimators_fit_after_patching[<lambda>-reg2] PASSED [ 28%]
+tests/integration/test_patch_and_estimators.py::test_estimators_fit_after_patching[<lambda>-reg3] PASSED [ 28%]
+tests/integration/test_patch_and_estimators.py::test_estimators_fit_after_patching[<lambda>-clf0] PASSED [ 29%]
+tests/integration/test_patch_and_estimators.py::test_estimators_fit_after_patching[<lambda>-reg4] PASSED [ 29%]
+tests/integration/test_patch_and_estimators.py::test_estimators_fit_after_patching[<lambda>-reg5] PASSED [ 30%]
+tests/integration/test_patch_and_estimators.py::test_estimators_fit_after_patching[<lambda>-reg6] PASSED [ 30%]
+tests/integration/test_patch_and_estimators.py::test_estimators_fit_after_patching[<lambda>-reg7] PASSED [ 31%]
+tests/integration/test_patch_and_estimators.py::test_estimators_fit_after_patching[<lambda>-clf1] PASSED [ 31%]
+tests/integration/test_patch_and_estimators.py::test_estimators_fit_after_patching[<lambda>-reg8] PASSED [ 32%]
+tests/integration/test_patch_and_estimators.py::test_estimators_fit_after_patching[<lambda>-reg9] PASSED [ 32%]
+tests/integration/test_patch_and_estimators.py::test_estimators_fit_after_patching[<lambda>-clf2] PASSED [ 33%]
+tests/integration/test_patch_and_estimators.py::test_estimators_fit_after_patching[<lambda>-reg10] PASSED [ 34%]
+tests/integration/test_patch_and_estimators.py::test_estimators_fit_after_patching[<lambda>-clf3] PASSED [ 34%]
+tests/integration/test_patch_and_estimators.py::test_estimators_fit_after_patching[<lambda>-reg11] PASSED [ 35%]
+tests/integration/test_patch_and_estimators.py::test_estimators_fit_after_patching[<lambda>-clf4] PASSED [ 35%]
+tests/integration/test_patch_and_estimators.py::test_estimators_fit_after_patching[<lambda>-reg12] PASSED [ 36%]
+tests/integration/test_patch_and_estimators.py::test_estimators_fit_after_patching[<lambda>-clf5] PASSED [ 36%]
+tests/integration/test_patch_and_estimators.py::test_estimators_fit_after_patching[<lambda>-reg13] PASSED [ 37%]
+tests/integration/test_patch_and_estimators.py::test_random_forest_classifier_exact_backend_when_approx_disabled PASSED [ 37%]
+tests/integration/test_patch_and_estimators.py::test_random_forest_classifier_native_training_rewrite_can_be_enabled PASSED [ 38%]
+tests/integration/test_patch_and_estimators.py::test_random_forest_classifier_refit_overwrites_backend_state PASSED [ 38%]
+tests/integration/test_patch_and_estimators.py::test_random_forest_classifier_sklearn_refit_after_native_fit PASSED [ 39%]
+tests/integration/test_patch_and_estimators.py::test_random_forest_classifier_native_model_rejects_tree_inspection_apis PASSED [ 39%]
+tests/integration/test_patch_and_estimators.py::test_random_forest_classifier_strict_mps_fit_and_predict_record_mps_events PASSED [ 40%]
+tests/integration/test_patch_and_estimators.py::test_random_forest_classifier_predict_proba_is_stable_across_calls PASSED [ 40%]
+tests/integration/test_patch_and_estimators.py::test_random_forest_classifier_native_fit_avoids_private_sklearn_proxy PASSED [ 41%]
+tests/integration/test_patch_and_estimators.py::test_removed_pass_through_targets_are_not_patched PASSED [ 42%]
+tests/integration/test_patch_and_estimators.py::test_knn_classifier_predict_proba_after_mps_fit PASSED [ 42%]
+tests/integration/test_patch_and_estimators.py::test_svc_predict_proba_after_mps_fit PASSED [ 43%]
+tests/integration/test_patch_and_estimators.py::test_svc_predict_proba_requires_probability_flag PASSED [ 43%]
+tests/integration/test_patch_and_estimators.py::test_logistic_regression_weighted_refit_uses_sklearn_state PASSED [ 44%]
+tests/integration/test_patch_and_estimators.py::test_linear_regression_refit_after_inplace_target_change PASSED [ 44%]
+tests/integration/test_patch_and_estimators.py::test_linear_regression_refit_after_inplace_feature_change PASSED [ 45%]
+tests/integration/test_patch_and_estimators.py::test_elastic_net_refit_after_inplace_target_change PASSED [ 45%]
+tests/integration/test_patch_and_estimators.py::test_elastic_net_exact_mps_float32_fit_and_predict_stay_on_gpu PASSED [ 46%]
+tests/integration/test_patch_and_estimators.py::test_pca_sklearn_refit_clears_accelerated_projection_state PASSED [ 46%]
+tests/integration/test_patch_and_estimators.py::test_kmeans_exact_cpu_backend_supports_sample_weight PASSED [ 47%]
+tests/integration/test_patch_and_estimators.py::test_kmeans_exact_mps_float32_fit_and_predict_stay_on_gpu PASSED [ 47%]
+tests/integration/test_patch_and_estimators.py::test_dbscan_exact_cpu_backend_supports_sample_weight_and_predict PASSED [ 48%]
+tests/integration/test_patch_and_estimators.py::test_dbscan_exact_mps_float32_fit_and_predict_stay_on_gpu PASSED [ 48%]
+tests/integration/test_patch_and_estimators.py::test_dbscan_predict_after_sklearn_fallback_raises_clear_error PASSED [ 49%]
+tests/integration/test_tsne_exact_mps.py::test_tsne_exact_mps_parity_against_sklearn_exact PASSED [ 50%]
+tests/integration/test_tsne_exact_mps.py::test_tsne_exact_mps_is_deterministic_with_fixed_seed PASSED [ 50%]
+tests/integration/test_tsne_exact_mps.py::test_tsne_exact_mps_defaults_to_exact_and_preserves_metadata PASSED [ 51%]
+tests/integration/test_tsne_exact_mps.py::test_tsne_exact_mps_supports_n_components_above_three PASSED [ 51%]
+tests/integration/test_tsne_exact_mps.py::test_tsne_exact_mps_unsupported_modes_fallback_to_sklearn[params0-<lambda>-Only method='exact'] PASSED [ 52%]
+tests/integration/test_tsne_exact_mps.py::test_tsne_exact_mps_unsupported_modes_fallback_to_sklearn[params1-<lambda>-Only Euclidean/L2 metric] PASSED [ 52%]
+tests/integration/test_tsne_exact_mps.py::test_tsne_exact_mps_unsupported_modes_fallback_to_sklearn[params2-<lambda>-Sparse inputs are not supported] PASSED [ 53%]
+tests/integration/test_tsne_exact_mps.py::test_tsne_exact_mps_unsupported_modes_fallback_to_sklearn[params3-<lambda>-Precomputed distances are not supported] PASSED [ 53%]
+tests/integration/test_tsne_exact_mps.py::test_tsne_exact_mps_uses_cpu_backend_when_mps_is_unavailable PASSED [ 54%]
+tests/unit/test_dispatcher_patch_map.py::test_patch_surface_contains_only_accelerated_targets PASSED [ 54%]
+tests/unit/test_experimental_metal_eigensolver.py::test_probe_metal_bindings_returns_structured_status PASSED [ 55%]
+tests/unit/test_experimental_metal_eigensolver.py::test_subspace_iteration_topk_mlx_converges_on_easy_diagonal_problem PASSED [ 55%]
+tests/unit/test_experimental_metal_eigensolver.py::test_block_lanczos_topk_mlx_converges_on_easy_diagonal_problem PASSED [ 56%]
+tests/unit/test_experimental_metal_eigensolver.py::test_choose_experimental_jacobi_sweep_kernel_auto_scheduler PASSED [ 56%]
+tests/unit/test_experimental_metal_eigensolver.py::test_choose_blocked_kernel_config_large_regime PASSED [ 57%]
+tests/unit/test_experimental_metal_eigensolver.py::test_cyclic_jacobi_eigh_mlx_matches_numpy_on_small_symmetric_problem[simple-simple-expected_schedule_prefix0] PASSED [ 57%]
+tests/unit/test_experimental_metal_eigensolver.py::test_cyclic_jacobi_eigh_mlx_matches_numpy_on_small_symmetric_problem[blocked-blocked-expected_schedule_prefix1] PASSED [ 58%]
+tests/unit/test_experimental_metal_eigensolver.py::test_cyclic_jacobi_eigh_mlx_matches_numpy_on_small_symmetric_problem[auto-hybrid-expected_schedule_prefix2] PASSED [ 59%]
+tests/unit/test_experimental_metal_eigensolver.py::test_cyclic_jacobi_eigh_mlx_matches_numpy_on_small_symmetric_problem[hybrid-hybrid-expected_schedule_prefix3] PASSED [ 59%]
+tests/unit/test_experimental_metal_eigensolver.py::test_experimental_solver_wrapper_returns_capability_report PASSED [ 60%]
+tests/unit/test_experimental_metal_eigensolver.py::test_block_lanczos_topk_mlx_matches_numpy_on_small_symmetric_problem PASSED [ 60%]
+tests/unit/test_forest_native_backend.py::test_bootstrap_multiplicities_match_sample_draws PASSED [ 61%]
+tests/unit/test_forest_native_backend.py::test_counts_to_proba_normalizes_non_empty_rows PASSED [ 61%]
+tests/unit/test_forest_native_backend.py::test_build_native_state_preserves_simple_root_split PASSED [ 62%]
+tests/unit/test_forest_native_backend.py::test_native_classifier_state_predict_proba_matches_sklearn PASSED [ 62%]
+tests/unit/test_forest_native_backend.py::test_clear_forest_model_cache_is_a_safe_noop PASSED [ 63%]
+tests/unit/test_forest_native_backend.py::test_fit_native_forest_classifier_cached_bundle_refits_each_time PASSED [ 63%]
+tests/unit/test_knn_exact_backend.py::test_knn_query_exact_random_parity[512-16-31-7] PASSED [ 64%]
+tests/unit/test_knn_exact_backend.py::test_knn_query_exact_random_parity[5000-24-96-9] PASSED [ 64%]
+tests/unit/test_knn_exact_backend.py::test_knn_query_exact_random_parity[120000-8-5-5] PASSED [ 65%]
+tests/unit/test_knn_exact_backend.py::test_knn_query_large_k_exact_parity PASSED [ 65%]
+tests/unit/test_knn_exact_backend.py::test_knn_query_adversarial_float32_exactness PASSED [ 66%]
+tests/unit/test_knn_exact_backend.py::test_knn_query_tie_breaks_on_training_index PASSED [ 67%]
+tests/unit/test_linear_regression_backend.py::test_linreg_pcg_is_disabled_by_default PASSED [ 67%]
+tests/unit/test_linear_regression_backend.py::test_linreg_prefers_exact_mlx_solver_when_available PASSED [ 68%]
+tests/unit/test_linear_regression_backend.py::test_linreg_uses_pcg_only_if_exact_fails_and_opted_in PASSED [ 68%]
+tests/unit/test_logistic_regression_cache.py::test_logreg_model_cache_is_disabled_by_default PASSED [ 69%]
+tests/unit/test_logistic_regression_cache.py::test_logreg_mlx_fit_is_enabled_by_default PASSED [ 69%]
+tests/unit/test_logistic_regression_cache.py::test_logreg_mlx_array_cache_requires_same_live_source_object PASSED [ 70%]
+tests/unit/test_logistic_regression_cache.py::test_logreg_mlx_gpu_solver_is_disabled_by_default PASSED [ 70%]
+tests/unit/test_logistic_regression_cache.py::test_logreg_continuation_cache_is_enabled_by_default PASSED [ 71%]
+tests/unit/test_logistic_regression_cache.py::test_logreg_lbfgs_history_default_is_40 PASSED [ 71%]
+tests/unit/test_logistic_regression_cache.py::test_logreg_lbfgs_uses_scipy_when_available PASSED [ 72%]
+tests/unit/test_logistic_regression_cache.py::test_logreg_lbfgs_falls_back_when_scipy_errors PASSED [ 72%]
+tests/unit/test_logistic_regression_cache.py::test_logreg_mlx_predict_uses_work_threshold PASSED [ 73%]
+tests/unit/test_logistic_regression_cache.py::test_logreg_model_cache_must_be_opted_in PASSED [ 73%]
+tests/unit/test_logistic_regression_cache.py::test_logreg_continuation_warm_starts_across_c_values PASSED [ 74%]
+tests/unit/test_logistic_regression_cache.py::test_logreg_continuation_can_be_disabled PASSED [ 75%]
+tests/unit/test_logistic_regression_cache.py::test_logreg_prefers_exact_gpu_solver_when_mlx_enabled PASSED [ 75%]
+tests/unit/test_metal_syrk.py::test_syrk_upper_accumulate_matches_matmul PASSED [ 76%]
+tests/unit/test_pca_no_cache.py::test_pca_transform_inverse_depend_on_current_input PASSED [ 76%]
+tests/unit/test_pca_no_cache.py::test_pca_repeat_runs_are_isolated_across_estimators PASSED [ 77%]
+tests/unit/test_pca_no_cache.py::test_pca_exact_backend_uses_all_rows_and_exact_mode PASSED [ 77%]
+tests/unit/test_pca_no_cache.py::test_fit_pca_exact_full_state_cache_reuses_identical_input PASSED [ 78%]
+tests/unit/test_pca_no_cache.py::test_fit_pca_promotes_to_full_basis_after_distinct_requests PASSED [ 78%]
+tests/unit/test_pca_no_cache.py::test_fit_pca_exact_direct_cache_invalidates_on_input_mutation PASSED [ 79%]
+tests/unit/test_runtime_diagnostics.py::test_runtime_diagnostics_records_fallback PASSED [ 79%]
+tests/unit/test_runtime_diagnostics.py::test_raise_on_fallback_fails_fast PASSED [ 80%]
+tests/unit/test_runtime_diagnostics.py::test_logistic_regression_uses_accelerated_backend_by_default PASSED [ 80%]
+tests/unit/test_runtime_diagnostics.py::test_elastic_net_uses_accelerated_backend_by_default PASSED [ 81%]
+tests/unit/test_runtime_diagnostics.py::test_svc_uses_accelerated_backend_by_default PASSED [ 81%]
+tests/unit/test_runtime_diagnostics.py::test_knn_large_dense_problem_prefers_cpu_before_mps PASSED [ 82%]
+tests/unit/test_runtime_diagnostics.py::test_pca_cpu_target_prefers_sklearn_backend PASSED [ 82%]
+tests/unit/test_runtime_diagnostics.py::test_pca_small_projection_prefers_sklearn_after_mps_fit FAILED [ 83%]
+tests/unit/test_runtime_diagnostics.py::test_global_deterministic_seed_controls_randomized_backend PASSED [ 84%]
+tests/unit/test_svc_fit_cache.py::test_svc_fit_cache_default_small_dataset PASSED [ 84%]
+tests/unit/test_svc_fit_cache.py::test_svc_fit_cache_default_large_dataset_keeps_default_without_override PASSED [ 85%]
+tests/unit/test_svc_fit_cache.py::test_svc_fit_cache_respects_explicit_user_setting PASSED [ 85%]
+tests/unit/test_svc_fit_cache.py::test_svc_fit_cache_env_override PASSED [ 86%]
+tests/unit/test_svc_gamma_scale.py::test_resolve_rff_gamma_scale_defaults PASSED [ 86%]
+tests/unit/test_svc_gamma_scale.py::test_resolve_rff_gamma_scale_env_override PASSED [ 87%]
+tests/unit/test_svc_no_cache.py::test_svc_predict_depends_on_query_input PASSED [ 87%]
+tests/unit/test_svc_no_cache.py::test_svc_repeat_runs_are_isolated_across_estimators PASSED [ 88%]
+tests/unit/test_svc_no_cache.py::test_svc_refit_overwrites_model_state PASSED [ 88%]
+tests/unit/test_svc_no_cache.py::test_svc_permuted_labels_collapse_to_chance PASSED [ 89%]
+tests/unit/test_svc_rff_subsample.py::test_resolve_rff_subsample_params_env PASSED [ 89%]
+tests/unit/test_svc_rff_subsample.py::test_maybe_subsample_rff_training_rows_small_input_passthrough PASSED [ 90%]
+tests/unit/test_svc_rff_subsample.py::test_stratified_subsample_is_deterministic_and_class_balanced PASSED [ 90%]
+tests/unit/test_svc_rff_subsample.py::test_maybe_subsample_rff_training_rows_applies_fraction PASSED [ 91%]
+tests/unit/test_svc_rff_subsample.py::test_maybe_subsample_disabled_for_high_dim PASSED [ 92%]
+tests/unit/test_svc_smo_solver.py::test_svc_smo_native_core_flag_is_boolean PASSED [ 92%]
+tests/unit/test_svc_smo_solver.py::test_svc_smo_native_core_default_and_override PASSED [ 93%]
+tests/unit/test_svc_smo_solver.py::test_svc_smo_solver_can_be_forced_and_matches_predictions PASSED [ 93%]
+tests/unit/test_svc_smo_solver.py::test_svc_binary_uses_cached_row_smo_when_pair_exceeds_dense_limit PASSED [ 94%]
+tests/unit/test_svc_smo_solver.py::test_svc_legacy_libsvm_fallback_can_be_forced PASSED [ 94%]
+tests/unit/test_svc_smo_solver.py::test_svc_binary_auto_kernel_cache_scaling PASSED [ 95%]
+tests/unit/test_svc_syrk_mode.py::test_resolve_rff_syrk_mode_defaults_to_auto PASSED [ 95%]
+tests/unit/test_svc_syrk_mode.py::test_resolve_rff_syrk_mode_accepts_known_values PASSED [ 96%]
+tests/unit/test_svc_syrk_mode.py::test_resolve_rff_syrk_mode_invalid_value_falls_back_to_auto PASSED [ 96%]
+tests/unit/test_tsne_exact_backend.py::test_dense_perplexity_search_matches_sklearn_reference PASSED [ 97%]
+tests/unit/test_tsne_exact_backend.py::test_exact_kl_and_gradient_match_sklearn_reference PASSED [ 97%]
+tests/unit/test_tsne_exact_backend.py::test_backend_gradient_descent_matches_sklearn_schedule PASSED [ 98%]
+tests/unit/test_tsne_native_core.py::test_binary_search_perplexity_dense_parity PASSED [ 98%]
+tests/unit/test_tsne_native_core.py::test_binary_search_perplexity_knn_parity PASSED [ 99%]
+tests/unit/test_tsne_native_core.py::test_barnes_hut_native_core_is_explicitly_unavailable PASSED [100%]
+
+=================================== FAILURES ===================================
+___________ test_pca_small_projection_prefers_sklearn_after_mps_fit ____________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x1211773f0>
+
+    def test_pca_small_projection_prefers_sklearn_after_mps_fit(monkeypatch):
+        from sklearn.decomposition import PCA as SklearnPCA
+        from sklearnex import (
+            get_config,
+            get_last_backend_event,
+            patch_sklearn,
+            reset_backend_diagnostics,
+            set_config,
+            unpatch_sklearn,
+        )
+        import sklearnex._device_offload as device_offload
+        import sklearnex.decomposition.pca as pca_module
+
+        rng = np.random.default_rng(0)
+        X_train = rng.normal(size=(256, 32))
+        X_test = rng.normal(size=(16, 32))
+
+        ref = SklearnPCA(n_components=4, svd_solver="full", random_state=0).fit(X_train)
+        pca_state = {
+            "mean": np.asarray(ref.mean_, dtype=np.float32),
+            "components": np.asarray(ref.components_, dtype=np.float32),
+            "singular_values": np.asarray(ref.singular_values_, dtype=np.float32),
+            "explained_variance": np.asarray(ref.explained_variance_, dtype=np.float32),
+            "explained_variance_ratio": np.asarray(
+                ref.explained_variance_ratio_, dtype=np.float32
+            ),
+            "total_variance": float(np.sum(ref.explained_variance_ratio_) * np.var(X_train, axis=0, ddof=1).sum()),
+            "n_components": int(ref.n_components_),
+            "n_samples": int(ref.n_samples_),
+            "n_features": int(ref.n_features_in_),
+            "mean_projection": np.asarray(ref.mean_ @ ref.components_.T, dtype=np.float32),
+            "mode": "exact_mlx_cov_subset_eigh",
+        }
+
+        monkeypatch.setattr(device_offload, "is_mps_available", lambda: True)
+        monkeypatch.setattr(pca_module, "mps_check_available", lambda: True)
+        monkeypatch.setattr(
+            pca_module,
+            "fit_pca",
+            lambda X, n_components=None, prefer_mps=True: pca_state,
+        )
+
+        patch_sklearn(verbose=False)
+        old_cfg = get_config()
+        try:
+            from sklearn.decomposition import PCA
+
+            set_config(
+                target_device="auto",
+                allow_fallback_to_cpu=True,
+                allow_sklearn_after_mps=True,
+                raise_on_fallback=False,
+            )
+            reset_backend_diagnostics()
+            est = PCA(n_components=4, svd_solver="full", random_state=0)
+            est.fit(X_train)
+            fit_event = get_last_backend_event()
+            est.transform(X_test)
+            transform_event = get_last_backend_event()
+        finally:
+            set_config(**old_cfg)
+            unpatch_sklearn()
+
+        assert fit_event is not None
+        assert fit_event["scope"] == "sklearn.decomposition.PCA.fit"
+        assert fit_event["backend"] == "mps"
+        assert transform_event is not None
+        assert transform_event["scope"] == "sklearn.decomposition.PCA.transform"
+        assert transform_event["backend"] == "sklearn"
+>       assert "Projection workload is too small" in transform_event["reason"]
+E       AssertionError: assert 'Projection workload is too small' in 'CPU execution prefers stock scikit-learn PCA for better exact performance.'
+
+tests/unit/test_runtime_diagnostics.py:332: AssertionError
+=============================== warnings summary ===============================
+../../../../Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/sklearn/utils/_param_validation.py:14
+  /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/sklearn/utils/_param_validation.py:14: UserWarning: A NumPy version >=1.23.5 and <2.5.0 is required for this version of SciPy (detected version 2.5.1)
+    from scipy.sparse import csr_matrix, issparse
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+============================ slowest 100 durations =============================
+34.22s call     tests/unit/test_svc_smo_solver.py::test_svc_smo_solver_can_be_forced_and_matches_predictions
+5.53s call     tests/integration/test_patch_and_estimators.py::test_svc_predict_proba_after_mps_fit
+3.96s call     tests/unit/test_svc_no_cache.py::test_svc_permuted_labels_collapse_to_chance
+2.97s call     tests/unit/test_runtime_diagnostics.py::test_svc_uses_accelerated_backend_by_default
+1.74s call     tests/unit/test_svc_no_cache.py::test_svc_refit_overwrites_model_state
+1.48s call     tests/accuracy/test_correctness.py::test_svc_multiclass_fidelity[1800-30]
+1.21s call     tests/integration/test_tsne_exact_mps.py::test_tsne_exact_mps_is_deterministic_with_fixed_seed
+1.11s call     tests/integration/test_tsne_exact_mps.py::test_tsne_exact_mps_parity_against_sklearn_exact
+0.74s call     tests/integration/test_tsne_exact_mps.py::test_tsne_exact_mps_defaults_to_exact_and_preserves_metadata
+0.59s call     tests/unit/test_svc_no_cache.py::test_svc_repeat_runs_are_isolated_across_estimators
+0.57s call     tests/integration/test_tsne_exact_mps.py::test_tsne_exact_mps_supports_n_components_above_three
+0.43s call     tests/unit/test_svc_no_cache.py::test_svc_predict_depends_on_query_input
+0.39s call     tests/accuracy/test_correctness.py::test_svc_binary_fidelity[1400-24]
+0.20s call     tests/accuracy/test_correctness.py::test_svc_multiclass_fidelity[700-14]
+0.20s call     tests/integration/test_tsne_exact_mps.py::test_tsne_exact_mps_unsupported_modes_fallback_to_sklearn[params1-<lambda>-Only Euclidean/L2 metric]
+0.20s call     tests/integration/test_tsne_exact_mps.py::test_tsne_exact_mps_unsupported_modes_fallback_to_sklearn[params2-<lambda>-Sparse inputs are not supported]
+0.20s call     tests/integration/test_tsne_exact_mps.py::test_tsne_exact_mps_unsupported_modes_fallback_to_sklearn[params3-<lambda>-Precomputed distances are not supported]
+0.16s call     tests/accuracy/test_correctness.py::test_random_forest_classifier_fidelity[500-12-gini]
+0.16s call     tests/integration/test_tsne_exact_mps.py::test_tsne_exact_mps_unsupported_modes_fallback_to_sklearn[params0-<lambda>-Only method='exact']
+0.15s call     tests/accuracy/test_correctness.py::test_linear_regression_correctness[200-10]
+0.14s call     tests/accuracy/test_correctness.py::test_random_forest_classifier_fidelity[1400-24-gini]
+0.14s call     tests/integration/test_patch_and_estimators.py::test_random_forest_classifier_exact_backend_when_approx_disabled
+0.14s call     tests/integration/test_patch_and_estimators.py::test_estimators_fit_after_patching[<lambda>-reg5]
+0.14s call     tests/accuracy/test_correctness.py::test_random_forest_classifier_fidelity[1400-24-entropy]
+0.14s call     tests/accuracy/test_correctness.py::test_random_forest_classifier_fidelity[1400-24-log_loss]
+0.12s call     tests/accuracy/test_correctness.py::test_random_forest_classifier_fidelity[500-12-log_loss]
+0.12s call     tests/accuracy/test_correctness.py::test_random_forest_classifier_fidelity[500-12-entropy]
+0.10s call     tests/integration/test_patch_and_estimators.py::test_random_forest_classifier_refit_overwrites_backend_state
+0.10s call     tests/integration/test_patch_and_estimators.py::test_random_forest_classifier_sklearn_refit_after_native_fit
+0.10s call     tests/accuracy/test_correctness.py::test_svc_weighted_probability_fidelity
+0.09s call     tests/unit/test_svc_smo_solver.py::test_svc_binary_uses_cached_row_smo_when_pair_exceeds_dense_limit
+0.09s call     tests/integration/test_tsne_exact_mps.py::test_tsne_exact_mps_uses_cpu_backend_when_mps_is_unavailable
+0.08s call     tests/accuracy/test_correctness.py::test_dbscan_fidelity[300-8]
+0.07s call     tests/accuracy/test_correctness.py::test_svc_binary_fidelity[500-12]
+0.07s call     tests/integration/test_patch_and_estimators.py::test_random_forest_classifier_native_training_rewrite_can_be_enabled
+0.06s call     tests/integration/test_patch_and_estimators.py::test_elastic_net_exact_mps_float32_fit_and_predict_stay_on_gpu
+
+(64 durations < 0.05s hidden.)
+=========================== short test summary info ============================
+FAILED tests/unit/test_runtime_diagnostics.py::test_pca_small_projection_prefers_sklearn_after_mps_fit
+============= 1 failed, 187 passed, 1 warning in 61.04s (0:01:01) ==============

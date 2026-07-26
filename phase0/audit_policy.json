@@ -1,0 +1,344 @@
+{
+  "schema_version": 1,
+  "source_revision": "720053bdf9b7a377ee45bd5bd573bc09a7df1743",
+  "similarity_threshold": 0.55,
+  "reviewed_files": {
+    "mpsbackend/neighbors/__init__.py": {
+      "status": "technical-reviewed",
+      "note": "No upstream path/header match; module only exports the reviewed local KNN API."
+    },
+    "mpsbackend/neighbors/neighbors.py": {
+      "status": "technical-reviewed",
+      "note": "No upstream path/header/content match. Introduced at ce42a32 in the fork; current git blame attributes all 590 lines to the repository owner. This is technical evidence, not a legal opinion."
+    }
+  },
+  "migration_rules": [
+    {
+      "glob": "mpsbackend/ensemble/**",
+      "disposition": "drop",
+      "reason": "Tree estimators and kernels are outside mlxlearn scope."
+    },
+    {
+      "glob": "sklearnex/ensemble/**",
+      "disposition": "drop",
+      "reason": "Tree estimators are outside mlxlearn scope."
+    },
+    {
+      "glob": "legacy/**",
+      "disposition": "drop",
+      "reason": "Legacy compatibility material must not enter the new history."
+    },
+    {
+      "glob": "examples/notebooks/**",
+      "disposition": "drop",
+      "reason": "Historical sklearnex notebooks are not migration inputs."
+    },
+    {
+      "glob": "examples/notebooks_mps/**",
+      "disposition": "drop",
+      "reason": "Generated and checkpoint notebooks are not migration inputs."
+    },
+    {
+      "glob": "**/*.so",
+      "disposition": "generated-do-not-copy",
+      "reason": "Compiled binaries must be rebuilt and never copied."
+    },
+    {
+      "glob": "mpsbackend/native/*.c",
+      "disposition": "generated-do-not-copy",
+      "reason": "Generated C must be rebuilt from reviewed source."
+    },
+    {
+      "glob": "sklearnex/dispatcher.py",
+      "disposition": "rewrite",
+      "reason": "The patching shell must be newly written and quarantined."
+    },
+    {
+      "glob": "sklearnex/_device_offload.py",
+      "disposition": "rewrite",
+      "reason": "Legacy dispatch and fallback behavior must not be copied."
+    },
+    {
+      "glob": "sklearnex/covariance/**",
+      "disposition": "drop",
+      "reason": "Pass-through estimators are outside mlxlearn scope."
+    },
+    {
+      "glob": "sklearnex/dummy/**",
+      "disposition": "drop",
+      "reason": "Pass-through estimators are outside mlxlearn scope."
+    },
+    {
+      "glob": "sklearnex/metrics/**",
+      "disposition": "drop",
+      "reason": "Pass-through modules are outside mlxlearn scope."
+    },
+    {
+      "glob": "sklearnex/model_selection/**",
+      "disposition": "drop",
+      "reason": "Pass-through modules are outside mlxlearn scope."
+    },
+    {
+      "glob": "sklearnex/neighbors/_lof.py",
+      "disposition": "drop",
+      "reason": "LocalOutlierFactor is outside the planned release surface."
+    },
+    {
+      "glob": "mpsbackend/neighbors/**",
+      "disposition": "port-candidate",
+      "reason": "KNN is the first planned algorithm port."
+    },
+    {
+      "glob": "sklearnex/neighbors/knn_*.py",
+      "disposition": "rewrite",
+      "reason": "Public KNN estimators will be rebuilt over a typed solver core."
+    },
+    {
+      "glob": "mpsbackend/linear_model/**",
+      "disposition": "port-candidate",
+      "reason": "Numerical linear-model code is in the planned release surface."
+    },
+    {
+      "glob": "mpsbackend/svm/**",
+      "disposition": "port-candidate",
+      "reason": "Exact SVC numerical code is in the planned release surface."
+    },
+    {
+      "glob": "mpsbackend/metal/**",
+      "disposition": "port-candidate",
+      "reason": "MLX and Metal kernels require algorithm-specific review."
+    },
+    {
+      "glob": "mpsbackend/_*.py",
+      "disposition": "rewrite",
+      "reason": "Global runtime/configuration code will be replaced by typed core APIs."
+    },
+    {
+      "glob": "sklearnex/**",
+      "disposition": "rewrite",
+      "reason": "Estimator wrappers and compatibility code must target the new public API."
+    },
+    {
+      "glob": "mpsbackend/**",
+      "disposition": "review",
+      "reason": "Backend code is not allowlisted until its algorithm is scheduled."
+    },
+    {
+      "glob": "benchmarks/**",
+      "disposition": "behavioral-reference",
+      "reason": "Benchmark contracts inform new gates but are not copied wholesale."
+    },
+    {
+      "glob": "tests/**",
+      "disposition": "behavioral-reference",
+      "reason": "Historical tests define behavior; new tests will be written for mlxlearn."
+    },
+    {
+      "glob": "**",
+      "disposition": "review",
+      "reason": "No migration decision has been made for this file."
+    }
+  ],
+  "estimators": [
+    {
+      "estimator": "KNeighborsClassifier",
+      "source": "sklearnex/neighbors/knn_classification.py",
+      "release": "0.1.0",
+      "disposition": "port-first",
+      "implementation": "MLX brute-force neighbors",
+      "required_gates": "indices; distances; stable ties; predictions; probabilities"
+    },
+    {
+      "estimator": "KNeighborsRegressor",
+      "source": "sklearnex/neighbors/knn_regression.py",
+      "release": "0.1.0",
+      "disposition": "port-first",
+      "implementation": "MLX brute-force neighbors",
+      "required_gates": "indices; distances; stable ties; uniform and distance weights"
+    },
+    {
+      "estimator": "NearestNeighbors",
+      "source": "sklearnex/neighbors/knn_unsupervised.py",
+      "release": "0.1.0",
+      "disposition": "port-first",
+      "implementation": "MLX brute-force neighbors",
+      "required_gates": "indices; distances; kneighbors; radius behavior"
+    },
+    {
+      "estimator": "LogisticRegression",
+      "source": "sklearnex/linear_model/logistic_regression.py",
+      "release": "0.1.0",
+      "disposition": "port-second",
+      "implementation": "typed MLX solver",
+      "required_gates": "objective; coefficients; probabilities; binary; multiclass"
+    },
+    {
+      "estimator": "SVC",
+      "source": "sklearnex/svm/_classes.py",
+      "release": "0.1.0",
+      "disposition": "port-third",
+      "implementation": "exact SVC",
+      "required_gates": "predictions; decision values; OVO; KKT; weights; calibration"
+    },
+    {
+      "estimator": "LinearRegression",
+      "source": "sklearnex/linear_model/linear.py",
+      "release": "0.2.x",
+      "disposition": "second-wave",
+      "implementation": "eager typed MLX solver",
+      "required_gates": "coefficients; intercept; rank; eager fit"
+    },
+    {
+      "estimator": "Ridge",
+      "source": "sklearnex/linear_model/ridge.py",
+      "release": "0.2.x",
+      "disposition": "second-wave",
+      "implementation": "typed MLX solver",
+      "required_gates": "coefficients; intercept; sample weights"
+    },
+    {
+      "estimator": "PCA",
+      "source": "sklearnex/decomposition/pca.py",
+      "release": "0.2.x",
+      "disposition": "second-wave",
+      "implementation": "eager typed MLX solver",
+      "required_gates": "components; variance; transform; inverse transform"
+    },
+    {
+      "estimator": "Lasso",
+      "source": "sklearnex/linear_model/coordinate_descent.py",
+      "release": "0.2.x",
+      "disposition": "second-wave",
+      "implementation": "fidelity audit required",
+      "required_gates": "objective; dual gap; coefficients"
+    },
+    {
+      "estimator": "ElasticNet",
+      "source": "sklearnex/linear_model/coordinate_descent.py",
+      "release": "0.2.x",
+      "disposition": "second-wave",
+      "implementation": "fidelity audit required",
+      "required_gates": "objective; dual gap; coefficients"
+    },
+    {
+      "estimator": "KMeans",
+      "source": "sklearnex/cluster/k_means.py",
+      "release": "0.2.x",
+      "disposition": "second-wave",
+      "implementation": "exact Lloyd only",
+      "required_gates": "labels; inertia; centers; determinism"
+    },
+    {
+      "estimator": "DBSCAN",
+      "source": "sklearnex/cluster/dbscan.py",
+      "release": "0.2.x",
+      "disposition": "second-wave",
+      "implementation": "fidelity audit required",
+      "required_gates": "labels; core indices; metric behavior"
+    },
+    {
+      "estimator": "TSNE",
+      "source": "sklearnex/manifold/t_sne.py",
+      "release": "0.2.x",
+      "disposition": "second-wave",
+      "implementation": "exact objective",
+      "required_gates": "KL divergence; trustworthiness; deterministic seed"
+    },
+    {
+      "estimator": "TSNEExactMPS",
+      "source": "sklearnex/experimental/manifold.py",
+      "release": "never",
+      "disposition": "absorb-alias",
+      "implementation": "Old MPS-specific alias is absorbed into mlxlearn.manifold.TSNE",
+      "required_gates": "covered by TSNE"
+    },
+    {
+      "estimator": "NuSVC",
+      "source": "sklearnex/svm/_classes.py",
+      "release": "deferred",
+      "disposition": "defer",
+      "implementation": "true objective required",
+      "required_gates": "objective and sklearn parity"
+    },
+    {
+      "estimator": "SVR",
+      "source": "sklearnex/svm/_classes.py",
+      "release": "deferred",
+      "disposition": "rename-or-implement",
+      "implementation": "current ridge surrogate cannot retain SVR name",
+      "required_gates": "epsilon-SVR objective and sklearn parity"
+    },
+    {
+      "estimator": "NuSVR",
+      "source": "sklearnex/svm/_classes.py",
+      "release": "deferred",
+      "disposition": "rename-or-implement",
+      "implementation": "current ridge surrogate cannot retain NuSVR name",
+      "required_gates": "nu-SVR objective and sklearn parity"
+    },
+    {
+      "estimator": "RandomForestClassifier",
+      "source": "sklearnex/ensemble/_forest.py",
+      "release": "never",
+      "disposition": "drop",
+      "implementation": "out of scope",
+      "required_gates": "none"
+    },
+    {
+      "estimator": "RandomForestRegressor",
+      "source": "sklearnex/ensemble/_forest.py",
+      "release": "never",
+      "disposition": "drop",
+      "implementation": "out of scope",
+      "required_gates": "none"
+    },
+    {
+      "estimator": "ExtraTreesClassifier",
+      "source": "sklearnex/ensemble/_forest.py",
+      "release": "never",
+      "disposition": "drop",
+      "implementation": "out of scope",
+      "required_gates": "none"
+    },
+    {
+      "estimator": "ExtraTreesRegressor",
+      "source": "sklearnex/ensemble/_forest.py",
+      "release": "never",
+      "disposition": "drop",
+      "implementation": "out of scope",
+      "required_gates": "none"
+    },
+    {
+      "estimator": "EmpiricalCovariance",
+      "source": "sklearnex/covariance/covariance.py",
+      "release": "never",
+      "disposition": "drop",
+      "implementation": "pass-through",
+      "required_gates": "none"
+    },
+    {
+      "estimator": "IncrementalEmpiricalCovariance",
+      "source": "sklearnex/covariance/incremental_covariance.py",
+      "release": "never",
+      "disposition": "drop",
+      "implementation": "pass-through",
+      "required_gates": "none"
+    },
+    {
+      "estimator": "DummyRegressor",
+      "source": "sklearnex/dummy/_dummy.py",
+      "release": "never",
+      "disposition": "drop",
+      "implementation": "pass-through",
+      "required_gates": "none"
+    },
+    {
+      "estimator": "LocalOutlierFactor",
+      "source": "sklearnex/neighbors/_lof.py",
+      "release": "never",
+      "disposition": "drop",
+      "implementation": "outside planned surface",
+      "required_gates": "none"
+    }
+  ]
+}
