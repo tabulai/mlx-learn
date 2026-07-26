@@ -14,7 +14,6 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
 
-
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_POLICY = ROOT / "phase0" / "audit_policy.json"
 DEFAULT_OUTPUT = ROOT / "phase0" / "generated"

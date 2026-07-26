@@ -1,0 +1,81 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mlxlearn"
+version = "0.1.0a1"
+description = "MLX-accelerated classical machine learning with a scikit-learn compatible API for Apple silicon"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
+authors = [{ name = "Bojan Tunguz" }]
+keywords = ["machine-learning", "mlx", "apple-silicon", "scikit-learn", "gpu"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+    "Operating System :: MacOS :: MacOS X",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
+]
+dependencies = [
+    "numpy>=1.23.5",
+    "scikit-learn>=1.7,<1.10",
+    "mlx>=0.29,<1.0",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8.0", "scipy>=1.10"]
+bench = ["pytest>=8.0", "scipy>=1.10"]
+dev = ["pytest>=8.0", "scipy>=1.10", "ruff>=0.6", "build>=1.2", "twine>=5.0"]
+
+[project.urls]
+Homepage = "https://github.com/tabulai/mlxlearn"
+Repository = "https://github.com/tabulai/mlxlearn"
+Changelog = "https://github.com/tabulai/mlxlearn/blob/main/CHANGELOG.md"
+Issues = "https://github.com/tabulai/mlxlearn/issues"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+zip-safe = false
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["mlxlearn*"]
+
+[tool.setuptools.package-data]
+mlxlearn = ["py.typed"]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+    "slow: long-running tests excluded from the fast suite",
+    "benchmark: performance measurement, not a correctness gate",
+    "gpu: requires a working MLX GPU device",
+]
+# Deliberately no global error-on-MLXLearnFallbackWarning: the Layer 2 suite
+# exercises fallbacks on purpose, and the warning is deduplicated per
+# (estimator, reason), so promoting it to an error would make results depend on
+# test order. Tests that must run on MLX assert `execution_backend_` instead,
+# which is the direct claim rather than a proxy for it.
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests", "tools", "benchmarks"]
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B018"]

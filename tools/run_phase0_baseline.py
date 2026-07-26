@@ -17,7 +17,6 @@ import time
 from pathlib import Path
 from typing import Any
 
-
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT = ROOT / "phase0" / "baseline"
 PACKAGES = ("numpy", "scipy", "scikit-learn", "mlx", "pytest", "flake8")

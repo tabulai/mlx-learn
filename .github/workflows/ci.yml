@@ -1,0 +1,130 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONWARNINGS: default
+  # Correctness only on shared runners. Absolute performance is measured by the
+  # nightly job on fixed self-hosted Apple hardware; shared runners are too noisy
+  # for a timing gate.
+  MLXLEARN_CI: "1"
+
+jobs:
+  compliance:
+    name: compliance gates
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install runtime dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -e "."
+      - name: Branding, private imports, headers, licenses, layout
+        run: python tools/compliance.py
+
+  lint:
+    name: lint
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: python -m pip install --upgrade pip ruff
+      - run: ruff check src tests tools benchmarks
+      # No `ruff format --check`. The project has not adopted an autoformatter,
+      # and turning one on now would rewrite every file in a single commit that
+      # buries the real history. Adopting one is a maintainer decision, not
+      # something a CI job should force.
+
+  test:
+    name: py${{ matrix.python }} / sklearn ${{ matrix.sklearn }}
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      # Paired matrix, not a cross product: scikit-learn 1.9 requires Python >= 3.11,
+      # so a naive cross product would schedule jobs that cannot resolve.
+      matrix:
+        include:
+          - python: "3.10"
+            sklearn: "1.7.2"
+          - python: "3.10"
+            sklearn: "1.8.0"
+          - python: "3.11"
+            sklearn: "1.8.0"
+          - python: "3.12"
+            sklearn: "1.9.0"
+          - python: "3.13"
+            sklearn: "1.8.0"
+          - python: "3.13"
+            sklearn: "1.9.0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "scikit-learn==${{ matrix.sklearn }}"
+          python -m pip install -e ".[test]"
+      - name: Assert the pinned floor is what we think it is
+        run: |
+          python - <<'PY'
+          import sklearn, numpy, mlx.core as mx
+          from packaging.version import Version
+          assert Version(sklearn.__version__) >= Version("1.7"), sklearn.__version__
+          # MLX floor is asserted here rather than only in metadata so a resolver
+          # that quietly picks an older wheel fails loudly.
+          assert Version(mx.__version__) >= Version("0.29"), mx.__version__
+          print("sklearn", sklearn.__version__, "numpy", numpy.__version__, "mlx", mx.__version__)
+          PY
+      - name: Test
+        run: python -m pytest -q --durations=25
+      - name: Locked two-liner runs verbatim
+        run: |
+          python - <<'PY'
+          from mlxlearn import patch_sklearn
+          patch_sklearn()
+          PY
+
+  build:
+    name: sdist and wheel
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: python -m pip install --upgrade pip build twine
+      - run: python -m build
+      - run: python -m twine check --strict dist/*
+      - name: Wheel is pure-Python
+        run: |
+          python - <<'PY'
+          import pathlib, sys
+          wheels = list(pathlib.Path("dist").glob("*.whl"))
+          assert len(wheels) == 1, wheels
+          name = wheels[0].name
+          assert name.endswith("-py3-none-any.whl"), f"expected a pure-Python wheel, got {name}"
+          print(name)
+          PY
+      - name: Installs clean from the wheel
+        run: |
+          python -m venv /tmp/wheeltest
+          /tmp/wheeltest/bin/pip install --upgrade pip
+          /tmp/wheeltest/bin/pip install dist/*.whl
+          /tmp/wheeltest/bin/python -c "import mlxlearn; print(mlxlearn.__version__); mlxlearn.patch_sklearn(); mlxlearn.unpatch_sklearn()"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/

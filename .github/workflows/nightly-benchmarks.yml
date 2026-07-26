@@ -1,0 +1,43 @@
+name: Nightly benchmarks
+
+# Absolute performance is only meaningful on fixed hardware. Shared GitHub runners
+# are shared, throttled, and heterogeneous, so they run correctness only (see ci.yml)
+# and this job runs on a self-hosted Apple silicon machine that does not change.
+
+on:
+  schedule:
+    - cron: "17 9 * * *"
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: Benchmark profile
+        default: full
+        type: choice
+        options: [smoke, full]
+
+jobs:
+  benchmarks:
+    name: benchmarks (self-hosted Apple silicon)
+    runs-on: [self-hosted, macOS, ARM64, mlxlearn-bench]
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install -e ".[bench]"
+      - name: Record hardware and versions
+        run: .venv/bin/python -m benchmarks.run --environment-only --output bench/environment.json
+      - name: Run benchmarks
+        run: |
+          .venv/bin/python -m benchmarks.run \
+            --profile "${{ inputs.profile || 'full' }}" \
+            --output bench/results.json \
+            --report bench/report.md
+      - name: Regression gate against the recorded crossovers
+        run: .venv/bin/python -m benchmarks.gate --results bench/results.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: bench/

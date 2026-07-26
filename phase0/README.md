@@ -58,12 +58,43 @@ source-copy candidates, and their notices still require review.
 
 ## Phase 0 exit criteria
 
-- The source revision and working-tree state are recorded.
-- Every tracked file appears exactly once in `provenance.csv`.
-- Every public estimator appears in `estimator_support.csv`.
-- Historical tests and the fidelity benchmark have reproducible logs.
-- Any failing test or benchmark cell is documented in `summary.md`.
-- The human-review queue for files selected for the first KNN port is empty.
+- [x] The source revision and working-tree state are recorded.
+- [x] Every tracked file appears exactly once in `provenance.csv`.
+- [x] Every public estimator appears in `estimator_support.csv`.
+- [x] Historical tests and the fidelity benchmark have reproducible logs.
+- [x] Any failing test or benchmark cell is documented in `summary.md`.
+- [x] The human-review queue for files selected for the first KNN port is empty.
+- [x] The compiled-extension go/no-go decision is made, with measurements —
+      [`cython_decision.md`](cython_decision.md).
+- [x] Per-module authorship attestation for the shipped surface —
+      [`attestation.md`](attestation.md).
 
-The last criterion is intentionally not automated: provenance tooling can
-surface evidence, but it cannot make legal authorship determinations.
+The sixth criterion is intentionally not automated: provenance tooling can
+surface evidence, but it cannot make legal authorship determinations. See
+[`legal_review_checklist.md`](legal_review_checklist.md), which is a blocking
+gate before any public release.
+
+## How the port-candidate review queue was resolved
+
+The audit left 12 files with a `port-candidate` disposition, only two of which
+had completed technical review. Rather than block, the 0.1.0 surface was built
+under a stricter rule than the audit required: **nothing was copied**. Every
+module under `src/mlxlearn/` was newly written, with the ancestor consulted only
+as a behavioral reference. That makes the remaining review queue moot for the
+shipped surface — there is nothing ported to review — and it is recorded per
+module in [`attestation.md`](attestation.md).
+
+The behavioral extraction that informed the rewrite also found defects in the
+ancestor that the rewrite deliberately does not reproduce. The three most
+consequential, each now covered by a regression test:
+
+1. `_exclude_self_neighbors` compared each row against its **block-local** index
+   rather than its global one, so `kneighbors(None)` was wrong for any training
+   set larger than one query block — verified at 1 wrong row in 1500 with default
+   blocking. Its tests only ever used 3 rows.
+2. The GPU top-k returned `uint32` indices, so padding a short trailing tile with
+   `-1` raised `Converting -1 to uint32 would result in overflow`. Because the
+   dispatcher caught every exception and reran on scikit-learn, this presented to
+   users as an unexplained slowdown rather than an error.
+3. `metric_params` was accepted and silently ignored, so a weighted-Minkowski
+   request returned unweighted Euclidean results.
