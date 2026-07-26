@@ -28,6 +28,7 @@ from .._common.config import get_tuning
 from .._common.validation import (
     check_classification_targets,
     check_finite_float32,
+    check_float32_range,
     check_is_fitted,
     require_dense,
     require_supported_params,
@@ -53,8 +54,15 @@ class MLXNeighborsMixin(BackendMixin):
     # --------------------------------------------------------------- capability
 
     def _check_neighbors_capability(self, X, y=None) -> None:
-        """Raise :class:`CapabilityError` for anything the MLX path cannot serve."""
+        """Raise :class:`CapabilityError` for anything the MLX path cannot serve.
+
+        Runs before ``validate_data``, so a float64 value that overflows float32
+        is reported as a capability limit — which scikit-learn's float64 path can
+        serve, and therefore which patched mode can fall back on — rather than as
+        scikit-learn's generic post-conversion "contains infinity" ``ValueError``.
+        """
         require_dense(X, estimator=type(self).__name__)
+        check_float32_range(X)
 
         require_supported_params(
             {"algorithm": self.algorithm, "metric": self.metric},

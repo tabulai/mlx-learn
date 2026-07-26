@@ -74,6 +74,20 @@ because the objective stopped moving records it in diagnostics.
 
 These are the numbers, and the reasoning for each. Tests do not invent their own.
 
+**Precondition: both fits must have converged.** When either solver stops on `max_iter`
+instead of its tolerance, the comparison is between two arbitrary intermediate iterates and
+no tolerance can be stated for it. A randomized 48-configuration sweep at the default
+`max_iter=100`, with feature scales varying over two orders of magnitude, produced apparent
+violations up to `relJ = 1.8e-3` and `coef |Δ| = 0.145` — and on inspection *both* solvers
+had hit the iteration limit and *both* had emitted `ConvergenceWarning`. Raising the budget
+on the worst case: mlxlearn converged in **113** iterations, scikit-learn in **251**, and the
+agreement fell inside the table below (`relJ = 2.3e-6`, `coef |Δ| = 1.5e-4`).
+
+At the truncated budget mlxlearn's objective was the **lower** of the two. So the fair claim
+is not "mlxlearn is within tolerance of scikit-learn at any budget" — it is "for converged
+fits mlxlearn agrees to the tolerances below, and at equal truncated budgets its objective is
+no worse." Both are tested.
+
 | Quantity | Comparison against scikit-learn | Rationale |
 |---|---|---|
 | Neighbor **sets** (per row) | `assert_array_equal` on the sorted row — exact | Which points are nearest is not a matter of opinion |
@@ -82,7 +96,7 @@ These are the numbers, and the reasoning for each. Tests do not invent their own
 | Classifier **predictions** | ≥ 99.5% label agreement | Labels are discrete; disagreements concentrate at the decision boundary. Measured: 0.9975 worst case over 40 randomized logistic configurations, 1.0 typical |
 | Neighbor-vote **probabilities** | `atol=1e-5` | A sum of exact weights over an exact neighbor set |
 | Linear-model **probabilities** | `atol=2e-3` | These inherit the coefficient error rather than being computed independently, so they cannot be tighter than the coefficients allow. Measured: 3e-4 typical, 1.34e-3 worst (multiclass with a 10× sample weight) at default `tol`; 6e-5–1.9e-4 at `tol=1e-6` |
-| Linear **coefficients** | `atol=1e-3, rtol=2e-3` | Dominated by *where the solver stops*, not by arithmetic. Measured: 1.2e-4 typical, 4.05e-4 worst at default `tol=1e-4`, falling to 8.4e-5 at `tol=1e-6` |
+| Linear **coefficients** | `atol=2e-3, rtol=5e-3` | Dominated by *where the solver stops*, not by arithmetic — and on a rank-deficient design only the penalty pins them down at all. Measured: 5e-4 typical, 1.15e-3 worst over the fixed grid |
 | **Objective value** at the solution | `rtol=1e-5` | The objective is far better conditioned than its argument — this is the assertion that actually catches a wrong solver. Measured: worst relative difference 2.9e-7 across every non-separable logistic case |
 | SVM **decision values** | `atol=2e-2, rtol=5e-3` | Dominated by the SMO stopping point, not by arithmetic: both solvers stop when the maximal KKT violation drops below the shared `tol` (default `1e-3`), and the dual variables still have freedom there. Measured worst 1.56e-2 on a ±4.5 value range (linear, C=10); rbf cases sit at 5e-7–7e-4 |
 | SVM **support-vector sets** | ≤ 5% symmetric difference | Measured: counts agree essentially exactly (1311 vs 1311, 827 vs 827; worst disagreement one point out of 548). Which points sit exactly on the margin is genuinely ill-conditioned, so exact set equality is not something either solver promises |
@@ -93,6 +107,12 @@ ill-conditioned problem two solvers can reach very different coefficients that a
 optimal. A test that only compares `coef_` therefore fails for a correct implementation and
 passes for a subtly wrong one. Every parity test that compares coefficients also compares
 the objective.
+
+**Objective comparisons are one-sided where mlxlearn can legitimately win.** On data with a
+large constant offset mlxlearn reaches a *lower* objective than scikit-learn — 0.6104452
+against 0.6104529 at an offset of 1e5, converging in 113 iterations against 175 — because
+it centers the design and scikit-learn does not. A symmetric tolerance would fail mlxlearn
+for being better, so those assertions are `j_mlxlearn ≤ j_sklearn · (1 + rtol)`.
 
 ### 3.1 Neighbor ties: mlxlearn is stricter than scikit-learn
 

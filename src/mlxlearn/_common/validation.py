@@ -51,7 +51,9 @@ __all__ = [
     "SparseInputError",
     "require_supported_params",
     "check_sample_weight",
+    "check_float32_range",
     "check_finite_float32",
+    "FLOAT32_MAX",
     "class_weight_vector",
 ]
 
@@ -160,26 +162,72 @@ def check_sample_weight(
     if not np.all(np.isfinite(weights)):
         raise ValueError("sample_weight contains NaN or infinity.")
     if np.any(weights < 0):
-        raise ValueError("sample_weight must be non-negative.")
+        # A capability error, not a plain ValueError. scikit-learn accepts negative
+        # sample weights; mlxlearn's solvers do not, because a negative weight makes
+        # the objective non-convex and the convergence guarantees stop holding. Since
+        # scikit-learn *can* serve the request, patched mode must be able to fall back
+        # to it — which it can only do if this is in the CapabilityError family.
+        raise UnsupportedInputError(
+            "sample_weight contains negative values. mlxlearn's solvers require "
+            "non-negative weights, because a negative weight makes the objective "
+            "non-convex. scikit-learn accepts them, so under patch_sklearn() this "
+            "falls back rather than failing.",
+            reason="negative-sample-weight",
+        )
     return weights
 
 
-def check_finite_float32(X: np.ndarray, *, name: str = "X") -> None:
-    """Reject values that survive float64 but not float32.
+#: float32's largest finite value. A float64 above this becomes ``inf`` on conversion.
+FLOAT32_MAX = float(np.finfo(np.float32).max)
 
-    ``1e300`` is a perfectly ordinary float64 and becomes ``inf`` in float32. If
-    that conversion happened silently, the result would be garbage attributable to
-    nothing, so mlxlearn refuses the input and says which value caused it.
+
+def check_float32_range(X, *, name: str = "X") -> None:
+    """Reject float64 values that would become infinite in float32.
+
+    ``1e300`` is a perfectly ordinary float64 and is ``inf`` in float32. Converting
+    it silently would produce garbage attributable to nothing.
+
+    This must run **before** ``validate_data``, because ``validate_data(dtype=float32)``
+    performs the conversion itself and then raises scikit-learn's generic "contains
+    infinity or a value too large" error. That error is not wrong, but it is a plain
+    ``ValueError``, so patched mode could not fall back — even though scikit-learn's
+    float64 path would handle the input perfectly well. Raising a
+    :class:`~mlxlearn.exceptions.UnsupportedInputError` here makes the fallback work
+    and explains *why* mlxlearn specifically cannot take the input.
+
+    Only float64 (and wider) arrays are scanned; float32 input cannot overflow float32,
+    and no integer dtype reaches 3.4e38.
     """
-    if X.dtype != NUMPY_FLOAT:
+    array = np.asarray(X) if not hasattr(X, "dtype") else X
+    dtype = getattr(array, "dtype", None)
+    if dtype is None or dtype.kind != "f" or dtype.itemsize <= 4:
         return
-    if not np.all(np.isfinite(X)):
+
+    finite = np.isfinite(array)
+    if not finite.any():
+        return
+    largest = float(np.max(np.abs(array[finite]))) if finite.all() else float(
+        np.max(np.abs(np.where(finite, array, 0.0)))
+    )
+    if largest > FLOAT32_MAX:
         raise UnsupportedInputError(
-            f"{name} contains values that are not finite in float32. mlxlearn "
-            "computes in float32, and float64 values with magnitude beyond "
-            "~3.4e38 overflow to infinity in the conversion.",
+            f"{name} contains a value of magnitude {largest:.3g}, which is finite in "
+            f"float64 but infinite in float32 (the limit is {FLOAT32_MAX:.3g}). "
+            "mlxlearn computes in float32 and will not silently convert it to "
+            "infinity. Rescale the data, or run under patch_sklearn() to have this "
+            "handled by scikit-learn's float64 path.",
             reason="float32-overflow",
         )
+
+
+def check_finite_float32(X: np.ndarray, *, name: str = "X") -> None:
+    """Backwards-compatible alias for :func:`check_float32_range`.
+
+    Kept because estimators call it after validation; at that point the array is
+    already float32 and the check is a no-op, so the real work happens in
+    :func:`check_float32_range` on the raw input.
+    """
+    check_float32_range(X, name=name)
 
 
 def class_weight_vector(

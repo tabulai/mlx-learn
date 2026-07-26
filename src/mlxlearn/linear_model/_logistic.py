@@ -28,6 +28,7 @@ from .._common.base import BackendMixin, mlx_guard
 from .._common.config import get_tuning
 from .._common.validation import (
     check_finite_float32,
+    check_float32_range,
     check_is_fitted,
     check_sample_weight,
     compute_class_weight,
@@ -58,6 +59,10 @@ class MLXLogisticMixin(BackendMixin):
         """Raise :class:`CapabilityError` for anything the MLX path cannot serve."""
         name = type(self).__name__
         require_dense(X, estimator=name)
+        # Before validate_data, so a float64 value that overflows float32 is a
+        # capability limit patched mode can fall back on rather than scikit-learn's
+        # generic post-conversion "contains infinity" ValueError.
+        check_float32_range(X)
 
         require_supported_params(
             {
