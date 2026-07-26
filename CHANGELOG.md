@@ -19,7 +19,10 @@ is not yet stable.
     selection, deterministic `(distance, index)` tie-breaking, and candidate-distance
     refinement that avoids fp32 cancellation in the expanded Gram formula.
   - `mlxlearn.linear_model.LogisticRegression` — L2 / unpenalized, binary and multinomial,
-    L-BFGS on the exact scikit-learn objective.
+    L-BFGS on the exact scikit-learn objective. The design is centered before solving
+    (exact when there is an intercept to absorb the shift), which is what makes the fit
+    survive features carrying a large constant offset — and makes it converge in fewer
+    iterations than scikit-learn on such data.
   - `mlxlearn.svm.SVC` — exact SMO with a memory-bounded kernel cache and one-vs-one
     multiclass. No approximations ship under a scikit-learn estimator name.
 - **Layer 2 patching** (`mlxlearn.patch_sklearn` / `unpatch_sklearn`) — idempotent,
@@ -28,7 +31,9 @@ is not yet stable.
   `_execution_backend_`, and reused by every inference call on that fitted model.
 - **Fallback taxonomy** — capability mismatches fall back under
   `fallback_policy="warn" | "raise" | "silent"`; unexpected MLX runtime failures raise by
-  default and are never silently rerun on scikit-learn.
+  default and are never silently rerun on scikit-learn. Anything scikit-learn *can* serve
+  is in the capability family so the fallback actually works — including float64 values
+  that overflow float32 and negative sample weights, both of which scikit-learn accepts.
 - **Diagnostics** — `get_backend_diagnostics()`, `get_last_backend_event()`,
   `clear_backend_diagnostics()`.
 - **Configuration** — `set_config` / `get_config` / `config_context` over `device`,
@@ -56,7 +61,9 @@ parity claims in [`docs/fp32_policy.md`](docs/fp32_policy.md).
   The crossover is set high accordingly (20 000 samples **and** 2·10⁷ elements), so patched
   dispatch measures 0.79×–1.01×, both within noise. This is an optimization target, not a
   property of the design.
-- **`SVC`: 1.20× at 4 000 × 32**, parity below.
+- **`SVC`: 1.20× at 4 000 × 32**, parity below. Its primal objective agrees with LIBSVM
+  to 5.2e-07 relative, which is the assertion that matters when the dual is
+  rank-deficient and decision values are therefore not uniquely determined.
 - **All ten scikit-learn estimator check suites pass with zero mlxlearn-specific xfails.**
   Two checks are exempt only because scikit-learn declares them as expected failures for
   its own `SVC` and `LogisticRegression`; a test re-derives that list from scikit-learn so

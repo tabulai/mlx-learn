@@ -137,6 +137,15 @@ regression against stock scikit-learn. Crossover points are measured per algorit
 operation, published in [`docs/benchmarks.md`](docs/benchmarks.md), and wired into the
 dispatch thresholds — small problems are handed to scikit-learn on purpose.
 
+What that means in practice for 0.1.0a1, on an M4 Max:
+
+| | |
+|---|---|
+| **Neighbor queries** | **2.9×–17×** from ~250 samples up. This is the reason to use mlxlearn. |
+| Neighbor `fit` | 0.17×–0.36×. mlxlearn uploads to the device; scikit-learn stores a reference. The first query repays it several times over. |
+| `SVC` | 1.20× at 4 000 × 32, parity below. |
+| `LogisticRegression` | **Slower than scikit-learn below 1 024 features**, by a lot. The crossover is set high so patched dispatch hands those to scikit-learn; see [`docs/benchmarks.md`](docs/benchmarks.md) for why and what would change it. |
+
 Reproduce them:
 
 ```bash
