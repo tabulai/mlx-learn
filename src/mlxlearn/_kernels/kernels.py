@@ -151,7 +151,19 @@ def resolve_gamma(gamma, X: np.ndarray) -> float:
         )
     value = float(gamma)
     if value <= 0.0:
-        raise ValueError(f"gamma must be strictly positive, got {value!r}")
+        # scikit-learn's constraint is Interval(Real, 0.0, None, closed="left"),
+        # so gamma=0.0 is legal there and produces a degenerate but well-defined
+        # model. mlxlearn's kernels do not implement it — and because
+        # scikit-learn *can* serve the request, this must be a CapabilityError so
+        # that patched mode falls back instead of raising. A plain ValueError here
+        # propagated straight through mlx_guard and broke Layer 2 too.
+        raise UnsupportedParameterError(
+            f"mlxlearn does not implement gamma={value!r}; the MLX kernels require a "
+            "strictly positive gamma. scikit-learn accepts it, so under "
+            "patch_sklearn() this falls back rather than failing.",
+            parameter="gamma",
+            value=value,
+        )
     return value
 
 

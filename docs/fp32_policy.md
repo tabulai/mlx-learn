@@ -98,7 +98,8 @@ no worse." Both are tested.
 | Linear-model **probabilities** | `atol=2e-3` | These inherit the coefficient error rather than being computed independently, so they cannot be tighter than the coefficients allow. Measured: 3e-4 typical, 1.34e-3 worst (multiclass with a 10× sample weight) at default `tol`; 6e-5–1.9e-4 at `tol=1e-6` |
 | Linear **coefficients** | `atol=2e-3, rtol=5e-3` | Dominated by *where the solver stops*, not by arithmetic — and on a rank-deficient design only the penalty pins them down at all. Measured: 5e-4 typical, 1.15e-3 worst over the fixed grid |
 | **Objective value** at the solution | `rtol=1e-5` | The objective is far better conditioned than its argument — this is the assertion that actually catches a wrong solver. Measured: worst relative difference 2.9e-7 across every non-separable logistic case |
-| SVM **decision values** | `atol=2e-2, rtol=5e-3` | Dominated by the SMO stopping point, not by arithmetic: both solvers stop when the maximal KKT violation drops below the shared `tol` (default `1e-3`), and the dual variables still have freedom there. Measured worst 1.56e-2 on a ±4.5 value range (linear, C=10); rbf cases sit at 5e-7–7e-4 |
+| SVM **decision values** (PSD kernels) | `atol=2e-2, rtol=5e-3` | Dominated by the SMO stopping point, not by arithmetic: both solvers stop when the maximal KKT violation drops below the shared `tol` (default `1e-3`), and the dual variables still have freedom there. Measured worst 1.56e-2 on a ±4.5 value range (linear, C=10); rbf cases sit at 5e-7–7e-4 |
+| SVM **decision values** (`kernel="sigmoid"`) | not asserted — see §3.2.1 | The sigmoid kernel is indefinite, so the dual is non-convex and two correct solvers reach different local optima. Measured 3.95e-1, and it does not shrink with `tol` |
 | SVM **support-vector sets** | ≤ 5% symmetric difference | Measured: counts agree essentially exactly (1311 vs 1311, 827 vs 827; worst disagreement one point out of 548). Which points sit exactly on the margin is genuinely ill-conditioned, so exact set equality is not something either solver promises |
 | SVM **KKT conditions** | must hold at mlxlearn's own solution | The assertion that does not appeal to scikit-learn at all, and the one that catches a solver agreeing with LIBSVM for the wrong reason |
 
@@ -149,6 +150,24 @@ objective `½‖w‖² + C·Σ hinge`, which is what both are minimizing. Measur
 **5.2e-07 relative**, worst 5.9e-06 at C = 10. Comparing decision values alone would report
 a problem the objective shows does not exist — the same trap as comparing `coef_` for a
 linear model.
+
+### 3.2.1 The sigmoid kernel is indefinite, so its dual is not convex
+
+`tanh(γ⟨x, y⟩ + r)` is not positive semi-definite for most parameter choices. The SVM dual
+is then a **non-convex** quadratic program with multiple local optima, and two correct
+solvers can land on genuinely different solutions — not different points on one flat
+optimum, as with the rank-deficient linear case, but different optima.
+
+Measured on a 5-class sigmoid problem, 1500 training rows: `max |Δ decision| = 3.95e-01`,
+and it does **not** shrink with `tol` (3.95e-01 at `tol=1e-3`, 3.945e-01 at `tol=1e-7`).
+The disagreement is isolated to one one-vs-one pair whose dual objective differs by
+`rtol = 1.05e-04` — and mlxlearn's objective there is the **lower** of the two
+(−413.690008 against −413.646611).
+
+So for `kernel="sigmoid"` the decision-value tolerance in the table above does not apply and
+is not asserted. What is asserted is that mlxlearn's dual objective is no worse, and that
+predictions agree. LIBSVM makes the same caveat about indefinite kernels; mlxlearn states it
+rather than tuning a tolerance until the test goes green.
 
 ### 3.3 Where the objective assertion does not apply
 

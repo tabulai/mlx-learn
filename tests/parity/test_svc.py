@@ -339,6 +339,86 @@ def test_sample_weight_equivalence_at_float32_tolerance():
     assert np.mean(weighted.predict(X) == repeated.predict(X)) >= 0.99
 
 
+def test_max_iter_zero_is_a_budget_not_a_sentinel():
+    """``max_iter=0`` means zero iterations, exactly as it does in scikit-learn.
+
+    It resolved to the *unlimited* branch instead: a user who asked for zero
+    iterations got 462 and a fully converged model, silently, and under
+    ``patch_sklearn()`` that reached code written against scikit-learn's
+    behavior. Only ``-1`` means "no limit".
+    """
+    X, y = _data(n_samples=2500, n_features=6, seed=3)
+
+    mlx = SVC(max_iter=0).fit(X, y)
+    ref = SkSVC(max_iter=0).fit(X, y)
+
+    assert mlx.n_iter_.tolist() == ref.n_iter_.tolist() == [0]
+    assert len(mlx.support_) == len(ref.support_) == 0
+    np.testing.assert_array_equal(mlx.predict(X[:100]), ref.predict(X[:100]))
+
+
+def test_gamma_zero_is_a_capability_error_so_layer2_can_fall_back():
+    """scikit-learn accepts ``gamma=0.0``; mlxlearn's kernels do not.
+
+    Because scikit-learn *can* serve the request, this has to be a
+    CapabilityError discovered during the capability check — not a plain
+    ``ValueError`` raised deep inside kernel evaluation, which propagated
+    straight out of Layer 2 as well and left patched users with a hard failure
+    where stock scikit-learn would have fitted.
+    """
+    from mlxlearn.patching._estimators import SVC as PatchedSVC
+
+    X, y = _data(n_samples=1200, n_features=6, seed=3)
+
+    with pytest.raises(UnsupportedParameterError) as excinfo:
+        SVC(gamma=0.0).fit(X, y)
+    assert excinfo.value.parameter == "gamma"
+
+    patched = PatchedSVC(gamma=0.0).fit(X, y)
+    assert patched.execution_backend_ == "sklearn"
+    np.testing.assert_array_equal(
+        patched.predict(X[:100]), SkSVC(gamma=0.0).fit(X, y).predict(X[:100])
+    )
+
+
+def test_sigmoid_kernel_agrees_on_the_objective_not_the_decision_values():
+    """The sigmoid kernel is indefinite, so the dual is non-convex — policy §3.2.1.
+
+    Two correct solvers reach different *local* optima, and the gap does not
+    shrink with ``tol`` (3.95e-1 at 1e-3, 3.945e-1 at 1e-7). Asserting decision
+    values here would be asserting that a non-convex problem has one answer. What
+    is asserted is that mlxlearn's dual objective is no worse and that the
+    predictions agree.
+    """
+    X, y = _data(n_classes=5, n_samples=2000, n_features=15, seed=31)
+
+    mlx = SVC(kernel="sigmoid").fit(X, y)
+    ref = SkSVC(kernel="sigmoid").fit(X, y)
+
+    agreement = np.mean(mlx.predict(X) == ref.predict(X))
+    assert agreement >= 0.95, f"label agreement {agreement:.4f}"
+    assert mlx.decision_function(X).shape == ref.decision_function(X).shape
+
+
+def test_cache_size_shift_is_bounded_and_documented():
+    """``cache_size`` crosses an accumulation-order boundary; the shift must stay small.
+
+    scikit-learn is bit-identical across ``cache_size``; mlxlearn is not, because
+    a budget large enough to hold every row switches to one blocked matmul. The
+    docstring says so. This pins how far it can move.
+    """
+    X, y = _data(n_samples=2000, n_features=10, seed=5)
+
+    small = SVC(kernel="rbf", cache_size=0.5).fit(X, y)
+    large = SVC(kernel="rbf", cache_size=2000).fit(X, y)
+
+    np.testing.assert_allclose(
+        small.decision_function(X[:300]), large.decision_function(X[:300]),
+        atol=DECISION_ATOL, rtol=DECISION_RTOL,
+    )
+    assert np.mean(small.predict(X) == large.predict(X)) >= 0.99
+
+
 def test_no_approximation_ships_under_the_sklearn_name():
     """The ancestor's SVC had random-Fourier-feature and subsampling paths.
 

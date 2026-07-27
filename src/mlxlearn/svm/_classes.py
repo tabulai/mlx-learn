@@ -193,6 +193,31 @@ class MLXSVCMixin(BackendMixin):
                 value=self.probability,
             )
 
+        # A non-positive numeric gamma is checked here rather than deep inside
+        # kernel evaluation. Raising it from inside mlx_guard meant a gamma
+        # mlxlearn cannot serve propagated straight out of Layer 2 as well, even
+        # though scikit-learn accepts gamma=0.0 and would have produced a model.
+        # A capability limit has to be discovered while there is still somewhere
+        # to fall back to.
+        #
+        # Only the numeric case is checked, and deliberately without touching X:
+        # "scale" and "auto" always resolve to something positive, and reaching
+        # into an unvalidated X here would pre-empt the input errors scikit-learn's
+        # own validation is supposed to raise.
+        if not isinstance(self.gamma, str) and not callable(self.kernel):
+            try:
+                gamma_value = float(self.gamma)
+            except (TypeError, ValueError):
+                gamma_value = None
+            if gamma_value is not None and gamma_value <= 0.0 and self.kernel != "linear":
+                raise UnsupportedParameterError(
+                    f"{name} does not implement gamma={gamma_value!r}; the MLX kernels "
+                    "require a strictly positive gamma. scikit-learn accepts it, so "
+                    "under patch_sklearn() this falls back rather than failing.",
+                    parameter="gamma",
+                    value=gamma_value,
+                )
+
     def _below_crossover(self, n_samples: int, n_features: int) -> tuple[bool, str]:
         """Whether stock scikit-learn is expected to win at this size.
 
@@ -265,8 +290,20 @@ class MLXSVCMixin(BackendMixin):
         return int(max(2, min(max(n_samples, 2), rows)))
 
     def _resolve_max_iter(self, n_samples: int) -> int:
-        """Turn ``max_iter=-1`` into the concrete budget the solver needs."""
-        if self.max_iter > 0:
+        """Turn ``max_iter=-1`` into the concrete budget the solver needs.
+
+        ``max_iter=0`` is a legal scikit-learn value — its constraint is
+        ``Interval(Integral, -1, None, closed="left")`` — and LIBSVM honors it,
+        returning an unfitted-looking model with no support vectors. Only ``-1``
+        means "no limit".
+
+        The comparison here is ``>= 0`` for that reason. It was ``> 0``, which
+        sent ``max_iter=0`` down the unlimited branch: the user asked for zero
+        iterations and got 462, silently. Under ``patch_sklearn()`` that reached
+        code expecting scikit-learn's behavior, which is exactly the class of
+        quiet substitution this library exists to avoid.
+        """
+        if self.max_iter >= 0:
             return int(self.max_iter)
         tuning = get_tuning()
         return max(tuning.smo_min_iter_budget, tuning.smo_max_iter_factor * n_samples)
@@ -524,6 +561,16 @@ class SVC(MLXSVCMixin, _SkSVC):
     cache_size : float, default=200
         Kernel cache in MiB. Mapped onto the solver's LRU row cache:
         ``rows = cache_size · 2²⁰ / (4 · n_samples)``, clamped by installed memory.
+
+        **Unlike scikit-learn, this is not purely a performance knob.** When the
+        budget is large enough to hold every row, mlxlearn materializes the whole
+        Gram in one blocked matmul instead of evaluating rows on demand, and the
+        two accumulate in different orders. Measured on 2 000 × 10: decision
+        values shift by 4.5e-04 and the iteration count changes from 801 to 794
+        as the budget crosses that boundary. Both results are KKT-optimal and the
+        shift is well inside the tolerance in ``docs/fp32_policy.md``, but
+        scikit-learn is bit-identical across ``cache_size`` and mlxlearn is not.
+        Pin ``cache_size`` explicitly if you need bit-reproducible fits.
     class_weight : dict or "balanced", default=None
     verbose : bool, default=False
         Accepted and ignored.

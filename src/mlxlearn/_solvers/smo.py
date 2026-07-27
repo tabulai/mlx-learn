@@ -87,9 +87,13 @@ class SMOConfig:
     def __post_init__(self) -> None:
         if not self.tol > 0.0:
             raise ValueError(f"tol must be strictly positive, got {self.tol!r}")
-        if self.max_iter <= 0:
+        # Zero is a legal budget, not a sentinel: scikit-learn accepts max_iter=0
+        # and LIBSVM honors it by returning the initial iterate. The caller
+        # resolves -1 to a concrete number before constructing this, so a
+        # negative value here is a bug in that resolution.
+        if self.max_iter < 0:
             raise ValueError(
-                f"max_iter must be a resolved positive budget, got {self.max_iter!r}"
+                f"max_iter must be a resolved non-negative budget, got {self.max_iter!r}"
             )
         if self.cache_rows < 2:
             raise ValueError(f"cache_rows must be at least 2, got {self.cache_rows!r}")
