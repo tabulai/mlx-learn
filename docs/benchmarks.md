@@ -45,7 +45,7 @@ MLX 0.31.2, scikit-learn 1.7.2, NumPy 2.5.1.
 |---|---|---|---|
 | `knn/kneighbors` | ~250–1 000 samples | 17.4× | `knn_min_train_samples = 256`, `knn_min_work = 2048` |
 | `knn/fit` | never | — | accepted regression, see below |
-| `svc/fit` | ~4 000 samples | 1.20× | `svc_min_samples = 2048` |
+| `svc/fit` | ~2 000 samples **and** ~10⁶ elements; never for `kernel="linear"` | 2.93× | `svc_min_samples = 2048`, `svc_min_work = 1_000_000` |
 | `logreg/fit` | ~20 000 samples **and** ~2·10⁷ elements | 1.34× | `logreg_min_samples = 20_000`, `logreg_min_work = 20_000_000` |
 
 These feed `mlxlearn._common.config.Tuning`, which dispatch reads. That is the point: a
@@ -83,11 +83,67 @@ significantly with no crossover.
 The trade is worth taking whenever the model is queried at all. At 50 000 × 32: fit costs
 5.05 ms against 0.88 ms, and the first query alone saves 30.8 ms.
 
-## SVC
+## SVC — width decides, not sample count
 
-`svc/fit` reaches 1.20× at 4 000 × 32 and is at parity (1.02×, within noise) at 1 000 × 32,
-where dispatch hands it to scikit-learn anyway. Exact SMO is quadratic in samples; the
-published grid extends to 32 000.
+The first grid was damning. Over 64 configurations — n ∈ {1 000, 2 500}, d ∈ {10, 20}, 2 and
+4 classes, four kernels, C ∈ {1, 10} — **mlxlearn was slower in 58 of 64, worst 0.013×**. A
+representative slice at 2 500 × 20, four classes:
+
+| kernel | C | mlxlearn (s) | scikit-learn (s) | ratio |
+|---|---|---|---|---|
+| linear | 1 | 6.87 | 0.24 | 0.04× |
+| linear | 10 | 42.82 | 0.68 | **0.02×** |
+| rbf | 1 | 0.110 | 0.044 | 0.40× |
+| rbf | 10 | 0.319 | 0.053 | 0.17× |
+| poly | 10 | 0.394 | 0.060 | 0.15× |
+| sigmoid | 1 | 0.054 | 0.054 | 1.00× |
+
+But that grid was too narrow to see the real variable. Holding the sample count fixed and
+widening the data:
+
+| case | mlxlearn (s) | scikit-learn (s) | ratio |
+|---|---|---|---|
+| rbf, 4 000 × 32 | 0.16 | 0.07 | 0.47× |
+| rbf, 4 000 × **256** | 0.20 | 0.57 | **2.93×** |
+| linear, 4 000 × 32 | 45.56 | 1.59 | 0.03× |
+| linear, 4 000 × 256 | 178.81 | 11.45 | 0.06× |
+
+Same `n`, 6× the speedup swing. SMO is sequential — each iteration picks a working pair
+from the current gradient and cannot start before the previous one finished — so MLX can
+accelerate the kernel *rows* an iteration needs but not the iterations themselves, and
+LIBSVM's inner loop over a cache-resident row is hard to beat per iteration. What decides
+the outcome is therefore whether a kernel row is expensive enough to be worth dispatching,
+and that is a question about the number of features.
+
+The linear kernel loses at every width, because its rows are the cheapest of any kernel and
+per-iteration dispatch is nearly all of the cost. It also degrades with C, which increases
+the iteration count.
+
+A sample-count threshold cannot express any of this — which is exactly why the original
+`svc_min_samples = 2048`, with no work floor, routed every one of those measured losses onto
+the MLX path.
+
+**None of this is a correctness problem.** The primal objective agrees with LIBSVM to
+5.2e-07 relative and the KKT conditions hold on an independent float64 check. mlxlearn
+solves the right problem; it is slow getting there.
+
+Consequences, applied rather than merely noted:
+
+- The crossover is on **work**: `svc_min_samples = 2048` *and* `svc_min_work = 1_000_000`
+  elements, both required. Checked against the measurements — 2 500 × 20 (5·10⁴),
+  4 000 × 32 (1.3·10⁵) and 1 000 × 20 (2·10⁴) all fall below and go to scikit-learn;
+  4 000 × 256 (1.0·10⁶) clears it and keeps the 2.93×.
+- **`kernel="linear"` never takes the MLX path**, at any size.
+- Under `patch_sklearn()` this is invisible: those problems go to scikit-learn. A directly
+  imported `mlxlearn.svm.SVC` is Layer 1 and by design never dispatches to scikit-learn, so
+  it will use its own CPU path and be slower. That is the documented Layer 1 contract, and
+  it is a real reason to prefer the patched entry point for SVC in 0.1.0a1.
+
+The useful region is narrower than the plan assumed: wide data on a non-linear kernel. The
+fix that would widen it is not a threshold — it is making an iteration cheap enough to be
+worth dispatching, which means keeping the gradient and the working-set selection resident
+on the device across iterations instead of crossing the boundary each time. That is 0.2.x
+work, and it is the same underlying problem as the logistic solver's below.
 
 ## Logistic regression — an honest disappointment
 

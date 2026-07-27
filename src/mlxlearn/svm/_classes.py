@@ -221,17 +221,47 @@ class MLXSVCMixin(BackendMixin):
     def _below_crossover(self, n_samples: int, n_features: int) -> tuple[bool, str]:
         """Whether stock scikit-learn is expected to win at this size.
 
-        SMO is a sequential algorithm: each iteration touches two kernel rows and
-        cannot start before the previous one finished. Below the measured
-        crossover the per-iteration device dispatch costs more than LIBSVM's
-        cache-resident inner loop, so handing the problem away is the mechanism
-        behind "never slower", not an admission of defeat.
+        The thresholds here are **high**, and the linear kernel is excluded
+        outright, because the measurements are unflattering and pretending
+        otherwise would put the slower path in front of users.
+
+        SMO is sequential: each iteration picks a working pair from the current
+        gradient, so it cannot start before the previous one finished. The device
+        can accelerate the kernel *rows* an iteration needs, but not the
+        iterations, and LIBSVM's inner loop over a cache-resident row is hard to
+        beat per iteration. So what decides the outcome is whether a kernel row is
+        expensive enough to be worth dispatching — which is about **width**, not
+        the number of samples.
+
+        Measured: over a 64-configuration grid at ``d ∈ {10, 20}`` mlxlearn was
+        slower in **58 of 64**, worst 0.013×. But rbf at 4 000 × 32 is 0.47× and
+        the *same sample count* at 4 000 × 256 is **2.93×**. Hence both a sample
+        floor and a work floor, with work the one that actually discriminates.
+
+        The linear kernel is excluded at every size — 0.01×–0.06× throughout, and
+        it degrades with C. Its iterations are the cheapest of any kernel, so
+        per-iteration dispatch is almost the whole cost, and no threshold fixes
+        that.
+
+        None of this is a property of the objective, which is solved correctly:
+        the primal agrees with LIBSVM to 5.2e-07 relative and the KKT conditions
+        hold on an independent check. See ``docs/benchmarks.md``.
         """
         tuning = get_tuning()
-        if n_samples < tuning.svc_min_samples:
+
+        if self.kernel == "linear":
+            return True, (
+                "the linear kernel is never faster on the MLX path (measured "
+                "0.01x-0.06x across every size tested), so it is always handed to "
+                "scikit-learn"
+            )
+
+        work = n_samples * n_features
+        if n_samples < tuning.svc_min_samples or work < tuning.svc_min_work:
             return True, (
                 f"{n_samples} samples x {n_features} features is below the measured "
-                f"SVC crossover ({tuning.svc_min_samples} samples)"
+                f"SVC crossover ({tuning.svc_min_samples} samples and "
+                f"{tuning.svc_min_work} element-ops, both required)"
             )
         return False, ""
 

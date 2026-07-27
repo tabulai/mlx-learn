@@ -61,9 +61,14 @@ parity claims in [`docs/fp32_policy.md`](docs/fp32_policy.md).
   The crossover is set high accordingly (20 000 samples **and** 2·10⁷ elements), so patched
   dispatch measures 0.79×–1.01×, both within noise. This is an optimization target, not a
   property of the design.
-- **`SVC`: 1.20× at 4 000 × 32**, parity below. Its primal objective agrees with LIBSVM
-  to 5.2e-07 relative, which is the assertion that matters when the dual is
-  rank-deficient and decision values are therefore not uniquely determined.
+- **`SVC` is decided by width, not sample count.** 2.93× at 4 000 × 256 (rbf), 0.47× at the
+  same sample count and 32 features, and slower in 58 of 64 configurations on the initial
+  narrow grid — worst 0.013×. SMO is sequential, so MLX can accelerate the kernel rows an
+  iteration needs but not the iterations; whether that pays depends on how expensive a row
+  is. The crossover is therefore on work (`svc_min_samples` **and** `svc_min_work`), and
+  `kernel="linear"` never takes the MLX path at any size. Its primal objective agrees with
+  LIBSVM to 5.2e-07 relative and the KKT conditions hold on an independent check — this is
+  a dispatch story, not a correctness one.
 - **All ten scikit-learn estimator check suites pass with zero mlxlearn-specific xfails.**
   Two checks are exempt only because scikit-learn declares them as expected failures for
   its own `SVC` and `LogisticRegression`; a test re-derives that list from scikit-learn so

@@ -419,6 +419,50 @@ def test_cache_size_shift_is_bounded_and_documented():
     assert np.mean(small.predict(X) == large.predict(X)) >= 0.99
 
 
+def test_linear_kernel_never_takes_the_mlx_path():
+    """Measured 0.01×–0.04× at every size, so it is excluded outright.
+
+    SMO is sequential, and a linear kernel's iterations are the cheapest of all,
+    so per-iteration device dispatch is almost the entire cost. A threshold
+    cannot fix that — only making an iteration cheap enough to dispatch can, and
+    that is 0.2.x work. Until then the honest behavior is to not take the path.
+    """
+    from mlxlearn.patching._estimators import SVC as PatchedSVC
+
+    # Wide enough that rbf is above the crossover, so the linear exclusion is
+    # what is being tested rather than the size threshold.
+    X, y = _data(n_samples=4_000, n_features=256, seed=1)
+
+    patched = PatchedSVC(kernel="linear").fit(X, y)
+    assert patched.execution_backend_ == "sklearn", (
+        "the linear kernel reached the MLX path, where it is 17x-33x slower"
+    )
+
+    rbf = PatchedSVC(kernel="rbf").fit(X, y)
+    assert rbf.execution_backend_ == "mlx", "rbf above the crossover should use MLX"
+
+
+def test_the_svc_crossover_is_above_the_measured_losses():
+    """A threshold below the measured loss region is not protection.
+
+    ``svc_min_samples`` was 2 048 while mlxlearn was still 0.14×–0.51× at 2 500,
+    so patched users were routed onto the slower path by the very mechanism meant
+    to prevent it.
+    """
+    from mlxlearn._common.config import Tuning
+
+    tuning = Tuning()
+    # Measured losses: 2500 x 20 (work 5e4) at 0.17x-0.40x, 4000 x 32 (work
+    # 1.28e5) at 0.47x. Measured win: 4000 x 256 (work 1.02e6) at 2.93x. Width is
+    # what discriminates, so the work floor has to sit above the losses.
+    for n_samples, n_features in ((2_500, 20), (4_000, 32), (1_000, 20)):
+        assert n_samples * n_features < tuning.svc_min_work, (
+            f"{n_samples}x{n_features} was measured slower but is above the crossover"
+        )
+    assert 4_000 * 256 >= tuning.svc_min_work, "the measured 2.93x win is now excluded"
+    assert 4_000 >= tuning.svc_min_samples
+
+
 def test_no_approximation_ships_under_the_sklearn_name():
     """The ancestor's SVC had random-Fourier-feature and subsampling paths.
 

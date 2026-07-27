@@ -147,7 +147,15 @@ class Tuning:
     # LogisticRegression._below_crossover) rather than either.
     logreg_min_samples: int = 20_000
     logreg_min_work: int = 20_000_000  # n_samples * n_features
+    #
+    # SVC is the same story again, and worse -- but the axis that matters is
+    # *width*, not height. Over a 64-configuration grid at d in {10, 20} mlxlearn
+    # was slower in 58 of 64, worst 0.013x. What separates the wins is the cost of
+    # a kernel row: rbf at 4000 x 32 is 0.47x, and the same n at 4000 x 256 is
+    # 2.93x. Both conditions must hold (see SVC._below_crossover), and the linear
+    # kernel is excluded at every size.
     svc_min_samples: int = 2_048
+    svc_min_work: int = 1_000_000  # n_samples * n_features
 
     # ---- blocking ---------------------------------------------------------------------
     distance_block_bytes: int = 256 * 1024 * 1024
