@@ -183,14 +183,21 @@ class MLXSVCMixin(BackendMixin):
         # solver; 0.1.0 ships neither, and an uncalibrated sigmoid fitted on
         # in-sample margins — the shortcut that makes this look cheap — is
         # systematically overconfident. Better to name the supported alternative.
-        if self.probability:
+        # scikit-learn 1.9 deprecated `probability` and defaults it to the string
+        # sentinel "deprecated", which is truthy. Reading it directly therefore
+        # rejected every default-constructed SVC on 1.9 — a version pair
+        # pyproject.toml declares supported.
+        probability = getattr(self, "probability", False)
+        if probability == "deprecated":
+            probability = False
+        if probability:
             raise UnsupportedParameterError(
                 f"{name} does not implement probability=True on the MLX path: "
                 "Platt calibration is not part of mlxlearn 0.1.0. Wrap the "
                 "estimator in sklearn.calibration.CalibratedClassifierCV to get "
                 "calibrated probabilities, or use sklearn.svm.SVC directly.",
                 parameter="probability",
-                value=self.probability,
+                value=probability,
             )
 
         # A non-positive numeric gamma is checked here rather than deep inside

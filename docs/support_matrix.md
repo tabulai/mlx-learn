@@ -28,6 +28,22 @@ subclasses scikit-learn estimators, so a major change to their constructor signa
 fitted-attribute contracts is a compatibility event that needs a test run, not an
 optimistic `>=`.
 
+### Parameters scikit-learn is deprecating mid-range
+
+Deprecations land as **string sentinel defaults**, which is a trap for any code that reads
+the attribute directly — a truthy string arrives where a bool was expected, or an unknown
+value where one of a fixed set was. Three of these fall inside the declared range:
+
+| Parameter | 1.7 | 1.9 | How mlxlearn handles it |
+|---|---|---|---|
+| `LogisticRegression.multi_class` | present, deprecated | **removed** | read via `hasattr`; checked only where it exists |
+| `LogisticRegression.penalty` | real, default `"l2"` | sentinel `"deprecated"`; the penalty comes from `l1_ratio`, and `C=inf` means unpenalized | `_effective_penalty()` resolves the same way the installed version does, and capability is decided on the resolved value |
+| `SVC.probability` | real, default `False` | sentinel `"deprecated"` | the sentinel is treated as `False`; an explicit `True` is still refused |
+
+All three broke on 1.9 and were found by installing the built wheel into a clean
+environment, which resolved 1.9 while development ran on 1.7. `tests/unit/test_sklearn_version_compat.py`
+now covers them against whichever version is installed rather than pinning the problem away.
+
 ## MLX
 
 `mlx>=0.29,<1.0`. The floor is asserted in CI at runtime as well as in the metadata, so a

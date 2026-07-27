@@ -53,6 +53,41 @@ _SUPPORTED_MULTI_CLASS = ("deprecated", "auto")
 class MLXLogisticMixin(BackendMixin):
     """Capability gating and crossover dispatch for the logistic estimators."""
 
+    # ------------------------------------------------------------ version shims
+
+    def _effective_penalty(self):
+        """Resolve the penalty the way the installed scikit-learn resolves it.
+
+        scikit-learn deprecated ``penalty`` in 1.8 in favor of ``l1_ratio``, with
+        removal in 1.10, so the two spellings coexist across the range
+        ``pyproject.toml`` declares:
+
+        * **1.7** — ``penalty`` is real, default ``"l2"``; ``l1_ratio`` defaults
+          to ``None``.
+        * **1.9** — ``penalty`` defaults to the sentinel ``"deprecated"`` and the
+          effective penalty comes from ``l1_ratio`` (0 → l2, 1 → l1, else
+          elasticnet), with ``C=inf`` meaning unpenalized. ``l1_ratio`` defaults
+          to ``0.0``.
+
+        Reading the raw attributes broke on both sides of that change: ``penalty``
+        read as the literal string ``"deprecated"`` and was rejected as
+        unsupported, and the old ``l1_ratio is not None`` guard rejected 1.9's
+        own default. Capability is decided on the *resolved* value instead, so
+        the same request means the same thing on every supported version.
+        """
+        penalty = getattr(self, "penalty", "deprecated")
+        if penalty != "deprecated":
+            return penalty
+
+        l1_ratio = getattr(self, "l1_ratio", None)
+        if l1_ratio is None or l1_ratio == 0:
+            resolved = "l2"
+        elif l1_ratio == 1:
+            resolved = "l1"
+        else:
+            resolved = "elasticnet"
+        return None if self.C == math.inf else resolved
+
     # --------------------------------------------------------------- capability
 
     def _check_logistic_capability(self, X, y) -> None:
@@ -64,35 +99,39 @@ class MLXLogisticMixin(BackendMixin):
         # generic post-conversion "contains infinity" ValueError.
         check_float32_range(X)
 
-        require_supported_params(
-            {
-                "solver": self.solver,
-                "penalty": self.penalty,
-                "dual": self.dual,
-                "warm_start": self.warm_start,
-                "multi_class": self.multi_class,
-            },
-            {
-                "solver": _SUPPORTED_SOLVERS,
-                "penalty": _SUPPORTED_PENALTIES,
-                "dual": (False,),
-                "warm_start": (False,),
-                "multi_class": _SUPPORTED_MULTI_CLASS,
-            },
-            estimator=name,
-        )
+        params = {
+            "solver": self.solver,
+            "penalty": self._effective_penalty(),
+            "dual": self.dual,
+            "warm_start": self.warm_start,
+        }
+        supported = {
+            "solver": _SUPPORTED_SOLVERS,
+            "penalty": _SUPPORTED_PENALTIES,
+            "dual": (False,),
+            "warm_start": (False,),
+        }
 
-        # l1_ratio is meaningful only for penalty='elasticnet', which is already
-        # rejected above; a non-None value here would otherwise be accepted and
-        # ignored, which is exactly how the ancestor turned an elastic-net request
-        # into an unannounced ridge fit.
-        if self.l1_ratio is not None:
-            raise UnsupportedParameterError(
-                f"{name} implements penalty='l2' and penalty=None only, so l1_ratio "
-                f"has no meaning on the MLX path; got l1_ratio={self.l1_ratio!r}.",
-                parameter="l1_ratio",
-                value=self.l1_ratio,
-            )
+        # scikit-learn 1.9 removed multi_class outright; 1.7 and 1.8 still carry it
+        # as a deprecated sentinel. Reading it unconditionally raised AttributeError
+        # on 1.9 — a version pair pyproject.toml declares supported and CI schedules.
+        # Checked only where it exists, rather than pinned away.
+        if hasattr(self, "multi_class"):
+            params["multi_class"] = self.multi_class
+            supported["multi_class"] = _SUPPORTED_MULTI_CLASS
+
+        require_supported_params(params, supported, estimator=name)
+
+        # l1_ratio is already accounted for: on scikit-learn 1.8+ it *is* how the
+        # penalty is spelled, so _effective_penalty has resolved it and anything
+        # other than pure L2 was rejected above. On 1.7 the penalty is explicit
+        # and scikit-learn itself ignores l1_ratio unless penalty='elasticnet',
+        # so mlxlearn ignores it in exactly the same cases — being stricter here
+        # would send a request to scikit-learn that mlxlearn can serve identically.
+        #
+        # What must not happen is the ancestor's behavior: accepting an
+        # elastic-net request and quietly fitting a ridge. That cannot occur,
+        # because 'elasticnet' never resolves to a supported penalty.
 
         # intercept_scaling only affects the liblinear solver, where it scales a
         # synthetic feature. Accepting a non-default value under lbfgs would mean
@@ -304,8 +343,10 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
 
         weights = self._resolve_weights(X_checked, y_checked, y_encoded, sample_weight)
 
-        if self.penalty is None:
-            if self.C != 1.0:
+        # Resolved rather than read, so that C=inf on scikit-learn 1.9 means
+        # "unpenalized" here exactly as it does there.
+        if self._effective_penalty() is None:
+            if self.C not in (1.0, math.inf):
                 warnings.warn(
                     "Setting penalty=None will ignore the C and l1_ratio parameters",
                     stacklevel=2,

@@ -74,6 +74,15 @@ parity claims in [`docs/fp32_policy.md`](docs/fp32_policy.md).
   its own `SVC` and `LogisticRegression`; a test re-derives that list from scikit-learn so
   the exemption cannot outlive its justification.
 
+### Compatibility
+
+- Tested against scikit-learn **1.7.2 and 1.9.0**; 289 tests pass on both. Three parameters
+  scikit-learn is deprecating mid-range — `LogisticRegression.multi_class` (removed in 1.9),
+  `LogisticRegression.penalty` (now a sentinel, with `l1_ratio` carrying the meaning) and
+  `SVC.probability` (now a sentinel) — are handled by resolving what the installed version
+  actually means rather than reading the raw attribute. See
+  [`docs/support_matrix.md`](docs/support_matrix.md).
+
 ### Notes
 
 - Ships as a pure-Python wheel. The compiled-extension decision is recorded with

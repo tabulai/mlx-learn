@@ -359,7 +359,13 @@ def solve_logistic(
     else:
         sw_sum = float(np.sum(np.asarray(sample_weight, dtype=np.float64)))
         if sw_sum <= 0.0:
-            raise ValueError("sample_weight must sum to a strictly positive value.")
+            # The wording matters: scikit-learn 1.9's
+            # check_all_zero_sample_weights_error matches r"weight.*zero|zero.*weight",
+            # and every estimator is expected to say so recognizably.
+            raise ValueError(
+                "Sample weights sum to zero: every sample weight is zero, so there "
+                "is nothing to fit."
+            )
 
     l2 = _l2_reg_strength(config.C, sw_sum)
     n_targets = 1 if n_classes == 2 else n_classes
