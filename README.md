@@ -31,7 +31,7 @@ The numerical library is fully usable and fully tested with the patching mechani
 
 ## Status
 
-**`0.1.0a1` — alpha.** The API may change. See [CHANGELOG.md](CHANGELOG.md).
+**`0.1.0a2` — alpha.** The API may change. See [CHANGELOG.md](CHANGELOG.md).
 
 | Estimator | Status |
 |---|---|
@@ -59,7 +59,7 @@ CI tests only valid pairs — see [`docs/support_matrix.md`](docs/support_matrix
 pip install mlx-learn
 ```
 
-`0.1.0a1` ships as a pure-Python wheel — no compiler, no build step, no ABI matrix.
+`0.1.0a2` ships as a pure-Python wheel — no compiler, no build step, no ABI matrix.
 
 ## Import-order semantics
 
@@ -137,7 +137,7 @@ regression against stock scikit-learn. Crossover points are measured per algorit
 operation, published in [`docs/benchmarks.md`](docs/benchmarks.md), and wired into the
 dispatch thresholds — small problems are handed to scikit-learn on purpose.
 
-What that means in practice for 0.1.0a1, on an M4 Max:
+What that means in practice for 0.1.0a2, on an M4 Max:
 
 | | |
 |---|---|

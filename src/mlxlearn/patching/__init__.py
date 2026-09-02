@@ -6,7 +6,7 @@ lives in Layer 1 and stays fully usable and testable with this package unimporte
 
 ``tools/compliance.py`` enforces the quarantine: a private ``sklearn._*`` import
 anywhere else fails CI, and even here it must be on an explicit allowlist. As of
-0.1.0a1 that allowlist is empty.
+0.1.0a2 that allowlist is empty.
 """
 
 from __future__ import annotations

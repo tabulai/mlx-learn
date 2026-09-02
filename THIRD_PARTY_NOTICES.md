@@ -12,7 +12,7 @@ a source file carries an upstream copyright header that is not accounted for her
 
 ## 1. Copied or derived source
 
-**None as of 0.1.0a1.**
+**None as of 0.1.0a2.**
 
 No source file in `src/mlxlearn/` was copied from another project. Every module was newly
 written for this repository; see [`ACKNOWLEDGMENTS.md`](ACKNOWLEDGMENTS.md) and

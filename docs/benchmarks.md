@@ -137,7 +137,7 @@ Consequences, applied rather than merely noted:
 - Under `patch_sklearn()` this is invisible: those problems go to scikit-learn. A directly
   imported `mlxlearn.svm.SVC` is Layer 1 and by design never dispatches to scikit-learn, so
   it will use its own CPU path and be slower. That is the documented Layer 1 contract, and
-  it is a real reason to prefer the patched entry point for SVC in 0.1.0a1.
+  it is a real reason to prefer the patched entry point for SVC in 0.1.0a2.
 
 The useful region is narrower than the plan assumed: wide data on a non-linear kernel. The
 fix that would widen it is not a threshold — it is making an iteration cheap enough to be
@@ -173,7 +173,7 @@ dispatch is doing its job.
 
 **This is an optimization target, not a permanent property.** What would move it: evaluating
 the Wolfe conditions on device so an accepted step costs one synchronization instead of
-several, and batching the line-search candidate evaluations. Neither is in 0.1.0a1.
+several, and batching the line-search candidate evaluations. Neither is in 0.1.0a2.
 
 ## Reading these numbers honestly
 

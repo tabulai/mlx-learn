@@ -202,7 +202,7 @@ mlxlearn runs scikit-learn's full estimator check suite against **both** layers 
 strict Layer 1 classes and the patched Layer 2 classes — because the two advertise
 different tags and a tag that lies is worse than a missing feature.
 
-**As of 0.1.0a1 the mlxlearn-specific xfail list is empty.** All ten suites pass.
+**As of 0.1.0a2 the mlxlearn-specific xfail list is empty.** All ten suites pass.
 
 Two kinds of exemption exist and are kept strictly apart in
 `tests/test_sklearn_compliance.py`:

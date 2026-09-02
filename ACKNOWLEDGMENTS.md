@@ -62,4 +62,4 @@ Full notices are in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 Removing a vendor's branding is not the same as removing a vendor's attribution. This
 repository removes the former and preserves the latter: any file with a genuine upstream
 lineage carries the upstream notice plus a modification line, and is listed in
-`THIRD_PARTY_NOTICES.md`. As of 0.1.0a1 no such file exists, because nothing was copied.
+`THIRD_PARTY_NOTICES.md`. As of 0.1.0a2 no such file exists, because nothing was copied.

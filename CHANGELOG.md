@@ -6,7 +6,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [0.1.0a1] — unreleased
+## [0.1.0a2] — 2026-09-02
+
+### Changed
+
+- Renamed the source repository from `tabulai/mlxlearn` to `tabulai/mlx-learn` and
+  updated package metadata, development instructions, and release automation to use the
+  canonical URL.
+- Updated the release metadata and runtime version for the repository-name migration.
+
+## [0.1.0a1] — 2026-09-02
 
 First alpha. Published for external testers before the second wave of estimators; the API
 is not yet stable.
@@ -110,5 +119,6 @@ Each of these is now covered by a regression test:
   shape, making `fit` a non-pure function of its arguments.
 - `except Exception:` around the accelerated path, rerunning silently on scikit-learn.
 
-[Unreleased]: https://github.com/tabulai/mlxlearn/compare/v0.1.0a1...HEAD
-[0.1.0a1]: https://github.com/tabulai/mlxlearn/releases/tag/v0.1.0a1
+[Unreleased]: https://github.com/tabulai/mlx-learn/compare/v0.1.0a2...HEAD
+[0.1.0a2]: https://github.com/tabulai/mlx-learn/compare/v0.1.0a1...v0.1.0a2
+[0.1.0a1]: https://github.com/tabulai/mlx-learn/releases/tag/v0.1.0a1

@@ -1,8 +1,8 @@
 # Development
 
 ```bash
-git clone https://github.com/tabulai/mlxlearn
-cd mlxlearn
+git clone https://github.com/tabulai/mlx-learn
+cd mlx-learn
 pip install -e ".[dev]"
 pytest
 ```
