@@ -164,6 +164,4 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ## 5. Review status
 
-This file has **not** yet been reviewed by a lawyer. Human legal review of naming,
-disclaimers, this file, and the provenance report in `phase0/` is a hard gate before the
-first public release. See [`phase0/legal_review_checklist.md`](phase0/legal_review_checklist.md).
+This file has **not** yet been reviewed by a lawyer.

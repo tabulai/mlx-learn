@@ -56,7 +56,7 @@ CI tests only valid pairs — see [`docs/support_matrix.md`](docs/support_matrix
 ## Install
 
 ```bash
-pip install mlxlearn
+pip install mlx-learn
 ```
 
 `0.1.0a1` ships as a pure-Python wheel — no compiler, no build step, no ABI matrix.

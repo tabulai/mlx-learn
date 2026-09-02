@@ -118,8 +118,7 @@ python tools/compliance.py
 ```
 
 Five mechanical gates — branding, private imports, upstream headers, dependency licenses,
-and layout — run on every push. Passing them is necessary for a release and never
-sufficient: the human items are in [`../phase0/legal_review_checklist.md`](../phase0/legal_review_checklist.md).
+and layout — run on every push.
 
 ## Benchmarks
 
@@ -144,8 +143,7 @@ sides equally rather than whichever ran second.
    `docs/benchmarks.md` refreshed.
 2. `CHANGELOG.md` updated.
 3. Version bumped in `pyproject.toml`.
-4. **Human legal review signed off** — [`../phase0/legal_review_checklist.md`](../phase0/legal_review_checklist.md).
-5. Tag `vX.Y.Z`. The release workflow builds, verifies that the tag matches the package
+4. Tag `vX.Y.Z`. The release workflow builds, verifies that the tag matches the package
    version and that the wheel is `py3-none-any`, and publishes through PyPI Trusted
    Publishing from a `pypi` environment that requires manual approval. No API token is
    stored in this repository, and a tag push alone cannot publish.

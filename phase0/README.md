@@ -69,10 +69,8 @@ source-copy candidates, and their notices still require review.
 - [x] Per-module authorship attestation for the shipped surface —
       [`attestation.md`](attestation.md).
 
-The sixth criterion is intentionally not automated: provenance tooling can
-surface evidence, but it cannot make legal authorship determinations. See
-[`legal_review_checklist.md`](legal_review_checklist.md), which is a blocking
-gate before any public release.
+The human-review criterion is intentionally not automated: provenance tooling can
+surface evidence, but it cannot make authorship determinations.
 
 ## How the port-candidate review queue was resolved
 

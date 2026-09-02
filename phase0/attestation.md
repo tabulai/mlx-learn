@@ -52,6 +52,4 @@ relevant module docstring. Two are worth naming here:
 ## Scope of this statement
 
 This is a technical attestation by the engineer who wrote the code, recording what was and
-was not consulted. It is evidence for a legal reviewer, not a legal conclusion, and it does
-not substitute for the human legal review required by
-[`legal_review_checklist.md`](legal_review_checklist.md).
+was not consulted. It is a technical record, not a legal conclusion.

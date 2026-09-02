@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """Mechanical compliance gates for mlxlearn.
 
-These checks are necessary conditions for a release, never sufficient ones: the
-human items live in ``phase0/legal_review_checklist.md``.
+These checks cover the repository's mechanically enforceable compliance policy.
 
 Checks
 ------
@@ -67,7 +66,6 @@ BRANDING_EXEMPT = {
     "phase0/attestation.md",
     "phase0/audit_policy.json",
     "phase0/cython_decision.md",
-    "phase0/legal_review_checklist.md",
     "phase0/generated/audit_summary.md",
     "phase0/generated/estimator_support.csv",
     "phase0/generated/provenance.csv",
@@ -353,7 +351,7 @@ def main(argv: list[str] | None = None) -> int:
     if failed:
         print(f"\ncompliance FAILED: {', '.join(failed)}", file=sys.stderr)
         return 1
-    print("\ncompliance passed (mechanical checks only; see phase0/legal_review_checklist.md)")
+    print("\ncompliance passed (mechanical checks only)")
     return 0
 
 

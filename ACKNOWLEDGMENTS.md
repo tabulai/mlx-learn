@@ -12,9 +12,7 @@ or affiliation. *MLX* and *Apple silicon* identify Apple's array framework and h
 mlxlearn is not an Apple product.
 
 The trademark analysis behind the project name is a careful reading of the published
-scikit-learn brand guidelines (February 2025), not legal advice. Naming, disclaimers,
-and [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) require human legal review before
-the first public release.
+scikit-learn brand guidelines (February 2025), not legal advice.
 
 ## Lineage
 

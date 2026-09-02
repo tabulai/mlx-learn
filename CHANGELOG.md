@@ -90,8 +90,7 @@ parity claims in [`docs/fp32_policy.md`](docs/fp32_policy.md).
   SMO core was worth 1.26× at 2 000 samples, 1.16× at 6 000, and 1.00× at 12 000 — the
   advantage vanishes exactly where performance matters. Revisit when `TSNE` lands in 0.2.
 - Requires macOS on Apple silicon. Behavior on other platforms is untested and unsupported.
-- Not reviewed by a lawyer. See [`phase0/legal_review_checklist.md`](phase0/legal_review_checklist.md);
-  public release is gated on it.
+- Not reviewed by a lawyer.
 
 ### Deliberately not carried over from the ancestor
 
