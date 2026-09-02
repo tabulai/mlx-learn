@@ -51,14 +51,12 @@ jobs:
     runs-on: macos-15
     strategy:
       fail-fast: false
-      # Paired matrix, not a cross product: scikit-learn 1.9 requires Python >= 3.11,
+      # Paired matrix, not a cross product: scikit-learn 1.8+ requires Python >= 3.11,
       # so a naive cross product would schedule jobs that cannot resolve.
       matrix:
         include:
           - python: "3.10"
             sklearn: "1.7.2"
-          - python: "3.10"
-            sklearn: "1.8.0"
           - python: "3.11"
             sklearn: "1.8.0"
           - python: "3.12"

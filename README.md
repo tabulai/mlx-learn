@@ -50,7 +50,7 @@ The numerical library is fully usable and fully tested with the patching mechani
 - Python 3.10 – 3.13
 - scikit-learn ≥ 1.7, MLX ≥ 0.29
 
-Python 3.10 is supported against scikit-learn ≤ 1.8; scikit-learn 1.9 requires Python ≥ 3.11.
+Python 3.10 is supported with scikit-learn 1.7.x; scikit-learn 1.8+ requires Python ≥ 3.11.
 CI tests only valid pairs — see [`docs/support_matrix.md`](docs/support_matrix.md).
 
 ## Install

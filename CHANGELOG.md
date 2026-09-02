@@ -14,6 +14,8 @@ All notable changes to this project are documented here. The format follows
   updated package metadata, development instructions, and release automation to use the
   canonical URL.
 - Updated the release metadata and runtime version for the repository-name migration.
+- Corrected the CI support matrix so Python 3.10 is tested with its compatible
+  scikit-learn 1.7.x release line; scikit-learn 1.8+ requires Python 3.11 or newer.
 
 ## [0.1.0a1] — 2026-09-02
 

@@ -9,13 +9,13 @@ will be treated as a bug.
 
 ## Python and scikit-learn
 
-The matrix is **paired**, not a cross product. scikit-learn 1.9 requires Python ≥ 3.11, so
+The matrix is **paired**, not a cross product. scikit-learn 1.8+ requires Python ≥ 3.11, so
 a naive cross product would schedule combinations that cannot resolve.
 
 | Python | scikit-learn | Tested in CI | Notes |
 |---|---|---|---|
 | 3.10 | 1.7.2 | ✅ | oldest supported pair |
-| 3.10 | 1.8.x | ✅ | |
+| 3.10 | 1.8.x | ❌ | scikit-learn 1.8 requires Python ≥ 3.11 |
 | 3.10 | 1.9.x | ❌ | scikit-learn 1.9 requires Python ≥ 3.11 |
 | 3.11 | 1.8.x | ✅ | |
 | 3.11 | 1.9.x | supported, not in the CI matrix | covered by 3.12 + 1.9 |
