@@ -4,8 +4,16 @@ name: Release
 # repository. Configure the publisher on PyPI for:
 #   owner: tabulai   repository: mlx-learn   workflow: release.yml   environment: pypi
 #
-# The `pypi` environment should require a manual approval, so that a tag push alone
-# cannot publish.
+# Three things stand between a tag and PyPI, and each is enough on its own to stop a
+# bad release:
+#   1. the whole CI workflow, run on the tagged commit, whose build job builds the
+#      distributions and checks them: a pure-Python wheel that installs into a clean
+#      environment, and an sdist that carries a suite collecting against it;
+#   2. the version job: those distributions carry exactly the version the tag names;
+#   3. the `pypi` environment, which should require a manual approval and, ideally,
+#      allow deployments from `v*` tags only (both are GitHub settings, not files).
+# What reaches PyPI is the `dist` artifact CI checked, never a second build.
+# Only a tag push can publish. A manual run is a dry run of 1 and 2.
 
 on:
   push:
@@ -16,46 +24,64 @@ permissions:
   contents: read
 
 jobs:
-  build:
-    name: build distributions
-    runs-on: macos-15
+  ci:
+    name: CI on the release commit
+    uses: ./.github/workflows/ci.yml
+
+  version:
+    name: the distributions carry the tag's version
+    needs: [ci]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-      - run: python -m pip install --upgrade pip build twine
-      - run: python -m build
-      - run: python -m twine check --strict dist/*
-      - name: Tag matches package version
-        if: startsWith(github.ref, 'refs/tags/')
-        run: |
-          python - <<'PY'
-          import os, pathlib, re, sys
-          tag = os.environ["GITHUB_REF_NAME"].removeprefix("v")
-          text = pathlib.Path("pyproject.toml").read_text()
-          version = re.search(r'^version = "([^"]+)"', text, re.M).group(1)
-          if tag != version:
-              sys.exit(f"tag {tag!r} does not match pyproject version {version!r}")
-          print(version)
-          PY
-      - uses: actions/upload-artifact@v4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: dist
           path: dist/
+      - name: Wheel, sdist and tag agree
+        # CI's build job has installed this wheel and checked that its metadata and
+        # mlxlearn.__version__ agree; the one thing it cannot know is the tag.
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, sys, zipfile
+
+          (wheel,) = pathlib.Path("dist").glob("*.whl")
+          (sdist,) = pathlib.Path("dist").glob("*.tar.gz")
+          with zipfile.ZipFile(wheel) as archive:
+              (name,) = [n for n in archive.namelist() if n.endswith(".dist-info/METADATA")]
+              metadata = archive.read(name).decode("utf-8").splitlines()
+          versions = {
+              "wheel filename": wheel.name.split("-")[1],
+              "wheel metadata": next(
+                  line.split(":", 1)[1].strip() for line in metadata if line.startswith("Version:")
+              ),
+              "sdist filename": sdist.name.removesuffix(".tar.gz").rsplit("-", 1)[1],
+          }
+          if os.environ.get("GITHUB_REF_TYPE") == "tag":
+              versions["tag"] = os.environ["GITHUB_REF_NAME"].removeprefix("v")
+          print(versions)
+          if len(set(versions.values())) != 1:
+              sys.exit(f"version mismatch: {versions}")
+          PY
 
   publish:
     name: publish to PyPI
-    needs: build
+    needs: [ci, version]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     environment:
       name: pypi
       url: https://pypi.org/p/mlx-learn
     permissions:
       id-token: write
     steps:
-      - uses: actions/download-artifact@v4
+      # The distributions CI built and checked in this run, not a rebuild of them.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: dist
           path: dist/
-      - uses: pypa/gh-action-pypi-publish@release/v1
+      # Pinned to a release commit rather than the release/v1 branch its maintainers
+      # suggest: this is the one step holding a publishing credential. Dependabot
+      # proposes the updates.
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2

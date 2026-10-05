@@ -1,10 +1,12 @@
 [build-system]
-requires = ["setuptools>=77", "wheel"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "mlx-learn"
-version = "0.1.0a2"
+# The version lives in exactly one place, src/mlxlearn/__init__.py. setuptools reads
+# the literal statically, so building the metadata never imports mlx.
+dynamic = ["version"]
 description = "MLX-accelerated classical machine learning with a scikit-learn compatible API for Apple silicon"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -22,23 +24,40 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Typing :: Typed",
 ]
 dependencies = [
     "numpy>=1.23.5",
     "scikit-learn>=1.7,<1.10",
-    "mlx>=0.29,<1.0",
+    # 0.31.2 is the first MLX release on which concurrent fits from several
+    # threads do not abort the process (tests/unit/test_invariants.py).
+    "mlx>=0.31.2,<1.0",
 ]
 
 [project.optional-dependencies]
-test = ["pytest>=8.0", "scipy>=1.10", "packaging>=23.0"]
+# pandas because DataFrames are the most common input scikit-learn users pass, and
+# the tests of how mlxlearn reads them (sparse frames, per-column range checks) skip
+# without it.
+test = ["pytest>=8.0", "scipy>=1.10", "packaging>=23.0", "pandas>=2.2.3"]
 bench = ["pytest>=8.0", "scipy>=1.10"]
-dev = ["pytest>=8.0", "scipy>=1.10", "ruff>=0.6", "build>=1.2", "twine>=5.0"]
+# ruff is pinned exactly, and to the same version CI lints with, so a new ruff release
+# cannot turn main red on its own. Dependabot proposes the bumps.
+dev = [
+    "pytest>=8.0",
+    "scipy>=1.10",
+    "packaging>=23.0",
+    "pandas>=2.2.3",
+    "ruff==0.15.8",
+    "build>=1.2",
+    "twine>=5.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/tabulai/mlx-learn"
 Repository = "https://github.com/tabulai/mlx-learn"
+Documentation = "https://github.com/tabulai/mlx-learn/tree/main/docs"
 Changelog = "https://github.com/tabulai/mlx-learn/blob/main/CHANGELOG.md"
 Issues = "https://github.com/tabulai/mlx-learn/issues"
 
@@ -53,14 +72,19 @@ include = ["mlxlearn*"]
 [tool.setuptools.package-data]
 mlxlearn = ["py.typed"]
 
+[tool.setuptools.dynamic]
+version = { attr = "mlxlearn.__version__" }
+
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = ["tests"]
-addopts = "-ra --strict-markers"
+# `slow` tests are deselected by default so the everyday run stays fast. CI runs them in
+# a job of their own (`pytest -m slow`), and `pytest -m ""` runs everything.
+addopts = "-ra --strict-markers -m 'not slow'"
 markers = [
-    "slow: long-running tests excluded from the fast suite",
+    "slow: long-running tests; deselected by default, run with `pytest -m slow`",
     "benchmark: performance measurement, not a correctness gate",
-    "gpu: requires a working MLX GPU device",
+    "gpu: requires a working MLX GPU device; skipped without one unless MLXLEARN_REQUIRE_GPU=1",
 ]
 # Deliberately no global error-on-MLXLearnFallbackWarning: the Layer 2 suite
 # exercises fallbacks on purpose, and the warning is deduplicated per

@@ -17,9 +17,11 @@ from sklearn.base import clone
 from sklearn.datasets import make_classification
 
 from mlxlearn._common.config import tuning_context
+from mlxlearn._common.device import gpu_available
 from mlxlearn.linear_model import LogisticRegression
 from mlxlearn.neighbors import KNeighborsClassifier, KNeighborsRegressor, NearestNeighbors
 from mlxlearn.svm import SVC
+from tests._helpers import join_or_fail
 
 SUPERVISED = [
     (KNeighborsClassifier, {"n_neighbors": 5}),
@@ -75,17 +77,20 @@ def test_clone_produces_an_unfitted_equal_estimator(cls, kwargs, data):
         fresh.execution_backend_
 
 
+@pytest.mark.parametrize("dtype", [np.float64, np.float32], ids=["float64", "float32"])
 @pytest.mark.parametrize("cls, kwargs", ALL, ids=lambda v: getattr(v, "__name__", ""))
-def test_mutating_the_training_array_after_fit_changes_nothing(cls, kwargs, data):
+def test_mutating_the_training_array_after_fit_changes_nothing(cls, kwargs, data, dtype):
     """No aliasing of the caller's buffer, no cache keyed on its identity.
 
     The ancestor kept module-level weakrefs to the last training matrix and
     ``id()``-keyed LRU caches. CPython recycles ``id()`` after a collection, so a
     freed array whose address was reused produced predictions computed on the
-    wrong data — silently.
+    wrong data — silently. float32 input is the case to watch: it is already the
+    compute dtype, so a conversion with ``copy=False`` would hand back the
+    caller's own buffer.
     """
     X, y = data
-    X = np.array(X)
+    X = np.array(X, dtype=dtype)
     query = X[:100].copy()
 
     model = _fit(cls, kwargs, X, y)
@@ -118,8 +123,8 @@ def test_fit_is_a_pure_function_of_its_arguments(cls, kwargs, data):
 def test_concurrent_fits_match_sequential_fits(cls, kwargs):
     """Threads must not contend through a process-global device setting.
 
-    ``use_device`` scopes with ``mx.stream`` rather than mutating MLX's default
-    device, so two threads fitting at once cannot disturb each other.
+    MLX's default device is process-global, so ``use_device`` cannot scope it to
+    one thread; its gate makes concurrent mlxlearn blocks agree on it instead.
     """
     def build(seed):
         return make_classification(
@@ -142,15 +147,60 @@ def test_concurrent_fits_match_sequential_fits(cls, kwargs):
         except BaseException as exc:  # noqa: BLE001 - re-raised in the main thread
             errors.append(exc)
 
-    threads = [threading.Thread(target=worker, args=(s,)) for s in seeds]
+    threads = [threading.Thread(target=worker, args=(s,), daemon=True) for s in seeds]
     for thread in threads:
         thread.start()
-    for thread in threads:
-        thread.join()
+    join_or_fail(threads)
 
     assert not errors, errors
     for seed in seeds:
         np.testing.assert_array_equal(observed[seed], expected[seed])
+
+
+@pytest.mark.skipif(not gpu_available(), reason="needs two MLX devices")
+@pytest.mark.parametrize("cls, kwargs", ALL, ids=lambda v: getattr(v, "__name__", ""))
+def test_concurrent_fits_on_different_devices_match_sequential_fits(cls, kwargs):
+    """The mixed case the crossovers make common: GPU fits beside CPU fits.
+
+    In MLX 0.32 ``mx.stream`` switches the process-global default device, so one
+    thread's CPU block moved another thread's GPU work onto the CPU (and back),
+    and interleaved exits left the application's default device changed.
+    """
+    import mlx.core as mx
+
+    def build(seed):
+        return make_classification(
+            n_samples=1200, n_features=8, n_informative=5, n_redundant=1, random_state=seed
+        )
+
+    jobs = [(seed, backend) for seed in (1, 2, 3) for backend in ("mlx", "cpu")]
+    expected = {}
+    for seed, backend in jobs:
+        X, y = build(seed)
+        expected[seed, backend] = _output(_fit(cls, kwargs, X, y, backend=backend), X[:80])
+
+    before = mx.default_device()
+    observed: dict[tuple[int, str], np.ndarray] = {}
+    errors: list[BaseException] = []
+    start = threading.Barrier(len(jobs), timeout=60)
+
+    def worker(seed, backend):
+        try:
+            X, y = build(seed)
+            start.wait()
+            observed[seed, backend] = _output(_fit(cls, kwargs, X, y, backend=backend), X[:80])
+        except BaseException as exc:  # noqa: BLE001 - re-raised in the main thread
+            errors.append(exc)
+
+    threads = [threading.Thread(target=worker, args=job, daemon=True) for job in jobs]
+    for thread in threads:
+        thread.start()
+    join_or_fail(threads)
+
+    assert not errors, errors
+    for job in jobs:
+        np.testing.assert_array_equal(observed[job], expected[job])
+    assert mx.default_device() == before
 
 
 @pytest.mark.parametrize("cls, kwargs", ALL, ids=lambda v: getattr(v, "__name__", ""))

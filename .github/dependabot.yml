@@ -1,0 +1,28 @@
+version: 2
+updates:
+  # The workflows pin every action to a commit SHA with its version in a comment;
+  # Dependabot keeps both current.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: ci
+
+  # pyproject.toml. Its ranges are compatibility claims, not pins, so a range is
+  # widened only when a new release falls outside it, and CI on the proposed change
+  # is what says whether the claim holds: for scikit-learn, whose other test cells
+  # are pinned, that is ci.yml's unpinned "newest scikit-learn in range" cell. The
+  # one exact pin, ruff in the dev extra, is bumped like any other. The floors in
+  # .github/constraints/ are deliberately outside its reach: raising a floor is a
+  # decision, not an update.
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    versioning-strategy: increase-if-necessary
+    commit-message:
+      prefix: deps

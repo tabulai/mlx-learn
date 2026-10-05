@@ -14,6 +14,12 @@ The rules:
 * Nothing here touches MLX's *global* random state. ``mx.random.seed`` is
   process-global, so a library that called it would reach into unrelated code
   running in the same process.
+
+No 0.1.x estimator draws random numbers — every solver is deterministic — so
+nothing calls into this module yet, and the ``deterministic`` and
+``random_state`` configuration options it reads have no observable effect. It is
+here, tested, as the one approved route for the estimators that will
+(``docs/development.md``).
 """
 
 from __future__ import annotations

@@ -15,12 +15,16 @@ still raises under every policy, because rerunning a crash on scikit-learn turns
 bug into a silent success and guarantees nobody ever fixes it.
 
 These are real module-level classes rather than ones synthesized with ``type()``
-so that a fitted model pickles. ``__name__`` is set to the scikit-learn name so
-that ``repr`` reads ``SVC(C=1.0)`` and not ``PatchedSVC(C=1.0)``; ``__qualname__``
-is left alone, because that is what :mod:`pickle` looks up.
+so that a fitted model pickles, and each is named exactly as its scikit-learn
+counterpart, so ``repr`` reads ``SVC(C=1.0)`` and :mod:`pickle` finds the class
+under the name it records.
 """
 
 from __future__ import annotations
+
+import inspect
+import re
+import textwrap
 
 from ..linear_model import LogisticRegression as _LogisticRegression
 from ..neighbors import KNeighborsClassifier as _KNeighborsClassifier
@@ -36,29 +40,44 @@ __all__ = [
     "SVC",
 ]
 
-_PATCHED_NOTE = """
+#: A plain paragraph, not a section. Four of the five Layer 1 docstrings already
+#: have a Notes section, and scikit-learn's vendored numpydoc — which parses the
+#: docstring on every ``_repr_html_()`` — raises on a duplicate section and warns
+#: on an unknown one, so either would break or clutter notebook display.
+_PATCHED_NOTE = """\
+This is the patched variant installed by :func:`mlxlearn.patch_sklearn`. It
+differs from :class:`{layer1}` only in that it may hand work to scikit-learn: on a
+capability mismatch — sparse input, an unimplemented parameter — where the
+directly imported class raises, and by design on problems stock scikit-learn
+serves faster, such as those below the measured crossover, which the directly
+imported class runs on MLX regardless. Unexpected MLX failures still raise.
+Import :class:`{layer1}` directly for strict behavior."""
 
-    Notes
-    -----
-    This is the patched variant installed by :func:`mlxlearn.patch_sklearn`. It
-    behaves exactly like its Layer 1 counterpart except that a *capability*
-    mismatch — sparse input, an unimplemented parameter, a problem below the
-    measured crossover — is handed to scikit-learn instead of raising. Unexpected
-    MLX failures still raise.
+#: The first numpydoc section heading: a line of text underlined with dashes.
+_FIRST_SECTION = re.compile(r"^\S[^\n]*\n-{3,}[ \t]*$", re.MULTILINE)
 
-    Import the Layer 1 class directly for strict behavior.
+
+def _patched(cls: type, layer1_name: str) -> type:
+    """Give a Layer 2 class its Layer 1 documentation plus the patched-variant note.
+
+    The class body has no docstring of its own, so ``cls.__doc__`` is ``None``;
+    the note goes into the extended summary of the inherited text, just before
+    Parameters, and ``help(sklearn.svm.SVC)`` under ``patch_sklearn()`` still
+    documents every parameter. ``inspect.getdoc`` also normalizes indentation,
+    which Python 3.13 strips at compile time and 3.10-3.12 do not.
     """
-
-
-def _patched(base: type, sklearn_name: str) -> type:
-    """Build the Layer 2 twin of ``base``.
-
-    Used only to attach the shared docstring and display name; the classes below
-    are still statically defined, so ``pickle`` and ``inspect`` behave normally.
-    """
-    base.__doc__ = (base.__doc__ or "") + _PATCHED_NOTE
-    base.__name__ = sklearn_name
-    return base
+    doc = inspect.getdoc(cls.__mro__[1]) or ""
+    note = textwrap.fill(
+        " ".join(_PATCHED_NOTE.format(layer1=layer1_name).split()),
+        width=79, break_long_words=False, break_on_hyphens=False,
+    )
+    section = _FIRST_SECTION.search(doc)
+    if section is None:
+        cls.__doc__ = f"{doc}\n\n{note}" if doc else note
+    else:
+        head, tail = doc[: section.start()].rstrip(), doc[section.start():]
+        cls.__doc__ = f"{head}\n\n{note}\n\n{tail}" if head else f"{note}\n\n{tail}"
+    return cls
 
 
 class NearestNeighbors(_NearestNeighbors):
@@ -81,11 +100,11 @@ class SVC(_SVC):
     _mlxlearn_allow_fallback = True
 
 
-for _cls, _name in (
-    (NearestNeighbors, "NearestNeighbors"),
-    (KNeighborsClassifier, "KNeighborsClassifier"),
-    (KNeighborsRegressor, "KNeighborsRegressor"),
-    (LogisticRegression, "LogisticRegression"),
-    (SVC, "SVC"),
+for _cls, _layer1 in (
+    (NearestNeighbors, "mlxlearn.neighbors.NearestNeighbors"),
+    (KNeighborsClassifier, "mlxlearn.neighbors.KNeighborsClassifier"),
+    (KNeighborsRegressor, "mlxlearn.neighbors.KNeighborsRegressor"),
+    (LogisticRegression, "mlxlearn.linear_model.LogisticRegression"),
+    (SVC, "mlxlearn.svm.SVC"),
 ):
-    _patched(_cls, _name)
+    _patched(_cls, _layer1)

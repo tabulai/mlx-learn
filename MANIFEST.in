@@ -1,0 +1,17 @@
+# What the sdist carries beyond setuptools' defaults (the package, README, pyproject
+# and the license files). The wheel is unaffected: its contents come from
+# [tool.setuptools.packages.find] in pyproject.toml.
+#
+# The sdist is meant to be testable, because downstream packagers (conda-forge among
+# them) run the suite from it. It therefore carries the whole library test suite and
+# the documents README links to.
+graft tests
+graft docs
+include CHANGELOG.md ACKNOWLEDGMENTS.md
+
+# tests/tooling checks the repository's own tooling (tools/, benchmarks/, .github/),
+# none of which the sdist ships, so those tests could only fail there.
+prune tests/tooling
+
+# A local build from a working tree must not pack the bytecode caches.
+global-exclude *.py[cod]

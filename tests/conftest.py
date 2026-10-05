@@ -22,6 +22,14 @@ from mlxlearn._common.config import reset_config
 from mlxlearn._common.diagnostics import clear_backend_diagnostics
 from mlxlearn.patching import unpatch_sklearn
 
+# The GPU policy: without a working GPU, GPU-needing tests skip rather than fail,
+# unless MLXLEARN_REQUIRE_GPU=1. Hooks are found by name, hence the re-export.
+from tests._gpu import (  # noqa: F401
+    pytest_collection_modifyitems,
+    pytest_runtest_makereport,
+    pytest_sessionstart,
+)
+
 
 @pytest.fixture(autouse=True)
 def _clean_runtime_state():

@@ -5,26 +5,33 @@ long it took to *schedule* the work, and the number it reports will be
 spectacular and meaningless. Everything here forces evaluation before stopping
 the clock.
 
-The other three rules, each of which exists because averaging hides something:
+The other rules, each of which exists because averaging hides something:
 
-* **Cold start is measured separately.** The first MLX call in a process pays for
-  Metal initialization and kernel compilation. Folding that into the median makes
-  a fast library look slow at small sizes and hides a real first-call cost from
-  users who only ever make one call.
+* **Warmup is excluded.** The first MLX calls in a process pay for Metal
+  initialization and kernel compilation, so every measurement is preceded by
+  untimed warmup calls. The harness does *not* report that first-call cost; a
+  user who makes exactly one call pays it, and no number here describes them.
 * **Fit and predict are reported separately.** An estimator can be twice as fast
   to fit and half as fast to predict; a combined number says nothing about either.
-* **Median of at least five after warmup, plus the spread.** A mean over a noisy
-  machine is dominated by whatever else was running. The reported spread is what
-  tells you whether a difference is real.
+* **Median of at least five after warmup, plus the interquartile range.** A mean
+  over a noisy machine is dominated by whatever else was running. The spread is
+  what tells you whether a difference is real, and it has to be a real IQR: the
+  full min-max range lets one garbage-collection pause hide a 2x regression.
 
-Comparisons against scikit-learn are paired and interleaved — A, B, A, B — rather
-than "all of A then all of B", so that a thermal ramp or a background process
-during the run degrades both sides equally instead of whichever went second.
+Comparisons against scikit-learn are paired and interleaved rather than "all of A
+then all of B", so that a thermal ramp or a background process during the run
+degrades both sides equally instead of whichever went second. Within a pair the
+two sides take turns going first — A B, B A, A B — and every timed call gets the
+same preparation, a garbage collection before it and a synchronization inside its
+window: a call made straight after ``gc.collect()`` runs on cold caches, and when
+that was always the mlxlearn side, identical work on both sides read as a 10-25%
+loss and failed the gate.
 """
 
 from __future__ import annotations
 
 import gc
+import os
 import platform
 import statistics
 import subprocess
@@ -33,7 +40,7 @@ import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 
-__all__ = ["Measurement", "measure", "compare", "environment"]
+__all__ = ["Measurement", "Comparison", "measure", "compare", "environment", "interquartile_range"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,10 +53,26 @@ class Measurement:
     max_s: float
     iqr_s: float
     iterations: int
-    cold_start_s: float | None = None
 
     def as_dict(self) -> dict:
         return asdict(self)
+
+
+#: Fewer samples than this cannot support a significance claim: the quartiles of
+#: three numbers are two of the three numbers.
+MIN_SIGNIFICANCE_SAMPLES = 5
+
+#: How many standard errors apart two medians must be to count as different. 3.0
+#: rather than the textbook 1.96 because the standard errors are themselves
+#: estimated from a handful of samples: at 7 iterations this keeps the false-alarm
+#: rate per case near or below 1% under Gaussian, log-normal and outlier-contaminated
+#: noise (simulated), while still catching a 1.3x regression that carries a 3x
+#: outlier. That rate is per case, and a nightly run gates well over a hundred: with
+#: 137 cases of identical work (simulated, Gaussian and log-normal noise) 73-79% of
+#: nights failed on one measurement each. So the runner re-measures any case the gate
+#: would fail, and the gate fails it only if the loss reproduces there
+#: (``CONFIRMATION_FACTOR`` in ``benchmarks/run.py``): 0.4-0.7% of nights.
+SIGNIFICANCE_Z = 3.0
 
 
 def _sync() -> None:
@@ -61,58 +84,69 @@ def _sync() -> None:
     mx.synchronize()
 
 
+def interquartile_range(samples: list[float]) -> float:
+    """The IQR, with linear interpolation between order statistics.
+
+    The one place the spread is computed, so the single-callable and paired
+    measurements cannot drift apart again. The previous ``samples[-q] - samples[q-1]``
+    with ``q = n // 4`` was the full range for n <= 7 — the default — so a single
+    outlier set the "noise" for the whole case.
+    """
+    if len(samples) < 2:
+        return 0.0
+    q1, _median, q3 = statistics.quantiles(samples, n=4, method="inclusive")
+    return q3 - q1
+
+
+def median_standard_error(measurement: Measurement) -> float:
+    """Standard error of a sample median, estimated robustly from the IQR.
+
+    ``1.2533 * sigma / sqrt(n)`` for a normal distribution, with ``sigma`` estimated
+    as ``IQR / 1.349`` so that one outlier does not inflate it.
+    """
+    sigma = measurement.iqr_s / 1.349
+    return 1.2533 * sigma / measurement.iterations**0.5
+
+
+def _summarize(samples: list[float], label: str) -> Measurement:
+    samples = sorted(samples)
+    return Measurement(
+        label=label,
+        median_s=statistics.median(samples),
+        min_s=samples[0],
+        max_s=samples[-1],
+        iqr_s=interquartile_range(samples),
+        iterations=len(samples),
+    )
+
+
+def _timed(fn: Callable[[], object], setup: Callable[[], object] | None = None) -> float:
+    """One synchronized call, after ``setup``, a collection, and with the collector off."""
+    if setup is not None:
+        setup()
+    gc.collect()
+    gc.disable()
+    try:
+        start = time.perf_counter()
+        fn()
+        _sync()
+        return time.perf_counter() - start
+    finally:
+        gc.enable()
+
+
 def measure(
     fn: Callable[[], object],
     *,
     label: str,
     warmup: int = 2,
     iterations: int = 7,
-    measure_cold_start: bool = False,
 ) -> Measurement:
-    """Time ``fn`` with warmup, synchronization, and a median over ``iterations``.
-
-    Parameters
-    ----------
-    measure_cold_start : bool, default=False
-        Time the very first call separately and report it. Only meaningful in a
-        fresh process; in a warm one it measures nothing interesting, which is
-        why it is off by default and why the runner spawns subprocesses for it.
-    """
-    cold: float | None = None
-    if measure_cold_start:
-        gc.collect()
-        start = time.perf_counter()
-        fn()
-        _sync()
-        cold = time.perf_counter() - start
-
+    """Time ``fn`` with warmup, synchronization, and a median over ``iterations``."""
     for _ in range(warmup):
         fn()
     _sync()
-
-    samples: list[float] = []
-    for _ in range(iterations):
-        gc.collect()
-        gc.disable()
-        try:
-            start = time.perf_counter()
-            fn()
-            _sync()
-            samples.append(time.perf_counter() - start)
-        finally:
-            gc.enable()
-
-    samples.sort()
-    quartile = max(1, len(samples) // 4)
-    return Measurement(
-        label=label,
-        median_s=statistics.median(samples),
-        min_s=samples[0],
-        max_s=samples[-1],
-        iqr_s=samples[-quartile] - samples[quartile - 1],
-        iterations=len(samples),
-        cold_start_s=cold,
-    )
+    return _summarize([_timed(fn) for _ in range(iterations)], label)
 
 
 @dataclass(frozen=True, slots=True)
@@ -146,25 +180,26 @@ class Comparison:
 
     @property
     def significant(self) -> bool:
-        """Whether the difference between the two medians exceeds their uncertainty.
+        """Whether the two medians differ by more than their uncertainty.
 
         Without a test like this, a 3% "speedup" on a machine with 10% run-to-run
         spread gets reported as a win. The gate in ``benchmarks/gate.py`` reads
         this field, not the raw ratio.
 
-        The uncertainty is the standard error *of the median*, roughly
-        ``IQR / sqrt(n)``, not the IQR itself. That distinction matters here:
-        scikit-learn's timings are heavy-tailed — thread-pool warmup and garbage
-        collection produce occasional outliers several times the median — so
-        comparing against the raw IQR declared almost nothing significant,
-        including a measured 10x. The median is far better determined than the
-        spread of individual samples suggests.
+        The uncertainty is the standard error *of the median* on each side,
+        combined in quadrature, and the medians must be ``SIGNIFICANCE_Z`` of those
+        apart. Two things matter here. It is the median's standard error, not the
+        spread of individual samples: scikit-learn's timings are heavy-tailed, and
+        comparing against the raw spread declared almost nothing significant,
+        including a measured 10x. And the spread is a real IQR, so a single outlier
+        can no longer declare a real regression "within noise".
         """
-        samples = min(self.mlxlearn.iterations, self.sklearn.iterations)
-        if samples < 2:
+        if min(self.mlxlearn.iterations, self.sklearn.iterations) < MIN_SIGNIFICANCE_SAMPLES:
             return False
-        uncertainty = (self.mlxlearn.iqr_s + self.sklearn.iqr_s) / (samples**0.5)
-        return abs(self.sklearn.median_s - self.mlxlearn.median_s) > uncertainty
+        uncertainty = (
+            median_standard_error(self.mlxlearn) ** 2 + median_standard_error(self.sklearn) ** 2
+        ) ** 0.5
+        return abs(self.sklearn.median_s - self.mlxlearn.median_s) > SIGNIFICANCE_Z * uncertainty
 
     def as_dict(self) -> dict:
         return {
@@ -187,35 +222,37 @@ def compare(
     shape: tuple[int, ...],
     warmup: int = 2,
     iterations: int = 7,
+    mlx_setup: Callable[[], object] | None = None,
     **extra,
 ) -> Comparison:
-    """Time both implementations, interleaved.
+    """Time both implementations, interleaved, each side going first in turn.
 
     Interleaving matters more than it sounds: a run that measures all of A and
     then all of B attributes any thermal ramp or background load entirely to
-    whichever ran second.
+    whichever ran second. The order within a pair matters too, which is why it
+    alternates and why each call is timed exactly as :func:`measure` times one —
+    collected before, synchronized inside — whichever backend it ran on.
+
+    ``mlx_setup``, when given, runs before every mlxlearn call, warm-up included,
+    outside the timed window: to time a first call — one that builds something the
+    model then keeps — as often as the comparison needs.
     """
     for _ in range(warmup):
+        if mlx_setup is not None:
+            mlx_setup()
         mlx_fn()
         sk_fn()
     _sync()
 
     mlx_samples: list[float] = []
     sk_samples: list[float] = []
-    for _ in range(iterations):
-        gc.collect()
-        gc.disable()
-        try:
-            start = time.perf_counter()
-            mlx_fn()
-            _sync()
-            mlx_samples.append(time.perf_counter() - start)
-
-            start = time.perf_counter()
-            sk_fn()
-            sk_samples.append(time.perf_counter() - start)
-        finally:
-            gc.enable()
+    for i in range(iterations):
+        if i % 2 == 0:
+            mlx_samples.append(_timed(mlx_fn, mlx_setup))
+            sk_samples.append(_timed(sk_fn))
+        else:
+            sk_samples.append(_timed(sk_fn))
+            mlx_samples.append(_timed(mlx_fn, mlx_setup))
 
     return Comparison(
         label=label,
@@ -223,19 +260,6 @@ def compare(
         mlxlearn=_summarize(mlx_samples, f"{label}[mlxlearn]"),
         sklearn=_summarize(sk_samples, f"{label}[sklearn]"),
         extra=extra,
-    )
-
-
-def _summarize(samples: list[float], label: str) -> Measurement:
-    samples = sorted(samples)
-    quartile = max(1, len(samples) // 4)
-    return Measurement(
-        label=label,
-        median_s=statistics.median(samples),
-        min_s=samples[0],
-        max_s=samples[-1],
-        iqr_s=samples[-quartile] - samples[quartile - 1],
-        iterations=len(samples),
     )
 
 
@@ -287,6 +311,13 @@ def environment() -> dict:
         pass
 
     import mlxlearn
+    from mlxlearn._common.config import get_tuning
 
     info["mlxlearn"] = mlxlearn.__version__
+    # The thresholds dispatch ran with, and any MLXLEARN_* variable behind them: a
+    # result the gate judges against Tuning has to say which Tuning that was.
+    info["tuning"] = asdict(get_tuning())
+    info["mlxlearn_environment"] = {
+        name: value for name, value in sorted(os.environ.items()) if name.startswith("MLXLEARN_")
+    }
     return info

@@ -38,6 +38,12 @@ class EstimatorSpec:
         The Layer 2 class name.
     since : str
         The mlxlearn version that first patched this estimator.
+    consumers : tuple of str
+        Public scikit-learn packages whose internals bind this name at import
+        time (``from sklearn.neighbors import NearestNeighbors`` in
+        ``sklearn/cluster/_dbscan.py``, say). :func:`patch_sklearn` imports them
+        *before* rebinding, so they capture the stock class whatever the user's
+        import order. See ``_patch.py`` for why that matters.
     """
 
     name: str
@@ -46,19 +52,27 @@ class EstimatorSpec:
     mlxlearn_module: str
     mlxlearn_class: str
     since: str = "0.1.0"
+    consumers: tuple[str, ...] = ()
 
     @property
     def short_name(self) -> str:
         return self.attribute
 
 
-def _spec(sklearn_module: str, attribute: str, mlxlearn_module: str, mlxlearn_class: str):
+def _spec(
+    sklearn_module: str,
+    attribute: str,
+    mlxlearn_module: str,
+    mlxlearn_class: str,
+    consumers: tuple[str, ...] = (),
+):
     return EstimatorSpec(
         name=f"{sklearn_module}.{attribute}",
         sklearn_module=sklearn_module,
         attribute=attribute,
         mlxlearn_module=mlxlearn_module,
         mlxlearn_class=mlxlearn_class,
+        consumers=consumers,
     )
 
 
@@ -67,11 +81,30 @@ def _spec(sklearn_module: str, attribute: str, mlxlearn_module: str, mlxlearn_cl
 #: Deliberately short. Tree ensembles, pass-through estimators, and the
 #: rename-or-implement cases (``SVR``, ``NuSVR``, ``NuSVC``) are absent, and will
 #: stay absent until they implement the objective their scikit-learn name promises.
+#:
+#: The ``consumers`` are every public package whose modules bind the name at import
+#: time, as of scikit-learn 1.7-1.9. ``tests/patching`` imports all of scikit-learn
+#: while patched and fails on any binding that is not listed here, so a new
+#: consumer in a future release is caught rather than silently accelerated.
 ESTIMATOR_REGISTRY: tuple[EstimatorSpec, ...] = (
-    _spec("sklearn.neighbors", "NearestNeighbors", "mlxlearn.patching._estimators", "NearestNeighbors"),
+    _spec(
+        "sklearn.neighbors", "NearestNeighbors", "mlxlearn.patching._estimators", "NearestNeighbors",
+        # DBSCAN, OPTICS, HDBSCAN, MeanShift, SpectralClustering; TSNE, Isomap,
+        # LocallyLinearEmbedding, SpectralEmbedding; mutual_info_*; LabelPropagation.
+        consumers=(
+            "sklearn.cluster",
+            "sklearn.feature_selection",
+            "sklearn.manifold",
+            "sklearn.semi_supervised",
+        ),
+    ),
     _spec("sklearn.neighbors", "KNeighborsClassifier", "mlxlearn.patching._estimators", "KNeighborsClassifier"),
     _spec("sklearn.neighbors", "KNeighborsRegressor", "mlxlearn.patching._estimators", "KNeighborsRegressor"),
-    _spec("sklearn.linear_model", "LogisticRegression", "mlxlearn.patching._estimators", "LogisticRegression"),
+    _spec(
+        "sklearn.linear_model", "LogisticRegression", "mlxlearn.patching._estimators", "LogisticRegression",
+        # StackingClassifier's default final_estimator.
+        consumers=("sklearn.ensemble",),
+    ),
     _spec("sklearn.svm", "SVC", "mlxlearn.patching._estimators", "SVC"),
 )
 

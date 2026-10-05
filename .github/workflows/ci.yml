@@ -5,41 +5,64 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  # release.yml runs this whole workflow on the tagged commit and publishes only if
+  # every job here passes.
+  workflow_call:
+
+# Every job reads the repository and nothing else.
+permissions:
+  contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
   PYTHONWARNINGS: default
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  # GitHub's macos-15 runners are Apple silicon with a working Metal device. The
+  # suite skips GPU tests on a host without one; here that would be a runner image
+  # silently losing coverage, so a missing GPU stops the run instead (tests/_gpu.py).
+  #
   # Correctness only on shared runners. Absolute performance is measured by the
   # nightly job on fixed self-hosted Apple hardware; shared runners are too noisy
   # for a timing gate.
-  MLXLEARN_CI: "1"
+  MLXLEARN_REQUIRE_GPU: "1"
 
 jobs:
   compliance:
     name: compliance gates
     runs-on: macos-15
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.13"
+          cache: pip
+          cache-dependency-path: pyproject.toml
       - name: Install runtime dependencies
-        run: python -m pip install --upgrade pip && python -m pip install -e "."
-      - name: Branding, private imports, headers, licenses, layout
+        # packaging evaluates the dependency markers the license gate walks.
+        run: python -m pip install --upgrade pip && python -m pip install -e "." packaging
+      - name: Branding, private imports, headers, licenses, layout, layering
         run: python tools/compliance.py
 
   lint:
     name: lint
     runs-on: macos-15
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.13"
-      - run: python -m pip install --upgrade pip ruff
+      - name: Install ruff at the version the dev extra pins
+        # One pin, in pyproject.toml, so a local `pip install -e ".[dev]"` lints with
+        # exactly what CI lints with, and a ruff release cannot turn main red.
+        run: |
+          ruff_spec=$(sed -n 's/^ *"\(ruff==[^"]*\)".*/\1/p' pyproject.toml)
+          test -n "$ruff_spec" || { echo "no ruff== pin in pyproject.toml"; exit 1; }
+          python -m pip install "$ruff_spec"
       - run: ruff check src tests tools benchmarks
       # No `ruff format --check`. The project has not adopted an autoformatter,
       # and turning one on now would rewrite every file in a single commit that
@@ -47,8 +70,9 @@ jobs:
       # something a CI job should force.
 
   test:
-    name: py${{ matrix.python }} / sklearn ${{ matrix.sklearn }}
+    name: ${{ matrix.label || format('py{0} / sklearn {1}', matrix.python, matrix.sklearn) }}
     runs-on: macos-15
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       # Paired matrix, not a cross product: scikit-learn 1.8+ requires Python >= 3.11,
@@ -65,29 +89,44 @@ jobs:
             sklearn: "1.8.0"
           - python: "3.13"
             sklearn: "1.9.0"
+          # No pin: the newest scikit-learn the declared range admits. The other
+          # cells keep their pins through a change to the range, so without this one
+          # a Dependabot PR that raises the cap would pass without the suite ever
+          # running on the release it lets in.
+          - python: "3.14"
+            label: py3.14 / newest scikit-learn in range
+          # Every declared floor at once — NumPy, scikit-learn, MLX and the test
+          # extra — installed exactly, and then checked to have been.
+          - python: "3.10"
+            label: py3.10 / minimum versions
+            constraints: .github/constraints/minimum-versions.txt
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          python -m pip install "scikit-learn==${{ matrix.sklearn }}"
-          python -m pip install -e ".[test]"
-      - name: Assert the pinned floor is what we think it is
-        run: |
-          python - <<'PY'
-          import sklearn, numpy, mlx.core as mx
-          from packaging.version import Version
-          assert Version(sklearn.__version__) >= Version("1.7"), sklearn.__version__
-          # MLX floor is asserted here rather than only in metadata so a resolver
-          # that quietly picks an older wheel fails loudly.
-          assert Version(mx.__version__) >= Version("0.29"), mx.__version__
-          print("sklearn", sklearn.__version__, "numpy", numpy.__version__, "mlx", mx.__version__)
-          PY
+          if [ -n "${{ matrix.constraints }}" ]; then
+            python -m pip install -e ".[test]" -c "${{ matrix.constraints }}"
+          elif [ -n "${{ matrix.sklearn }}" ]; then
+            python -m pip install "scikit-learn==${{ matrix.sklearn }}"
+            python -m pip install -e ".[test]"
+          else
+            python -m pip install -e ".[test]"
+          fi
+      - name: Versions, device, and the requirements they must satisfy
+        run: python tools/check_environment.py ${{ matrix.constraints && format('--constraints {0}', matrix.constraints) || '' }}
       - name: Test
         run: python -m pytest -q --durations=25
+      - name: Doctests
+        # Their own step, in every cell: this is where a NumPy or scikit-learn repr
+        # change shows up, and it keeps the patch_sklearn() example out of the main
+        # suite's process.
+        run: python -m pytest -q --doctest-modules src/mlxlearn
       - name: Locked two-liner runs verbatim
         run: |
           python - <<'PY'
@@ -95,12 +134,68 @@ jobs:
           patch_sklearn()
           PY
 
+  slow:
+    name: slow tests (py3.13 / sklearn 1.9.0)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "scikit-learn==1.9.0"
+          python -m pip install -e ".[test]"
+      - name: Tests marked slow
+        # The default run deselects them (pyproject.toml addopts); they still gate
+        # every PR, here, on one leg. Exit status 5 means nothing is marked slow,
+        # which is not a failure of this job.
+        run: |
+          set +e
+          python -m pytest -q -m slow --durations=10
+          status=$?
+          if [ "$status" -eq 5 ]; then echo "::notice::no tests are marked slow"; exit 0; fi
+          exit "$status"
+
+  harness:
+    name: benchmark harness and gate
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install
+        run: python -m pip install --upgrade pip && python -m pip install -e ".[bench]"
+      - name: Run the smoke profile, the gate, and the report
+        # Checks the plumbing and the result schema, never performance: fewer than
+        # five iterations can never be "significant" (benchmarks/_harness.py), so a
+        # shared runner's timing noise cannot fail the gate here.
+        run: |
+          python -m benchmarks.run --environment-only --output bench/environment.json
+          python -m benchmarks.run --profile smoke --iterations 1 \
+            --output bench/results.json --report bench/report.md
+          python -m benchmarks.gate --results bench/results.json --verbose
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: benchmark-smoke
+          path: bench/
+
   build:
     name: sdist and wheel
     runs-on: macos-15
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.13"
       - run: python -m pip install --upgrade pip build twine
@@ -109,20 +204,42 @@ jobs:
       - name: Wheel is pure-Python
         run: |
           python - <<'PY'
-          import pathlib, sys
+          import pathlib
           wheels = list(pathlib.Path("dist").glob("*.whl"))
           assert len(wheels) == 1, wheels
           name = wheels[0].name
           assert name.endswith("-py3-none-any.whl"), f"expected a pure-Python wheel, got {name}"
           print(name)
           PY
-      - name: Installs clean from the wheel
+      - name: The sdist carries a testable suite and nothing compiled
+        run: |
+          python - <<'PY'
+          import pathlib, tarfile
+          (sdist,) = pathlib.Path("dist").glob("*.tar.gz")
+          names = {n.split("/", 1)[1] for n in tarfile.open(sdist).getnames() if "/" in n}
+          required = {"tests/conftest.py", "tests/_helpers.py", "tests/_gpu.py",
+                      "docs/fp32_policy.md", "CHANGELOG.md", "LICENSE"}
+          missing = sorted(required - names)
+          assert not missing, f"sdist is missing {missing}"
+          stray = sorted(n for n in names if n.endswith((".pyc", ".pyo", ".so"))
+                         or "__pycache__" in n or n.startswith("tests/tooling/"))
+          assert not stray, f"sdist carries {stray}"
+          print(f"{sdist.name}: {len(names)} entries")
+          PY
+      - name: Installs clean from the wheel, at the version it says
         run: |
           python -m venv /tmp/wheeltest
           /tmp/wheeltest/bin/pip install --upgrade pip
-          /tmp/wheeltest/bin/pip install dist/*.whl
-          /tmp/wheeltest/bin/python -c "import mlxlearn; print(mlxlearn.__version__); mlxlearn.patch_sklearn(); mlxlearn.unpatch_sklearn()"
-      - uses: actions/upload-artifact@v4
+          /tmp/wheeltest/bin/pip install dist/*.whl pytest scipy packaging
+          /tmp/wheeltest/bin/python tools/check_environment.py
+          /tmp/wheeltest/bin/python -c "import mlxlearn; mlxlearn.patch_sklearn(); mlxlearn.unpatch_sklearn()"
+      - name: The sdist's own suite collects against the installed wheel
+        run: |
+          mkdir /tmp/sdisttest
+          tar -xzf dist/*.tar.gz -C /tmp/sdisttest --strip-components 1
+          cd /tmp/sdisttest && /tmp/wheeltest/bin/python -m pytest --collect-only -q -p no:cacheprovider
+      # On a tag, release.yml publishes exactly these files: the ones checked above.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: dist
           path: dist/

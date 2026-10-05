@@ -1,9 +1,9 @@
 """Nearest-neighbor estimators, accelerated with MLX.
 
-Exact brute-force Euclidean search on dense data. There is no approximate index
-here and there will not be one under a scikit-learn estimator name: an
-``ANN``-backed ``KNeighborsClassifier`` would silently return different answers
-from the class it claims to replace.
+Exact brute-force Euclidean (or squared-Euclidean) search on dense data. There
+is no approximate index here and there will not be one under a scikit-learn
+estimator name: an ``ANN``-backed ``KNeighborsClassifier`` would silently return
+different answers from the class it claims to replace.
 """
 
 from __future__ import annotations

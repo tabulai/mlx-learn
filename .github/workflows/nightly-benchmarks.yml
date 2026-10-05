@@ -3,6 +3,9 @@ name: Nightly benchmarks
 # Absolute performance is only meaningful on fixed hardware. Shared GitHub runners
 # are shared, throttled, and heterogeneous, so they run correctness only (see ci.yml)
 # and this job runs on a self-hosted Apple silicon machine that does not change.
+#
+# The same machine is also the one place the whole test suite, slow tests included,
+# runs on a known Metal GPU.
 
 on:
   schedule:
@@ -13,20 +16,42 @@ on:
         description: Benchmark profile
         default: full
         type: choice
-        options: [smoke, full]
+        options: [smoke, full, published]
+
+permissions:
+  contents: read
 
 jobs:
   benchmarks:
     name: benchmarks (self-hosted Apple silicon)
+    # Scheduled runs wait until the runner exists: without one, every night queued a
+    # job that GitHub cancelled 24 hours later. Set the repository variable
+    # MLXLEARN_BENCH_RUNNER to "true" once a runner labelled mlxlearn-bench is
+    # registered (Actions runner 2.327.1 or later, for the Node 24 actions below).
+    # A manual dispatch always runs.
+    if: github.event_name == 'workflow_dispatch' || vars.MLXLEARN_BENCH_RUNNER == 'true'
     runs-on: [self-hosted, macOS, ARM64, mlxlearn-bench]
-    timeout-minutes: 240
+    timeout-minutes: 360
+    env:
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+      MLXLEARN_REQUIRE_GPU: "1"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          # Pinned, like the hardware: a different interpreter is a different machine.
+          python-version: "3.13"
       - name: Install
+        # torch only here: its container cases in tests/unit/test_validation.py skip
+        # without it, and 400 MB installed is too much for every shared-runner cell.
         run: |
-          python3 -m venv .venv
+          python -m venv .venv
           .venv/bin/pip install --upgrade pip
-          .venv/bin/pip install -e ".[bench]"
+          .venv/bin/pip install -e ".[bench,test]" torch
+      - name: Versions and device
+        run: .venv/bin/python tools/check_environment.py
+      - name: Full test suite on the Metal device, slow tests included
+        run: .venv/bin/python -m pytest -q -m "" --durations=25
       - name: Record hardware and versions
         run: .venv/bin/python -m benchmarks.run --environment-only --output bench/environment.json
       - name: Run benchmarks
@@ -35,9 +60,11 @@ jobs:
             --profile "${{ inputs.profile || 'full' }}" \
             --output bench/results.json \
             --report bench/report.md
-      - name: Regression gate against the recorded crossovers
-        run: .venv/bin/python -m benchmarks.gate --results bench/results.json
-      - uses: actions/upload-artifact@v4
+      - name: Regression gate against the configured Tuning thresholds
+        run: .venv/bin/python -m benchmarks.gate --results bench/results.json --verbose
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        # Most wanted exactly when the gate fails.
+        if: always()
         with:
           name: benchmark-results
           path: bench/

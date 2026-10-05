@@ -1,0 +1,51 @@
+name: Upstream pre-releases
+
+# An early warning, not a gate. Weekly, the suite runs against the next
+# scikit-learn and NumPy (the scientific-python nightly wheels) and any MLX
+# pre-release. pyproject.toml caps scikit-learn at <1.10 on purpose, so users never
+# meet an untested release; this job is what says, before that release lands,
+# whether lifting the cap is a version bump or a porting job.
+#
+# It blocks nothing: it is not part of CI, and no branch protection requires it. A
+# failure notifies the maintainer instead of being swallowed by continue-on-error.
+
+on:
+  schedule:
+    - cron: "41 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  upstream:
+    name: py3.13 / upstream pre-releases
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      PYTHONWARNINGS: default
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+      MLXLEARN_REQUIRE_GPU: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+      - name: Install, then replace the dependencies with their next versions
+        # --no-deps on the upgrades: the declared ranges would otherwise refuse, or
+        # quietly downgrade, exactly the versions this job exists to try. A plain
+        # `pip install --pre` would not reach scikit-learn 1.10 either, since under
+        # PEP 440 `<1.10` excludes 1.10's own pre-releases.
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[test]"
+          python -m pip install --upgrade --pre --no-deps \
+            --extra-index-url https://pypi.anaconda.org/scientific-python-nightly-wheels/simple \
+            scikit-learn numpy
+          python -m pip install --upgrade --pre --no-deps mlx mlx-metal
+      - name: Versions and device
+        # Outside the declared ranges on purpose, so unmet requirements are reported,
+        # not fatal.
+        run: python tools/check_environment.py --ignore-requirements
+      - name: Test
+        run: python -m pytest -q -m "" --durations=25

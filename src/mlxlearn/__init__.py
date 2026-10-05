@@ -19,9 +19,15 @@ Patch before importing the symbols you want accelerated. Patching rebinds
 attributes on scikit-learn's modules, so it cannot reach names that were already
 bound into your own namespace — that is Python name binding, not a limitation
 mlxlearn can engineer around.
+
+The estimator subpackages are also reachable as attributes, as scikit-learn's are
+(``import mlxlearn; mlxlearn.svm.SVC``). They load on first access, so
+``import mlxlearn`` itself imports neither scikit-learn nor MLX.
 """
 
 from __future__ import annotations
+
+import importlib
 
 from ._common.config import (
     Config,
@@ -37,15 +43,18 @@ from ._common.diagnostics import (
     diagnostics_summary,
     get_backend_diagnostics,
     get_last_backend_event,
+    reset_fallback_warnings,
 )
 from .exceptions import (
     BackendExecutionError,
     CapabilityError,
     DeviceError,
+    InvalidInputError,
     MLXLearnError,
     MLXLearnFallbackWarning,
     MLXLearnPatchWarning,
     MLXLearnPerformanceWarning,
+    SparseInputError,
     UnsupportedInputError,
     UnsupportedParameterError,
 )
@@ -76,6 +85,7 @@ __all__ = [
     "get_backend_diagnostics",
     "get_last_backend_event",
     "clear_backend_diagnostics",
+    "reset_fallback_warnings",
     "diagnostics_summary",
     "BackendEvent",
     # environment
@@ -86,6 +96,8 @@ __all__ = [
     "CapabilityError",
     "UnsupportedParameterError",
     "UnsupportedInputError",
+    "SparseInputError",
+    "InvalidInputError",
     "DeviceError",
     "BackendExecutionError",
     "MLXLearnFallbackWarning",
@@ -95,5 +107,18 @@ __all__ = [
 ]
 
 
+#: Subpackages resolved on first attribute access (PEP 562). Loading one imports
+#: scikit-learn, so none is loaded by ``import mlxlearn`` itself.
+_LAZY_SUBMODULES = ("linear_model", "neighbors", "svm")
+
+
+def __getattr__(name: str):
+    if name in _LAZY_SUBMODULES:
+        # import_module binds the subpackage as an attribute of this module, so
+        # the hook runs once per name.
+        return importlib.import_module(f"{__name__}.{name}")
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
 def __dir__() -> list[str]:
-    return sorted(__all__)
+    return sorted({*__all__, *_LAZY_SUBMODULES, "exceptions"})

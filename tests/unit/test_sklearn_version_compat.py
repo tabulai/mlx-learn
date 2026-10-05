@@ -37,8 +37,20 @@ def data():
 
 
 def test_declared_range_is_what_is_installed():
-    assert Version("1.7") <= SKLEARN < Version("1.10"), (
-        f"scikit-learn {SKLEARN} is outside the range pyproject.toml declares"
+    # Read from the installed metadata, not restated here: CI's unpinned cell runs a
+    # PR that widens the range on the release it newly admits, and a copy of the old
+    # cap would fail there for no reason.
+    from importlib import metadata
+
+    from packaging.requirements import Requirement
+
+    try:
+        requires = metadata.requires("mlx-learn") or []
+    except metadata.PackageNotFoundError:
+        pytest.skip("mlx-learn is not installed, so no declared range is available")
+    (declared,) = [r for r in map(Requirement, requires) if r.name == "scikit-learn"]
+    assert declared.specifier.contains(SKLEARN, prereleases=True), (
+        f"scikit-learn {SKLEARN} is outside the range pyproject.toml declares ({declared})"
     )
 
 
@@ -96,8 +108,16 @@ def test_unsupported_penalty_still_raises_on_both_spellings(data):
 
 
 def test_unpenalized_fit_is_recognized_on_both_spellings(data):
-    """``C=inf`` (1.9) and ``penalty=None`` (1.7) both mean no penalty."""
+    """``C=inf`` (1.9) and ``penalty=None`` (1.7) both mean no penalty.
+
+    Asserted on the objective — the unpenalized log-loss both fits minimize — at
+    the parity tolerance of ``docs/fp32_policy.md`` §3, not only on the labels: a
+    fit that quietly kept ``C=1`` agreed with scikit-learn on 99% of the labels
+    and passed. Its log-loss here is 1e-3 above the optimum, a hundred times the
+    tolerance, and the last line proves the assertion would see it.
+    """
     from sklearn.linear_model import LogisticRegression as SkLogisticRegression
+    from sklearn.metrics import log_loss
 
     X, y = data
     estimator = LogisticRegression(C=np.inf) if SKLEARN >= Version("1.8") else LogisticRegression(penalty=None)
@@ -106,11 +126,17 @@ def test_unpenalized_fit_is_recognized_on_both_spellings(data):
         else SkLogisticRegression(penalty=None)
     )
 
+    def objective(model):
+        return log_loss(y, model.predict_proba(X), normalize=False)
+
     assert estimator._effective_penalty() is None
     with tuning_context(force_backend="mlx"):
         mlx = estimator.fit(X, y)
+        penalized = LogisticRegression(C=1.0).fit(X, y)
     ref = reference.fit(X, y)
     assert np.mean(mlx.predict(X) == ref.predict(X)) >= 0.99
+    assert objective(mlx) == pytest.approx(objective(ref), rel=1e-5)
+    assert objective(penalized) > objective(mlx) * (1 + 4e-5)
 
 
 def test_svc_probability_sentinel_is_not_a_request_for_probabilities(data):
