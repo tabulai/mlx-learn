@@ -100,6 +100,7 @@ MLX 0.31.2, scikit-learn 1.7.2, NumPy 2.5.1.
 | `knn/fit` | never | — | accepted regression, see below |
 | `svc/fit` | ~2 000 samples **and** ~10⁶ elements; never for `kernel="linear"` | 2.93× | `svc_min_samples = 2048`, `svc_min_work = 1_000_000` |
 | `logreg/fit` | ~20 000 samples **and** ~2·10⁷ elements | 1.34× | `logreg_min_samples = 20_000`, `logreg_min_work = 20_000_000` |
+| `linreg/fit` | not measured | — | `linreg_min_samples = 8_192`, `linreg_min_work = 4_000_000`; both required, set high until a grid is run |
 
 These feed `mlxlearn._common.config.Tuning`, which dispatch reads. That is the point: a
 published crossover the dispatcher ignores is a claim, not a mechanism.

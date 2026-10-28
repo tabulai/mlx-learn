@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **`mlxlearn.linear_model.LinearRegression`** — dense ordinary least squares on
+  MLX, including multi-output targets and `sample_weight`. The device computes
+  the Gram products of the (centered, weighted) design; `positive=True` raises
+  on Layer 1 and falls back under `patch_sklearn()`.
+
 ### Changed
 
 - The native binary logistic step now runs one fused line-search pass for

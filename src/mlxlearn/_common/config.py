@@ -146,6 +146,14 @@ class Tuning:
     logreg_tall_min_samples: int = 250_000
     logreg_tall_min_work: int = 8_000_000
     #
+    # LinearRegression has no dedicated crossover measurement yet. The
+    # thresholds are high so patched dispatch does not claim a speedup that
+    # has not been measured. Both conditions must be met (see
+    # LinearRegression._below_crossover). The device work is the Gram products
+    # of a tall design; the small factorization is host-side.
+    linreg_min_samples: int = 8_192
+    linreg_min_work: int = 4_000_000  # n_samples * n_features
+    #
     # SVC is the same story again, and worse -- but the axis that matters is
     # *width*, not height. Over a 64-configuration grid at d in {10, 20} mlxlearn
     # was slower in 58 of 64, worst 0.013x. What separates the wins is the cost of

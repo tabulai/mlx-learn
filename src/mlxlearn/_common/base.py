@@ -84,8 +84,8 @@ class BackendMixin:
     _execution_backend_: str
 
     #: Narrowed for Layer 1 by :meth:`__sklearn_tags__`. An estimator that
-    #: genuinely handles multi-output targets on the MLX path can set this
-    #: ``True``; none of the 0.1.0 estimators do.
+    #: genuinely handles multi-output targets on the MLX path sets this
+    #: ``True``; :class:`~mlxlearn.linear_model.LinearRegression` does.
     _mlxlearn_supports_multi_output: ClassVar[bool] = False
 
     # --------------------------------------------------------------------- tags

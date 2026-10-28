@@ -39,8 +39,9 @@ The numerical library is fully usable and fully tested with the patching mechani
 | `mlxlearn.neighbors.KNeighborsClassifier` | 0.1.0 |
 | `mlxlearn.neighbors.KNeighborsRegressor` | 0.1.0 |
 | `mlxlearn.linear_model.LogisticRegression` | 0.1.0 |
+| `mlxlearn.linear_model.LinearRegression` | 0.1.0 |
 | `mlxlearn.svm.SVC` (exact) | 0.1.0 |
-| `LinearRegression`, `Ridge`, `PCA`, `KMeans`, `DBSCAN`, `TSNE` | planned, 0.2.x |
+| `Ridge`, `PCA`, `KMeans`, `DBSCAN`, `TSNE` | planned, 0.2.x |
 | `SVR`, `NuSVR`, `NuSVC` | deferred — will not ship until they implement the true objective |
 | tree ensembles | out of scope |
 
