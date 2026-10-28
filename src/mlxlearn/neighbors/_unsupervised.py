@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from sklearn.neighbors import NearestNeighbors as _SkNearestNeighbors
 
-from ._base import MLXNeighborsMixin
+from ._base import MLXNeighborsMixin, MLXRadiusMixin
 
 __all__ = ["NearestNeighbors"]
 
 
-class NearestNeighbors(MLXNeighborsMixin, _SkNearestNeighbors):
+class NearestNeighbors(MLXRadiusMixin, MLXNeighborsMixin, _SkNearestNeighbors):
     """Unsupervised nearest-neighbor search, accelerated with MLX.
 
     A drop-in replacement for :class:`sklearn.neighbors.NearestNeighbors` for
@@ -20,7 +20,7 @@ class NearestNeighbors(MLXNeighborsMixin, _SkNearestNeighbors):
     ----------
     n_neighbors : int, default=5
     radius : float, default=1.0
-        Used by :meth:`radius_neighbors`, which runs on scikit-learn — see Notes.
+        Inclusive Euclidean radius used by :meth:`radius_neighbors`.
     algorithm : {"auto", "brute"}, default="auto"
         Only brute-force search is accelerated. ``"kd_tree"`` and ``"ball_tree"``
         raise :class:`~mlxlearn.exceptions.UnsupportedParameterError` on direct
@@ -46,11 +46,9 @@ class NearestNeighbors(MLXNeighborsMixin, _SkNearestNeighbors):
 
     Notes
     -----
-    :meth:`radius_neighbors` is inherited from scikit-learn and is **not**
-    accelerated. It is correct — mlxlearn keeps the fitted attributes
-    scikit-learn's implementation needs — but it runs in float64 on the CPU. This
-    is stated rather than left for a user to discover from a profiler; the
-    ancestor inherited the same method and never mentioned it.
+    :meth:`radius_neighbors` runs on the same blocked MLX kernel as
+    :meth:`kneighbors`. Membership is decided on refined Euclidean distances;
+    each row is returned as a 1-d array because neighborhoods are ragged.
 
     Examples
     --------

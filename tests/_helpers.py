@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-__all__ = ["assert_neighbor_parity", "logistic_objective"]
+__all__ = ["assert_neighbor_parity", "assert_radius_parity", "logistic_objective"]
 
 
 def assert_neighbor_parity(mlx_dist, mlx_idx, ref_dist, ref_idx, *, atol=1e-6):
@@ -88,6 +88,55 @@ def assert_neighbor_parity(mlx_dist, mlx_idx, ref_dist, ref_idx, *, atol=1e-6):
         "index order differs where distances are strictly separated at "
         f"{np.argwhere(violations)[:5].tolist()}"
     )
+
+
+def assert_radius_parity(mlx_idx, ref_idx, mlx_dist=None, ref_dist=None, *, atol=1e-6):
+    """Compare ragged radius-neighbor results.
+
+    Neighborhoods are variable-length, so each query is an independent 1-d
+    array. Membership is the claim: every neighbor strictly inside the farthest
+    shared distance must agree, matching :func:`assert_neighbor_parity`.
+    """
+    assert len(mlx_idx) == len(ref_idx), f"{len(mlx_idx)} queries vs {len(ref_idx)}"
+    for row in range(len(mlx_idx)):
+        mine = np.asarray(mlx_idx[row])
+        theirs = np.asarray(ref_idx[row])
+        if mlx_dist is None:
+            np.testing.assert_array_equal(
+                np.sort(mine), np.sort(theirs), err_msg=f"row {row}: neighbor sets differ"
+            )
+            continue
+
+        md = np.asarray(mlx_dist[row], dtype=np.float64)
+        rd = np.asarray(ref_dist[row], dtype=np.float64)
+        if mine.size == 0 and theirs.size == 0:
+            continue
+        if mine.size == 0 or theirs.size == 0:
+            raise AssertionError(
+                f"row {row}: mlxlearn returned {mine.size} neighbors, "
+                f"scikit-learn returned {theirs.size}"
+            )
+
+        # Distances of the shared set must agree; extras must sit on the boundary.
+        mine_map = {int(i): float(d) for i, d in zip(mine, md, strict=True)}
+        theirs_map = {int(i): float(d) for i, d in zip(theirs, rd, strict=True)}
+        shared = set(mine_map) & set(theirs_map)
+        boundary = max(max(md), max(rd))
+        for index in shared:
+            assert abs(mine_map[index] - theirs_map[index]) <= atol + atol * abs(theirs_map[index]), (
+                f"row {row}: distance for index {index} differs: "
+                f"{mine_map[index]} vs {theirs_map[index]}"
+            )
+        for extra in set(mine_map) - set(theirs_map):
+            assert abs(mine_map[extra] - boundary) <= atol, (
+                f"row {row}: mlxlearn returned index {extra} at {mine_map[extra]}, "
+                f"not a boundary tie (boundary={boundary})"
+            )
+        for missing in set(theirs_map) - set(mine_map):
+            assert abs(theirs_map[missing] - boundary) <= atol, (
+                f"row {row}: scikit-learn returned index {missing} at {theirs_map[missing]}, "
+                f"not a boundary tie (boundary={boundary})"
+            )
 
 
 def assert_ties_break_on_smallest_index(dist, idx, *, atol=1e-6):

@@ -1,7 +1,8 @@
 """Shared neighbor-estimator machinery.
 
-The three neighbor estimators differ only in what they do with the indices they
-get back, so everything up to and including ``kneighbors`` lives here.
+The neighbor estimators differ only in what they do with the indices they
+get back, so everything up to and including ``kneighbors`` and
+``radius_neighbors`` lives here.
 
 Each mlxlearn estimator subclasses its scikit-learn counterpart. That is not
 laziness — it is what makes the drop-in promise real. Subclassing inherits the
@@ -37,7 +38,7 @@ from .._common.validation import (
 from .._kernels.distance import build_index
 from ..exceptions import UnsupportedParameterError
 
-__all__ = ["MLXNeighborsMixin", "SUPPORTED_METRICS"]
+__all__ = ["MLXNeighborsMixin", "MLXRadiusMixin", "SUPPORTED_METRICS"]
 
 #: Metrics whose squared-distance form is exactly what the blocked Gram kernel
 #: computes. Anything else is a capability mismatch, not an approximation
@@ -197,10 +198,10 @@ class MLXNeighborsMixin(BackendMixin):
         self.n_samples_fit_ = int(X_checked.shape[0])
         self.effective_metric_ = "euclidean"
         self.effective_metric_params_ = {}
-        # scikit-learn's RadiusNeighborsMixin is inherited unchanged, so it needs
-        # the state its own brute-force path reads. Populating it means
-        # radius_neighbors stays correct on an MLX-fitted estimator; it runs on
-        # the CPU in float32, which docs/fp32_policy.md records.
+        # scikit-learn's RadiusNeighborsMixin still needs the state its own
+        # brute-force path reads, for the Layer 2 fallback and for any inherited
+        # method we have not overridden. The MLX ``radius_neighbors`` on
+        # :class:`MLXRadiusMixin` uses ``_index_`` instead.
         self._fit_method = "brute"
         self._fit_X = self._index_.X
         self._tree = None
@@ -276,8 +277,6 @@ class MLXNeighborsMixin(BackendMixin):
             )
         return int(n_neighbors)
 
-    # ------------------------------------------------------------------ helpers
-
     def _query_indices(self, X, *, need_distance: bool):
         """One neighbor-acquisition path for ``predict`` and ``predict_proba``.
 
@@ -288,6 +287,76 @@ class MLXNeighborsMixin(BackendMixin):
         """
         dist, idx = self.kneighbors(X, return_distance=True)
         return (dist if need_distance else None), idx
+
+
+class MLXRadiusMixin:
+    """``radius_neighbors`` for the MLX brute-force path.
+
+    Kept off :class:`MLXNeighborsMixin` so :class:`KNeighborsClassifier` and
+    :class:`KNeighborsRegressor` do not grow a method scikit-learn's k-neighbor
+    estimators do not have. :class:`NearestNeighbors` and the radius estimators
+    opt in.
+    """
+
+    def radius_neighbors(
+        self, X=None, radius=None, return_distance=True, sort_results=False
+    ):
+        """Find every training row within ``radius`` of each query.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_queries, n_features), default=None
+            Query points. ``None`` means "the training data", and each point's
+            own index is excluded from its neighbors.
+        radius : float, default=None
+            Inclusive Euclidean radius. Defaults to the estimator's ``radius``.
+        return_distance : bool, default=True
+            Whether to return distances alongside indices.
+        sort_results : bool, default=False
+            If True, each row is ordered by increasing distance. ``True`` with
+            ``return_distance=False`` is an error, matching scikit-learn.
+
+        Returns
+        -------
+        neigh_dist : ndarray of shape (n_queries,) of arrays
+            Euclidean distances, float64. Only when ``return_distance=True``.
+        neigh_ind : ndarray of shape (n_queries,) of arrays
+            Training indices, int64.
+        """
+        check_is_fitted(self)
+        if sort_results and not return_distance:
+            raise ValueError("return_distance must be True if sort_results is True.")
+
+        if self._fitted_backend("radius_neighbors") == "sklearn":
+            self._note_inference("radius_neighbors")
+            return super().radius_neighbors(
+                X, radius=radius, return_distance=return_distance, sort_results=sort_results
+            )
+
+        query_is_train = X is None
+        if radius is None:
+            radius = self.radius
+        radius = float(radius)
+        if radius < 0:
+            raise ValueError(f"radius must be non-negative, got {radius}")
+
+        if query_is_train:
+            Q = self._index_.X
+        else:
+            require_dense(X, estimator=type(self).__name__, operation="radius_neighbors")
+            Q = validate_data(self, X, accept_sparse=False, dtype=NUMPY_FLOAT, reset=False)
+            check_finite_float32(Q)
+
+        self._note_inference("radius_neighbors", shape=Q.shape)
+        with mlx_guard(type(self).__name__, "radius_neighbors"):
+            result = self._index_.query_radius(
+                Q,
+                radius,
+                return_distance=return_distance,
+                exclude_self=query_is_train,
+                sort_results=sort_results,
+            )
+        return result
 
 
 def _safe_shape(X) -> tuple[int, ...] | None:

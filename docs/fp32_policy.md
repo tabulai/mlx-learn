@@ -91,6 +91,7 @@ no worse." Both are tested.
 | Quantity | Comparison against scikit-learn | Rationale |
 |---|---|---|
 | Neighbor **sets** (per row) | `assert_array_equal` on the sorted row — exact | Which points are nearest is not a matter of opinion |
+| Radius-neighbor **membership** | set equality on indices; a disagreement must sit on the radius | Same claim as k-neighbor sets, for a threshold instead of a count |
 | Neighbor **index order** | exact where distances are strictly separated; set equality where they tie | See §3.1 — scikit-learn does not define an order for exact ties |
 | Neighbor **distances** | `atol=1e-6, rtol=1e-6` | Refined float32, relative to the data scale |
 | Classifier **predictions** | ≥ 99.5% label agreement | Labels are discrete; disagreements concentrate at the decision boundary. Measured: 0.9975 worst case over 40 randomized logistic configurations, 1.0 typical |
@@ -202,7 +203,8 @@ mlxlearn runs scikit-learn's full estimator check suite against **both** layers 
 strict Layer 1 classes and the patched Layer 2 classes — because the two advertise
 different tags and a tag that lies is worse than a missing feature.
 
-**As of 0.1.0a2 the mlxlearn-specific xfail list is empty.** All ten suites pass.
+**The mlxlearn-specific xfail list is empty.** Every registered estimator's
+scikit-learn check suite is expected to pass.
 
 Two kinds of exemption exist and are kept strictly apart in
 `tests/test_sklearn_compliance.py`:

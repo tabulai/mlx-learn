@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Radius-neighbor search** on the same blocked MLX distance kernel as `kneighbors`.
+  `NearestNeighbors.radius_neighbors` now runs on the fitted backend instead of
+  inheriting scikit-learn's CPU path. Neighborhoods are ragged object arrays of
+  1-d index and distance rows, matching scikit-learn's return layout.
+- **`mlxlearn.neighbors.RadiusNeighborsClassifier`** and
+  **`RadiusNeighborsRegressor`** — Layer 1 estimators and Layer 2 patched
+  twins. Votes and averages use every training row inside `radius`; empty
+  neighborhoods follow scikit-learn (`outlier_label` or `NaN`).
+
 ### Changed
 
 - The native binary logistic step now runs one fused line-search pass for

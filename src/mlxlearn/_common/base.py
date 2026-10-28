@@ -7,7 +7,7 @@ Two invariants matter more than anything else here.
 
 **The sticky backend.** The backend is chosen once, during ``fit``, and stored on
 ``_execution_backend_``. Every subsequent ``predict`` / ``predict_proba`` /
-``transform`` / ``kneighbors`` uses *that* backend. Inference never re-decides.
+``transform`` / ``kneighbors`` / ``radius_neighbors`` uses *that* backend. Inference never re-decides.
 An estimator whose MLX fit produced MLX-shaped state must not later find itself in
 scikit-learn's inference path holding state that path cannot read — and the
 converse, an estimator that fell back to scikit-learn at fit time, must not have

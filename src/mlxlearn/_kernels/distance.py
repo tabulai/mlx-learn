@@ -323,6 +323,156 @@ class NeighborIndex:
 
         return out_dist, out_idx
 
+    def query_radius(
+        self,
+        Q: np.ndarray,
+        radius: float,
+        *,
+        return_distance: bool = True,
+        exclude_self: bool = False,
+        sort_results: bool = False,
+        query_block_size: int | None = None,
+        train_block_size: int | None = None,
+    ) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
+        """Return every training row within ``radius`` of each row of ``Q``.
+
+        Parameters
+        ----------
+        Q : ndarray of shape (n_queries, n_features)
+            Query rows, float32.
+        radius : float
+            Inclusive Euclidean radius. Negative values are rejected.
+        return_distance : bool, default=True
+            Whether to return Euclidean distances alongside indices.
+        exclude_self : bool, default=False
+            Drop each query's own training index. Requires ``len(Q) == n_samples``.
+        sort_results : bool, default=False
+            If True, each row is ordered by ``(distance, index)``. If False the
+            order is still deterministic — the same total order — because an
+            unspecified order would make block size and device visible in the
+            output. scikit-learn does not define an order unless this flag is
+            set; we always have one.
+
+        Returns
+        -------
+        neigh_dist : ndarray of shape (n_queries,) of 1-d arrays
+            Euclidean distances, float64. Only when ``return_distance=True``.
+        neigh_ind : ndarray of shape (n_queries,) of 1-d arrays
+            Training-row indices, int64.
+
+        Notes
+        -----
+        Membership is decided on *refined* squared distances, not on the Gram
+        identity used to gather candidates. The Gram pass uses a small margin so
+        a neighbor sitting on the radius is not lost to float32 cancellation;
+        the refinement pass then keeps ``√Σ(t − q)² ≤ radius``.
+        """
+        import mlx.core as mx
+
+        self._ensure_device()
+        n_query = int(Q.shape[0])
+        n_train = self.n_samples
+        radius = float(radius)
+        if radius < 0:
+            raise ValueError(f"radius must be non-negative, got {radius}")
+
+        if exclude_self and n_query != n_train:
+            raise ValueError(
+                "exclude_self requires the query matrix to be the training matrix: "
+                f"got {n_query} query rows and {n_train} training rows."
+            )
+
+        if n_query == 0:
+            empty_ind = np.empty(0, dtype=object)
+            if return_distance:
+                return np.empty(0, dtype=object), empty_ind
+            return empty_ind
+
+        radius_sq = radius * radius
+        # Absolute + relative margin on the Gram identity so a true neighbor at
+        # the radius is still a candidate for refinement. 4 ulp of the squared
+        # radius is the float32 spacing; the extra 1e-4 covers residual
+        # cancellation after centering.
+        gram_margin = max(1e-4, float(np.finfo(np.float32).eps) * max(radius_sq, 1.0) * 8.0)
+        candidate_sq = radius_sq + gram_margin
+
+        plan = resolve_blocks(
+            n_query,
+            n_train,
+            backend=self.backend,
+            k_search=1,
+            query_block_size=query_block_size,
+            train_block_size=train_block_size,
+        )
+
+        row_parts: list[np.ndarray] = []
+        col_parts: list[np.ndarray] = []
+        dist_parts: list[np.ndarray] = []
+
+        with use_device("gpu" if self.backend == "mlx" else "cpu"):
+            Qc = mx.array(
+                np.ascontiguousarray(Q - self.center, dtype=NUMPY_FLOAT), dtype=mx.float32
+            )
+            q_sq_all = mx.sum(Qc * Qc, axis=1)
+
+            for q_start in range(0, n_query, plan.query_rows):
+                q_end = min(q_start + plan.query_rows, n_query)
+                block = Qc[q_start:q_end]
+                q_sq = q_sq_all[q_start:q_end, None]
+
+                for t_start in range(0, n_train, plan.train_cols):
+                    t_end = min(t_start + plan.train_cols, n_train)
+                    tile = (
+                        q_sq
+                        + self._train_sq[t_start:t_end][None, :]
+                        - 2.0 * (block @ self._train_t[:, t_start:t_end])
+                    )
+                    tile = mx.maximum(tile, 0.0)
+                    cand = tile <= candidate_sq
+                    mx.eval(cand)
+                    cand_np = np.asarray(cand)
+                    local_rows, local_cols = np.nonzero(cand_np)
+                    if local_rows.size == 0:
+                        continue
+
+                    global_cols = local_cols.astype(INDEX_DTYPE, copy=False) + np.int64(t_start)
+                    global_rows = local_rows.astype(INDEX_DTYPE, copy=False) + np.int64(q_start)
+                    if exclude_self:
+                        keep = global_cols != global_rows
+                        local_rows = local_rows[keep]
+                        global_cols = global_cols[keep]
+                        global_rows = global_rows[keep]
+                        if local_rows.size == 0:
+                            continue
+
+                    # Direct Σ(t − q)² on the surviving (query, train) pairs.
+                    query_pts = mx.take(block, mx.array(local_rows.astype(np.int32)), axis=0)
+                    train_pts = mx.take(
+                        self._train, mx.array(global_cols.astype(np.int32)), axis=0
+                    )
+                    diff = train_pts - query_pts
+                    refined = mx.sum(diff * diff, axis=1)
+                    mx.eval(refined)
+                    refined_np = np.asarray(refined, dtype=np.float64)
+                    inside = refined_np <= radius_sq
+                    if not np.any(inside):
+                        continue
+
+                    row_parts.append(global_rows[inside])
+                    col_parts.append(global_cols[inside])
+                    dist_parts.append(np.sqrt(np.maximum(refined_np[inside], 0.0)))
+
+        # Always apply a total order so tile sizes cannot leak into the output.
+        # sort_results=False is still deterministic; scikit-learn does not
+        # define an order unless the flag is set.
+        sort_results = True
+        neigh_ind, neigh_dist = _pack_radius_results(
+            n_query, row_parts, col_parts, dist_parts, sort_results=sort_results
+        )
+        if return_distance:
+            return neigh_dist, neigh_ind
+        return neigh_ind
+
     # ----------------------------------------------------------------- internals
 
     def _block_candidates(self, mx, block, q_sq, n_train: int, k_carry: int, train_cols: int):
@@ -403,6 +553,51 @@ def _drop_self(idx: np.ndarray, dist: np.ndarray, *, offset: int):
     out_idx = idx[mask].reshape(n_rows, keep)
     out_dist = dist[mask].reshape(n_rows, keep)
     return out_idx, out_dist
+
+
+def _pack_radius_results(
+    n_query: int,
+    row_parts: list[np.ndarray],
+    col_parts: list[np.ndarray],
+    dist_parts: list[np.ndarray],
+    *,
+    sort_results: bool,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Assemble ragged ``(n_query,)`` object arrays from concatenated triples.
+
+    Rows are ordered by ``(distance, index)`` when ``sort_results`` is true —
+    a total order, so the result does not depend on tile sizes.
+    """
+    neigh_ind = np.empty(n_query, dtype=object)
+    neigh_dist = np.empty(n_query, dtype=object)
+    empty_idx = np.empty(0, dtype=INDEX_DTYPE)
+    empty_dist = np.empty(0, dtype=np.float64)
+
+    if not row_parts:
+        for i in range(n_query):
+            neigh_ind[i] = empty_idx
+            neigh_dist[i] = empty_dist
+        return neigh_ind, neigh_dist
+
+    rows = np.concatenate(row_parts)
+    cols = np.concatenate(col_parts).astype(INDEX_DTYPE, copy=False)
+    dists = np.concatenate(dist_parts).astype(np.float64, copy=False)
+
+    if sort_results:
+        order = np.lexsort((cols, dists, rows))
+    else:
+        order = np.argsort(rows, kind="mergesort")
+    rows = rows[order]
+    cols = cols[order]
+    dists = dists[order]
+
+    counts = np.bincount(rows, minlength=n_query)
+    starts = np.cumsum(np.concatenate(([0], counts)))
+    for i in range(n_query):
+        sl = slice(int(starts[i]), int(starts[i + 1]))
+        neigh_ind[i] = cols[sl]
+        neigh_dist[i] = dists[sl]
+    return neigh_ind, neigh_dist
 
 
 def build_index(X: np.ndarray, *, backend: str) -> NeighborIndex:

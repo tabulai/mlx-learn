@@ -26,12 +26,16 @@ from ..linear_model import LogisticRegression as _LogisticRegression
 from ..neighbors import KNeighborsClassifier as _KNeighborsClassifier
 from ..neighbors import KNeighborsRegressor as _KNeighborsRegressor
 from ..neighbors import NearestNeighbors as _NearestNeighbors
+from ..neighbors import RadiusNeighborsClassifier as _RadiusNeighborsClassifier
+from ..neighbors import RadiusNeighborsRegressor as _RadiusNeighborsRegressor
 from ..svm import SVC as _SVC
 
 __all__ = [
     "NearestNeighbors",
     "KNeighborsClassifier",
     "KNeighborsRegressor",
+    "RadiusNeighborsClassifier",
+    "RadiusNeighborsRegressor",
     "LogisticRegression",
     "SVC",
 ]
@@ -73,6 +77,14 @@ class KNeighborsRegressor(_KNeighborsRegressor):
     _mlxlearn_allow_fallback = True
 
 
+class RadiusNeighborsClassifier(_RadiusNeighborsClassifier):
+    _mlxlearn_allow_fallback = True
+
+
+class RadiusNeighborsRegressor(_RadiusNeighborsRegressor):
+    _mlxlearn_allow_fallback = True
+
+
 class LogisticRegression(_LogisticRegression):
     _mlxlearn_allow_fallback = True
 
@@ -85,6 +97,8 @@ for _cls, _name in (
     (NearestNeighbors, "NearestNeighbors"),
     (KNeighborsClassifier, "KNeighborsClassifier"),
     (KNeighborsRegressor, "KNeighborsRegressor"),
+    (RadiusNeighborsClassifier, "RadiusNeighborsClassifier"),
+    (RadiusNeighborsRegressor, "RadiusNeighborsRegressor"),
     (LogisticRegression, "LogisticRegression"),
     (SVC, "SVC"),
 ):

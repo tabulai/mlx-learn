@@ -60,15 +60,16 @@ Development is on MLX 0.31.2.
 
 | Estimator | Since | Accelerated path | Falls back for |
 |---|---|---|---|
-| `neighbors.NearestNeighbors` | 0.1.0 | exact brute-force Euclidean | non-Euclidean metrics, `kd_tree`/`ball_tree`, `metric_params`, sparse |
+| `neighbors.NearestNeighbors` | 0.1.0 | exact brute-force Euclidean, including `radius_neighbors` | non-Euclidean metrics, `kd_tree`/`ball_tree`, `metric_params`, sparse |
 | `neighbors.KNeighborsClassifier` | 0.1.0 | as above | as above, plus callable `weights`, multi-output `y` |
 | `neighbors.KNeighborsRegressor` | 0.1.0 | as above | as above |
+| `neighbors.RadiusNeighborsClassifier` | 0.1.0 | exact brute-force Euclidean radius search | as KNN, plus `outlier_label` handling on empty neighborhoods |
+| `neighbors.RadiusNeighborsRegressor` | 0.1.0 | as above | as KNN; empty neighborhoods predict `NaN` |
 | `linear_model.LogisticRegression` | 0.1.0 | L-BFGS, L2 / unpenalized | `l1`/`elasticnet`, non-`lbfgs` solvers, `dual=True`, sparse, `warm_start` |
 | `svm.SVC` | 0.1.0 | exact SMO, linear/poly/rbf/sigmoid | `kernel="precomputed"`, callable kernels, `probability=True`, sparse |
 
-`radius_neighbors` and `radius_neighbors_graph` are inherited from scikit-learn and run
-unaccelerated on the CPU in float32. Correct, but not fast — stated here rather than left
-for a profiler to reveal.
+`radius_neighbors` and `radius_neighbors_graph` run on the same blocked MLX kernel as
+`kneighbors`. Neighborhoods are ragged object arrays of 1-d rows, matching scikit-learn.
 
 ### Not shipped, and why
 
