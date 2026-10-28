@@ -117,7 +117,8 @@ def main():
     parser.add_argument("--output", type=Path, default=Path("bench/offset-baseline-probe.json"))
     args = parser.parse_args()
     tolerance = 1e-4
-    original_threshold = estimator._CENTERED_INPUT_MIN_ELEMENTS
+    # Current estimators prepare every GPU input; only frozen references keep a threshold.
+    original_threshold = getattr(estimator, "_CENTERED_INPUT_MIN_ELEMENTS", None)
     payload = {
         "parameters": {"C": 1.0, "tol": tolerance, "max_iter": 200, "fit_intercept": True},
         "reference_archive": str(args.reference_archive.resolve()),
@@ -152,7 +153,8 @@ def main():
                             reference.estimator, reference.solver, reference.native
                         )
                     else:
-                        estimator._CENTERED_INPUT_MIN_ELEMENTS = original_threshold if threshold is None else threshold
+                        if original_threshold is not None:
+                            estimator._CENTERED_INPUT_MIN_ELEMENTS = original_threshold if threshold is None else threshold
                         cls = SkLogisticRegression if variant == "sklearn" else LogisticRegression
                         settings, tuning = config_context, tuning_context
                         observed = observed_implementation(estimator, logistic, native_logistic)
@@ -185,7 +187,8 @@ def main():
                                  "gradient": scores[v]["original_coordinate_gradient_max_abs"],
                                  "objective": scores[v]["objective_float64"]} for v in variants_to_names(variants)}, flush=True)
     finally:
-        estimator._CENTERED_INPUT_MIN_ELEMENTS = original_threshold
+        if original_threshold is not None:
+            estimator._CENTERED_INPUT_MIN_ELEMENTS = original_threshold
     return 0
 
 

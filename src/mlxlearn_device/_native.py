@@ -43,6 +43,11 @@ prepare_centered = _load(
     "mlxlearn_device_input_kernels", _ROOT / "_kernels" / "logistic_input.py"
 ).prepare_centered
 source_for = _load_source_generator()
+# The launch geometry must match the sklearn path exactly: the same Metal
+# source is specialized by both. The module has no imports, so load it by path.
+speculative_geometry = _load(
+    "mlxlearn_device_native_geometry", _SOLVERS / "native_geometry.py"
+).speculative_geometry
 _extension_path = _SOLVERS / "_metal_loop.abi3.so"
 if not _extension_path.is_file():
     metal_loop = None

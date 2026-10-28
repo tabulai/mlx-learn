@@ -8,6 +8,42 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- The native binary logistic step now runs one fused line-search pass for
+  every feature count. The narrow line-search kernel and its unconditional
+  backward pass are gone; designs of at most 128 features use two new
+  kernels that batch four rows per SIMD group (eight lanes per row at up to
+  32 features), and one shared geometry table serves the MLX step, the
+  native command loop and the device bridge. Iteration counts, objective
+  gaps and prediction agreement in the independent accuracy audit are
+  unchanged; see the [report](docs/fused-narrow-kernel-2026-10-27.md).
+- Every GPU logistic fit now prepares its input through the fused
+  centering pass, including fits without an intercept, fewer than 512
+  features or fewer than four million elements. The separate upload,
+  centering and initialization kernels of the older route are deleted. The
+  owned copy and the initial statistics are bitwise what those kernels
+  produced; the per-column mean now comes from the statistics kernel of
+  the former wide route, which agrees with the deleted centering kernel to
+  one float32 ulp, so intercept fits of fewer than 512 features or four
+  million elements can move at float32 rounding level with the same
+  iteration counts. Intercept fits of 512 to 4,096 features below four
+  million elements (reachable only with `force_backend="mlx"`) now take the
+  native command loop, the scale-skew threshold and the optional Hessian
+  sketch like larger ones. The borrowed input stays owned until the fit has
+  drained the device, and a fit without an intercept on float64 input now
+  holds one owned float32 copy of the design during `fit` where it used to
+  solve on a view of its private conversion. With both changes the
+  500,000 × 32 and 500,000 × 128 fits measure 6.30 ms and 13.20 ms (11.8×
+  and 5.8× stock sklearn, down from 13.86 ms and 23.96 ms) on the measured
+  M4 Max.
+- The generic L-BFGS solvers (multinomial, CPU and generic weighted fits)
+  no longer stop at the first failed line search along a quasi-Newton
+  direction: they clear the curvature history and retry once along the
+  gradient, and only a failure there ends the run with
+  `line-search-failure`. A stale history on a badly scaled problem could
+  otherwise end a fit at the first direction along which the float32
+  objective shows no decrease; runs that never fail a search are unchanged,
+  and a fit that has reached its float32 objective floor still stops with
+  the same reason.
 - Stabilized small Metal logistic loss differences against fast-math
   reassociation so line searches retain meaningful decreases across GPU and
   macOS versions. Weighted native fits use a small internal stopping reserve

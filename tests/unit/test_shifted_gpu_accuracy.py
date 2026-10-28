@@ -13,7 +13,6 @@ from mlxlearn._common.config import config_context, tuning_context
 from mlxlearn._common.device import gpu_available
 from mlxlearn._solvers import native_command
 from mlxlearn.linear_model import LogisticRegression
-from mlxlearn.linear_model import _logistic as estimator_module
 
 pytestmark = pytest.mark.gpu
 
@@ -29,7 +28,6 @@ def production_data():
     labels = {2: (score > 0).astype(int), 3: np.digitize(score, [-0.5, 0.5])}
     X += np.float32(1000.0)
     weights = rng.uniform(0.25, 3.0, n)
-    assert X.size >= estimator_module._CENTERED_INPUT_MIN_ELEMENTS
     return X, labels, weights
 
 

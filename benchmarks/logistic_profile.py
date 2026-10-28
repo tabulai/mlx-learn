@@ -77,6 +77,7 @@ def instrument(estimator, solver, native):
         for name, key in (
             ("_prepare_logistic_input", "conversion_and_range_check_ms"),
             ("validate_data", "public_validation_ms"),
+            # Only frozen reference packages still define this stage.
             ("_upload_logistic_input", "owned_upload_and_finite_check_ms"),
             ("solve_logistic", "solver_inclusive_ms"),
         ):

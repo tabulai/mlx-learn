@@ -13,7 +13,7 @@ from sklearn import config_context as sklearn_config_context
 
 from mlxlearn._common.config import tuning_context
 from mlxlearn._common.device import gpu_available
-from mlxlearn._kernels.validation import copy_and_check
+from mlxlearn._kernels.logistic_input import prepare_centered
 from mlxlearn.exceptions import BackendExecutionError, UnsupportedInputError
 from mlxlearn.linear_model import LogisticRegression
 from mlxlearn.linear_model import _logistic as estimator_module
@@ -78,24 +78,37 @@ def test_negative_sample_weight_remains_a_capability_error(route):
 
 
 @pytest.mark.parametrize("route", ["forced", "default"])
+@pytest.mark.parametrize("fit_intercept", [True, False])
 @pytest.mark.parametrize("dtype", [np.float32, np.float64])
-def test_uploaded_input_is_private_and_fit_retains_no_input_alias(monkeypatch, route, dtype):
+def test_prepared_input_is_private_and_fit_retains_no_input_alias(monkeypatch, route, dtype, fit_intercept):
+    """Every GPU fit owns one prepared copy: centered with an intercept, raw without."""
     X, y = _data(dtype)
     original_X = X.copy()
-    original_upload = estimator_module._upload_logistic_input
+    original = estimator_module._prepare_centered_logistic_input
     observations = []
 
-    def observe_upload(array, *, private, verify_finite):
-        uploaded, finite = original_upload(array, private=private, verify_finite=verify_finite)
-        mx.eval(uploaded)
-        observations.append((private, verify_finite, np.shares_memory(np.asarray(uploaded), X)))
-        return uploaded, finite
+    @contextlib.contextmanager
+    def observe(array, labels, weights, *, native, center):
+        with original(array, labels, weights, native=native, center=center) as prepared:
+            owned, shift, finite, parts = prepared
+            observations.append((
+                finite, native, center, shift is None, parts.shape,
+                np.shares_memory(np.asarray(owned), X),
+            ))
+            if center:
+                np.testing.assert_array_equal(np.asarray(owned), array - np.asarray(shift))
+            else:
+                np.testing.assert_array_equal(np.asarray(owned), array)
+            yield prepared
 
-    monkeypatch.setattr(estimator_module, "_upload_logistic_input", observe_upload)
+    monkeypatch.setattr(estimator_module, "_prepare_centered_logistic_input", observe)
     with _gpu_route(route):
-        model = LogisticRegression(max_iter=200).fit(X, y)
+        model = LogisticRegression(max_iter=200, fit_intercept=fit_intercept).fit(X, y)
     assert model.execution_backend_ == "mlx"
-    assert observations == [(dtype == np.float64, dtype == np.float32, False)]
+    blocks = (len(X) + 255) // 256
+    assert observations == [
+        (True, True, fit_intercept, not fit_intercept, (2, blocks, X.shape[1] + int(fit_intercept)), False)
+    ]
     np.testing.assert_array_equal(X, original_X)
     query = original_X[:20].copy()
     expected = model.predict_proba(query)
@@ -103,24 +116,26 @@ def test_uploaded_input_is_private_and_fit_retains_no_input_alias(monkeypatch, r
     np.testing.assert_array_equal(model.predict_proba(query), expected)
 
 
-def test_private_upload_buffer_lifetime_ends_after_fit(monkeypatch):
+def test_private_converted_input_is_released_after_fit(monkeypatch):
     X, y = _data(np.float64)
-    original_upload = estimator_module._upload_logistic_input
+    original = estimator_module._prepare_centered_logistic_input
     private_arrays = []
 
-    def observe_upload(array, *, private, verify_finite):
-        assert private
+    @contextlib.contextmanager
+    def observe(array, *args, **kwargs):
+        assert array.dtype == np.float32 and not np.shares_memory(array, X)
         private_arrays.append(weakref.ref(array))
-        return original_upload(array, private=private, verify_finite=verify_finite)
+        with original(array, *args, **kwargs) as prepared:
+            yield prepared
 
-    monkeypatch.setattr(estimator_module, "_upload_logistic_input", observe_upload)
+    monkeypatch.setattr(estimator_module, "_prepare_centered_logistic_input", observe)
     with _gpu_route("forced"):
         model = LogisticRegression(max_iter=200).fit(X, y)
     mx.synchronize()
     gc.collect()
     assert private_arrays
     assert all(reference() is None for reference in private_arrays)
-    # The fitted model remains usable after its transient upload owner is gone.
+    # The fitted model remains usable after its transient input owner is gone.
     assert np.isfinite(model.predict_proba(X[:10])).all()
 
 
@@ -183,25 +198,35 @@ def test_noncontiguous_inputs_match_the_same_contiguous_values(dtype, layout):
     np.testing.assert_array_equal(actual.intercept_, reference.intercept_)
 
 
+@pytest.mark.parametrize("labels", [False, True])
 @pytest.mark.parametrize("size", [1, 31, 32, 255, 256, 257, 1023, 1024, 1025, 2047, 2048, 2049])
-def test_gpu_copy_preserves_bits_and_owns_storage_at_tile_boundaries(size):
+def test_gpu_copy_preserves_bits_and_owns_storage_at_tile_boundaries(size, labels):
+    """Both uncentered copy kernels preserve every bit, including a negative zero."""
     X = np.arange(size, dtype=np.float32).reshape(1, size)
     X[0, 0] = -0.0
     expected_bits = X.view(np.uint32).copy()
     borrowed = mx.asarray(X) if hasattr(mx, "asarray") else mx.array(X)
-    copied, finite = copy_and_check(borrowed)
-    assert finite
+    y = mx.zeros(1) if labels else None
+    copied, center, finite, parts = prepare_centered(borrowed, y, center=False)
+    mx.eval(copied, finite, *([parts] if labels else []))
+    assert bool(finite)
+    assert center is None and (parts is not None) is labels
     assert not np.shares_memory(np.asarray(copied), X)
     X.fill(-1)
     np.testing.assert_array_equal(np.asarray(copied).view(np.uint32), expected_bits)
 
 
+@pytest.mark.parametrize("center", [False, True])
+@pytest.mark.parametrize("labels", [False, True])
 @pytest.mark.parametrize("size", [257, 1025, 2049])
 @pytest.mark.parametrize("value", [np.nan, np.inf, -np.inf])
-def test_gpu_copy_checks_the_last_value_of_an_incomplete_tile(size, value):
-    X = np.zeros((1, size), dtype=np.float32)
-    X[0, -1] = value
+def test_gpu_copy_checks_the_last_value_of_an_incomplete_tile(size, value, labels, center):
+    X = np.zeros((3, size), dtype=np.float32)
+    X[-1, -1] = value
     borrowed = mx.asarray(X) if hasattr(mx, "asarray") else mx.array(X)
-    copied, finite = copy_and_check(borrowed)
-    assert not finite
-    np.testing.assert_array_equal(np.asarray(copied).view(np.uint32), X.view(np.uint32))
+    y = mx.zeros(3) if labels else None
+    copied, shift, finite, parts = prepare_centered(borrowed, y, center=center)
+    mx.eval(copied, finite)
+    assert not bool(finite)
+    if not center:
+        np.testing.assert_array_equal(np.asarray(copied).view(np.uint32), X.view(np.uint32))

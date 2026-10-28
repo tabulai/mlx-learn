@@ -72,7 +72,7 @@ def test_matrix_subclass_is_rejected_before_upload(monkeypatch, dtype):
     def unexpected_upload(*args, **kwargs):
         pytest.fail("matrix validation must reject the input before GPU upload")
 
-    monkeypatch.setattr(estimator_module, "_upload_logistic_input", unexpected_upload)
+    monkeypatch.setattr(estimator_module, "_prepare_centered_logistic_input", unexpected_upload)
     assert estimator_module._prepare_logistic_input(X) is X
     with tuning_context(force_backend="mlx"), pytest.raises(TypeError, match="np.matrix"):
         LogisticRegression().fit(X, y)

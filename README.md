@@ -133,12 +133,14 @@ the public API.
 
 ## Performance
 
-The latest [rerun of the original three tall datasets](docs/tall-logistic-recheck-2026-10-27.md)
-measures complete float32 GPU fits at 13.86 ms (500,000 × 32), 23.96 ms
-(500,000 × 128), and 13.19 ms (60,000 × 1,024): 5.24×, 3.05× and 2.64×
+The latest [rerun of the original three tall datasets](docs/fused-narrow-kernel-2026-10-27.md)
+measures complete float32 GPU fits at 6.30 ms (500,000 × 32), 13.20 ms
+(500,000 × 128), and 13.01 ms (60,000 × 1,024): 11.8×, 5.8× and 2.7×
 stock sklearn on the measured M4 Max. Every timed fit passed independent
-accuracy checks; the full suite passed 1,118 tests. The report includes the
-exact settings, variability and limits of the historical comparison.
+accuracy checks. The two narrow cases gained from one fused line-search pass
+and one input pipeline for every feature count; the [earlier recheck](docs/tall-logistic-recheck-2026-10-27.md)
+records the previous timings and the exact settings, variability and limits
+of the historical comparison.
 
 The development version uses native Metal C++ kernels for binary GPU logistic
 regression, including optimizer history, batched line search, and matrix reductions.

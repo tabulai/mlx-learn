@@ -58,7 +58,6 @@ _SUPPORTED_PENALTIES = ("l2", None)
 #: value it replaced; both mean "binary problems get one weight vector, everything
 #: else gets the multinomial loss", which is what this implementation does.
 _SUPPORTED_MULTI_CLASS = ("deprecated", "auto")
-_CENTERED_INPUT_MIN_ELEMENTS = 4 * 1024 * 1024
 
 
 class MLXLogisticMixin(BackendMixin):
@@ -390,26 +389,18 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
         device_input = center = initial_parts = None
         with mlx_guard(type(self).__name__, "fit"), ExitStack() as input_lifetime:
             if backend == "mlx" and (finite_checked or gpu_validation):
-                if (
-                    config.fit_intercept
-                    and X_checked.size >= _CENTERED_INPUT_MIN_ELEMENTS
-                    and 512 <= X_checked.shape[1] <= 4096
-                ):
-                    # Read caller storage only while this context owns the
-                    # borrowed wrapper. The centered result is independent, and
-                    # initialization shares its required write when supported.
-                    targets = 1 if n_classes == 2 else n_classes
-                    device_input, center, finite, initial_parts = input_lifetime.enter_context(
-                        _prepare_centered_logistic_input(
-                            X_checked, y_encoded, weights,
-                            native=_use_native_solver(config, targets, X_checked.shape[1]),
-                        )
+                # Read caller storage only while this context owns the borrowed
+                # wrapper. The owned copy is independent, centered when an
+                # intercept can absorb the shift, and the binary solver's
+                # initialization shares its required write.
+                targets = 1 if n_classes == 2 else n_classes
+                device_input, center, finite, initial_parts = input_lifetime.enter_context(
+                    _prepare_centered_logistic_input(
+                        X_checked, y_encoded, weights,
+                        native=_use_native_solver(config, targets, X_checked.shape[1]),
+                        center=config.fit_intercept,
                     )
-                else:
-                    private_input = prepared_X is not X and finite_checked
-                    device_input, finite = _upload_logistic_input(
-                        X_checked, private=private_input, verify_finite=not finite_checked
-                    )
+                )
                 if not finite:
                     # mlx_guard passes normal validation errors through intact.
                     check_array(X_checked, dtype=NUMPY_FLOAT, input_name="X", estimator=self)
@@ -599,41 +590,33 @@ def _prepare_logistic_input(X, *, return_finite=False):
     return (X, False) if return_finite else X
 
 
-def _upload_logistic_input(X, *, private, verify_finite):
-    import mlx.core as mx
-
-    with use_device("gpu"):
-        # Older supported MLX versions may not expose asarray. Their explicit
-        # copy retains the same ownership and numerical behavior.
-        if hasattr(mx, "asarray"):
-            array = mx.asarray(X)
-            if not private:
-                from .._kernels.validation import copy_and_check
-
-                return copy_and_check(array)
-        else:
-            array = mx.array(X)
-        finite = bool(mx.all(mx.isfinite(array))) if verify_finite else True
-    return array, finite
-
-
 @contextmanager
-def _prepare_centered_logistic_input(X, y, weights, *, native):
-    """Keep borrowed storage alive until all work using the owned result ends."""
+def _prepare_centered_logistic_input(X, y, weights, *, native, center=True):
+    """Own a validated device copy of ``X`` for the duration of the fit.
+
+    With ``center`` the copy is shifted by the per-column mean, which is
+    yielded so the fitted intercept can be restored; without it the copy
+    holds the original values and the yielded center is ``None``. Keep
+    borrowed storage alive until all work using the owned result ends.
+    """
     import mlx.core as mx
 
     from .._kernels.logistic_input import prepare_centered
 
     with use_device("gpu"):
+        # Older supported MLX versions may not expose asarray. Their explicit
+        # copy retains the same ownership and numerical behavior.
         borrowed = mx.asarray(X) if hasattr(mx, "asarray") else mx.array(X)
         labels = mx.array(y, dtype=mx.float32) if native else None
         sample_weights = (
             mx.array(weights, dtype=mx.float32) if native and weights is not None else None
         )
-        owned, center, finite, parts = prepare_centered(borrowed, labels, sample_weights)
+        owned, shift, finite, parts = prepare_centered(
+            borrowed, labels, sample_weights, center=center
+        )
         try:
-            mx.eval(owned, center, finite, parts)
-            yield owned, center, bool(finite), parts
+            mx.eval(owned, finite, *(value for value in (shift, parts) if value is not None))
+            yield owned, shift, bool(finite), parts
         finally:
             # Evaluation can finish before worker-side graph cleanup. Drain it
             # while the NumPy-backed wrapper is still owned on this thread, so

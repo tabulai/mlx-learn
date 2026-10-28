@@ -138,18 +138,35 @@ def minimize(
             direction, gtd = -grad, -gg
         t_init = 1.0 if s_history or g_l1 <= 0.0 else min(1.0, 1.0 / g_l1)
 
-        def probe(t, _x=x, _d=direction):
-            candidate = _trial(_x, _d, mx.array(t, dtype=_x.dtype))
-            if directional is not None:
-                value, gradient, slope = directional(candidate, _d)
-            else:
-                value, gradient = fun(candidate)
-                slope = float(_slope(gradient, _d))
-            return candidate, value, gradient, slope
+        def make_probe(_d, _x=x):
+            def probe(t):
+                candidate = _trial(_x, _d, mx.array(t, dtype=_x.dtype))
+                if directional is not None:
+                    value, gradient, slope = directional(candidate, _d)
+                else:
+                    value, gradient = fun(candidate)
+                    slope = float(_slope(gradient, _d))
+                return candidate, value, gradient, slope
 
-        search = _LineSearch(probe, objective, float(gtd), config)
+            return probe
+
+        search = _LineSearch(make_probe(direction), objective, float(gtd), config)
         accepted, _, x_new, f_new, g_new, _ = search.run(float(t_init))
         n_fev += search.n_fev
+        if (not accepted or not f_new < objective) and s_history:
+            # A failed search along a quasi-Newton direction usually indicts a
+            # stale history rather than the point. Retry once along the
+            # gradient from a cleared history; only a failure there says the
+            # float32 objective has stopped decreasing along any direction.
+            s_history.clear()
+            y_history.clear()
+            ys_history.clear()
+            yy_history.clear()
+            direction, gtd = -grad, -gg
+            t_init = min(1.0, 1.0 / g_l1) if g_l1 > 0.0 else 1.0
+            search = _LineSearch(make_probe(direction), objective, float(gtd), config)
+            accepted, _, x_new, f_new, g_new, _ = search.run(float(t_init))
+            n_fev += search.n_fev
         if not accepted or not f_new < objective:
             stop_reason = "line-search-failure"
             break

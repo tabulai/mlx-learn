@@ -10,7 +10,7 @@ from mlxlearn._common.device import gpu_available, use_device
 from mlxlearn._kernels.logistic_input import prepare_centered
 from mlxlearn._solvers.lbfgs import LBFGSConfig
 from mlxlearn._solvers.logistic import _native_binary_objective
-from mlxlearn._solvers.native_logistic import _initial, initial_from_parts, minimize_binary
+from mlxlearn._solvers.native_logistic import initial, initial_from_parts, minimize_binary
 
 pytestmark = pytest.mark.gpu
 
@@ -23,39 +23,71 @@ def _gpu_stream():
         yield
 
 
+def _reference_initial(design, y, weights, denominator, intercept):
+    """Float64 initial gradient and mean curvature diagonal of the solver's metric."""
+    design = np.asarray(design, dtype=np.float64)
+    residual = (0.5 - np.asarray(y, dtype=np.float64)) * weights
+    gradient = residual @ design / denominator
+    diagonal = 0.25 * (weights @ (design * design)) / denominator
+    if intercept:
+        gradient = np.append(gradient, residual.sum() / denominator)
+        diagonal = np.append(diagonal, 0.25 * weights.sum() / denominator)
+    return gradient, diagonal.mean()
+
+
 @pytest.mark.parametrize("width", [1, 31, 32, 33, 1024])
 @pytest.mark.parametrize("weighted", [False, True])
-def test_centered_initial_parts_match_native_initial(width, weighted):
+@pytest.mark.parametrize("center", [True, False])
+def test_prepared_initial_parts_match_a_float64_reference(width, weighted, center):
     rng = np.random.default_rng(548)
     n = 259  # Tail rows and feature tiles must also be initialized.
     X = rng.normal(size=(n, width)).astype(np.float32)
-    X += np.linspace(-1e4, 1e4, width, dtype=np.float32)
+    X += np.linspace(-1e4, 1e4, width, dtype=np.float32) if center else np.float32(0.5)
     y = mx.array(rng.integers(0, 2, n).astype(np.float32))
     weights = np.geomspace(1e-3, 1e3, n).astype(np.float32)
     weights[::7] = 0
     sw = mx.array(weights) if weighted else None
-    owned, center, finite, parts = prepare_centered(mx.array(X), y, sw)
-    p, blocks = width + 1, 2
-    direct = _initial(
-        inputs=[owned, y, sw if weighted else mx.ones(n)],
-        template=[("N", n), ("D", width), ("P", p), ("B", blocks)],
-        grid=(((p + 31) // 32) * 128, blocks, 1),
-        threadgroup=(128, 1, 1),
-        output_shapes=[(2, blocks, p)],
-        output_dtypes=[mx.float32],
-    )[0]
-    mx.eval(owned, center, finite, parts, direct)
+    owned, shift, finite, parts = prepare_centered(mx.array(X), y, sw, center=center)
+    p = width + int(center)
+    mx.eval(owned, finite, parts, *([shift] if center else []))
     assert bool(finite)
-    np.testing.assert_array_equal(np.asarray(owned), X - np.asarray(center))
-    np.testing.assert_array_equal(np.asarray(parts), np.asarray(direct))
+    assert parts.shape == (2, 2, p)
+    if center:
+        np.testing.assert_array_equal(np.asarray(owned), X - np.asarray(shift))
+    else:
+        assert shift is None
+        np.testing.assert_array_equal(np.asarray(owned), X)
     # Verify independently, including the implicit intercept and zero weights.
-    reg = mx.zeros(p)
     denominator = float(weights.sum(dtype=np.float64)) if weighted else float(n)
-    gradient, _ = initial_from_parts(parts, reg, mx.array(denominator))
-    residual = (0.5 - np.asarray(y, dtype=np.float64)) * (weights if weighted else 1.0)
-    expected = residual @ np.asarray(owned, dtype=np.float64) / denominator
-    expected = np.append(expected, residual.sum() / denominator)
-    np.testing.assert_allclose(np.asarray(gradient), expected, rtol=3e-5, atol=2e-7)
+    gradient, metric = initial_from_parts(parts, mx.zeros(p), mx.array(denominator))
+    expected_gradient, expected_diagonal = _reference_initial(
+        owned, y, weights if weighted else np.ones(n), denominator, center
+    )
+    np.testing.assert_allclose(np.asarray(gradient), expected_gradient, rtol=3e-5, atol=2e-7)
+    np.testing.assert_allclose(1.0 / float(metric[0]), expected_diagonal, rtol=3e-5)
+
+
+@pytest.mark.parametrize("width", [7, 37, 519])
+def test_uncentered_parts_of_a_centered_design_match_centered_parts_bitwise(width):
+    """The solver-side fallback and the prepared route use one statistics kernel."""
+    rng = np.random.default_rng(91)
+    n = 300
+    X = (rng.normal(size=(n, width)) + 3.0).astype(np.float32)
+    y = mx.array(rng.integers(0, 2, n).astype(np.float32))
+    owned, shift, finite, parts = prepare_centered(mx.array(X), y)
+    mx.eval(owned, shift, finite, parts)
+    host_centered = mx.array(X - np.asarray(shift))
+    _, none, _, direct = prepare_centered(host_centered, y, center=False, intercept=True)
+    mx.eval(direct)
+    assert none is None
+    np.testing.assert_array_equal(np.asarray(owned), np.asarray(host_centered))
+    np.testing.assert_array_equal(np.asarray(parts), np.asarray(direct))
+    reg, denominator = mx.zeros(width + 1), mx.array(float(n))
+    expected = initial_from_parts(parts, reg, denominator)
+    fallback = initial(owned, y, mx.ones(n), width + 1, reg, denominator)
+    mx.eval(expected, fallback)
+    np.testing.assert_array_equal(np.asarray(fallback[0]), np.asarray(expected[0]))
+    np.testing.assert_array_equal(np.asarray(fallback[1]), np.asarray(expected[1]))
 
 
 @pytest.mark.parametrize("binary", [False, True])

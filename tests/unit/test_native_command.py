@@ -578,9 +578,7 @@ def test_native_chunk_boundaries_honor_iteration_budget_and_fallback(monkeypatch
     if not gpu_available() or native_command._metal_loop is None:
         pytest.skip("requires the native Metal extension and an MLX GPU")
     from mlxlearn.linear_model import LogisticRegression
-    from mlxlearn.linear_model import _logistic as estimator
 
-    monkeypatch.setattr(estimator, "_CENTERED_INPUT_MIN_ELEMENTS", 1)
     original = native_command._metal_loop
     observed = []
 
@@ -618,9 +616,7 @@ def test_native_weighted_progress_is_directly_certified(monkeypatch):
     if not gpu_available() or native_command._metal_loop is None:
         pytest.skip("requires the native Metal extension and an MLX GPU")
     from mlxlearn.linear_model import LogisticRegression
-    from mlxlearn.linear_model import _logistic as estimator
 
-    monkeypatch.setattr(estimator, "_CENTERED_INPUT_MIN_ELEMENTS", 1)
     extension = native_command._metal_loop
     observed = []
     direct = []
@@ -675,9 +671,7 @@ def test_native_initial_optimum_stops_without_a_step(monkeypatch, budget):
     if not gpu_available() or native_command._metal_loop is None:
         pytest.skip("requires the native Metal extension and an MLX GPU")
     from mlxlearn.linear_model import LogisticRegression
-    from mlxlearn.linear_model import _logistic as estimator
 
-    monkeypatch.setattr(estimator, "_CENTERED_INPUT_MIN_ELEMENTS", 1)
     extension = native_command._metal_loop
     observed = []
 
@@ -706,10 +700,8 @@ def test_real_loop_fit_tails_ownership_and_independent_gradient(monkeypatch, wei
     if native_command._metal_loop is None:
         pytest.skip("optional native command extension is not built")
     from mlxlearn.linear_model import LogisticRegression
-    from mlxlearn.linear_model import _logistic as estimator
 
     # Exercise prepared input and real command execution with tail blocks.
-    monkeypatch.setattr(estimator, "_CENTERED_INPUT_MIN_ELEMENTS", 1)
     seen = []
     original = native_command.run_native_loop
 

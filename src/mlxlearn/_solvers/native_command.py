@@ -19,6 +19,7 @@ import mlx.core as mx
 import numpy as np
 
 from .lbfgs import LBFGSState
+from .native_geometry import speculative_geometry
 
 
 @dataclass(frozen=True, slots=True)
@@ -227,11 +228,7 @@ def run_native_loop(
     )
     if center.shape != (d,):
         raise ValueError("convergence_center must match the feature dimension")
-    if n >= 16384:
-        groups, feature_groups, rows = (4, 1, 32) if d <= 1024 else (8, 4, 32 if d <= 2048 else 64)
-    else:
-        groups, feature_groups, rows = (2, 1, 16) if d <= 1024 else (8, 4, 8)
-    blocks = (n + (groups // feature_groups) * rows - 1) // ((groups // feature_groups) * rows)
+    groups, feature_groups, rows, blocks = speculative_geometry(n, d)
     # Older optional extensions hard-code a single SIMD group. Keep their
     # source specialization consistent until that extension is rebuilt.
     direction_threads = 256 if d >= 2048 and hasattr(_metal_loop, "run_cg") else 32

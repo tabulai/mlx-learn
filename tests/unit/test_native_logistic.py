@@ -11,11 +11,11 @@ from scipy.special import expit
 from sklearn.linear_model import LogisticRegression as SkLogisticRegression
 
 from mlxlearn._common.device import gpu_available, use_device
+from mlxlearn._kernels.logistic_input import prepare_centered
 from mlxlearn._solvers import native_logistic
 from mlxlearn._solvers.lbfgs import LBFGSConfig
 from mlxlearn._solvers.logistic import (
     _binary_objective,
-    _center_gpu,
     _native_binary_objective,
     reference_objective,
 )
@@ -298,9 +298,10 @@ def test_gpu_centering_preserves_extreme_finite_constant_columns(n_samples):
     X = np.tile(row, (n_samples, 1))
     Xm = mx.array(X)
 
-    centered, shift = _center_gpu(Xm)
-    mx.eval(centered, shift)
+    centered, shift, finite, _ = prepare_centered(Xm)
+    mx.eval(centered, shift, finite)
 
+    assert bool(finite)
     assert np.isfinite(np.asarray(centered)).all()
     assert np.isfinite(np.asarray(shift)).all()
     np.testing.assert_array_equal(np.asarray(centered), np.zeros_like(X))
@@ -315,7 +316,7 @@ def test_gpu_centering_matches_mean_and_applied_shift_without_mutation(offset):
     Xm = mx.array(X)
     expected_mean = X.mean(axis=0, dtype=np.float64)
 
-    centered, shift = _center_gpu(Xm)
+    centered, shift, _, _ = prepare_centered(Xm)
     mx.eval(centered, shift)
     actual_shift = np.asarray(shift)
     actual_centered = np.asarray(centered)

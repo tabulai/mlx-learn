@@ -428,15 +428,34 @@ def minimize(fun: ObjectiveGradient, x0: Any, config: LBFGSConfig) -> LBFGSState
             g_l1 = float(mx.sum(mx.abs(grad)))
             t_init = min(1.0, 1.0 / g_l1) if g_l1 > 0.0 else 1.0
 
-        def probe(t: float, _x=x, _d=direction):
-            x_t = _x + t * _d
-            f_t, g_t = fun(x_t)
-            mx.eval(g_t)
-            return x_t, f_t, g_t, _dot(g_t, _d)
+        def make_probe(_d, _x=x):
+            def probe(t: float):
+                x_t = _x + t * _d
+                f_t, g_t = fun(x_t)
+                mx.eval(g_t)
+                return x_t, f_t, g_t, _dot(g_t, _d)
 
-        search = _LineSearch(probe, objective, gtd, config)
+            return probe
+
+        search = _LineSearch(make_probe(direction), objective, gtd, config)
         accepted, step, x_new, f_new, g_new, _strong = search.run(t_init)
         n_fev += search.n_fev
+
+        if (not accepted or not (f_new < objective)) and s_history:
+            # A failed search along a quasi-Newton direction usually indicts a
+            # stale history rather than the point. Retry once along the
+            # gradient from a cleared history; only a failure there says the
+            # objective has stopped decreasing along any direction.
+            s_history.clear()
+            y_history.clear()
+            rho_history.clear()
+            direction = -grad
+            gtd = -_dot(grad, grad)
+            g_l1 = float(mx.sum(mx.abs(grad)))
+            t_init = min(1.0, 1.0 / g_l1) if g_l1 > 0.0 else 1.0
+            search = _LineSearch(make_probe(direction), objective, gtd, config)
+            accepted, step, x_new, f_new, g_new, _strong = search.run(t_init)
+            n_fev += search.n_fev
 
         if not accepted or not (f_new < objective):
             # A step that does not strictly lower the objective is a stall, not

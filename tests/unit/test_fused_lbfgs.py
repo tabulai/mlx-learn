@@ -124,6 +124,47 @@ def test_curvature_history_rollover_reaches_anisotropic_minimum():
     np.testing.assert_allclose(np.asarray(state.x), 0.0, atol=5e-5, rtol=0)
 
 
+@pytest.mark.parametrize("module_name", ["fused_lbfgs", "lbfgs"])
+def test_failed_quasi_newton_search_retries_along_the_gradient(monkeypatch, module_name):
+    """One failed search with a history clears it and retries steepest descent;
+    only a second failure at the same point ends the run."""
+    from mlxlearn._solvers import fused_lbfgs, lbfgs
+
+    module = fused_lbfgs if module_name == "fused_lbfgs" else lbfgs
+    original = lbfgs._LineSearch
+    searches = []
+
+    class FailingOnce(original):
+        def __init__(self, probe, f0, gtd0, config):
+            super().__init__(probe, f0, gtd0, config)
+            searches.append(gtd0)
+
+        def run(self, t_init):
+            # The fourth search of the run follows three accepted steps, so it
+            # carries a quasi-Newton direction; report it as a failure without
+            # evaluating, then let every later search behave normally.
+            if len(searches) == 4:
+                x_t, f_t, g_t, _ = self._probe(0.0)
+                return False, 0.0, x_t, f_t, g_t, False
+            return super().run(t_init)
+
+    monkeypatch.setattr(module, "_LineSearch", FailingOnce)
+    scale = mx.array([1.0, 25.0, 0.04, 9.0], dtype=mx.float32)
+
+    def objective(x):
+        return float(mx.sum(scale * x * x)), 2.0 * scale * x
+
+    config = LBFGSConfig(max_iter=60, tol=1e-5, history_size=3)
+    state = module.minimize(objective, mx.array([1.0, -1.0, 2.0, 0.5]), config)
+
+    assert state.converged and state.stop_reason == "gtol"
+    # Three accepted steps, one rejected search, its gradient retry, and the
+    # searches of the remaining accepted steps: exactly one extra construction.
+    assert len(searches) == state.n_iter + 1
+    assert searches[4] < 0.0  # the retry descends along the gradient
+    np.testing.assert_allclose(np.asarray(state.x), 0.0, atol=1e-3, rtol=0)
+
+
 def test_float32_function_plateau_is_not_reported_as_convergence():
     """Equal rounded losses cannot establish gradient convergence."""
 

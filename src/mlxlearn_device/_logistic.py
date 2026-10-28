@@ -17,7 +17,7 @@ from dataclasses import dataclass
 import mlx.core as mx
 
 from ._compensated import logits_parts, score_original
-from ._native import metal_loop, prepare_centered, source_for
+from ._native import metal_loop, prepare_centered, source_for, speculative_geometry
 from .hessian_sketch import build_sketch_history, initial_metric_from_parts
 
 __all__ = ["DeviceConvergenceWarning", "DeviceLogisticModel", "fit_logistic"]
@@ -121,15 +121,6 @@ def _weight_sum(sw: mx.array, n: int) -> float:
     partial = mx.sum(values.reshape((-1, 256)), axis=1)
     mx.eval(partial)
     return math.fsum(partial.tolist())
-
-
-def _geometry(n: int, d: int):
-    if n >= 16384:
-        groups, feature_groups, rows = (4, 1, 32) if d <= 1024 else (8, 4, 32 if d <= 2048 else 64)
-    else:
-        groups, feature_groups, rows = (2, 1, 16) if d <= 1024 else (8, 4, 8)
-    blocks = (n + (groups // feature_groups) * rows - 1) // ((groups // feature_groups) * rows)
-    return groups, feature_groups, rows, blocks
 
 
 
@@ -305,7 +296,7 @@ def fit_logistic(
         dependencies = (centered, y, sw, g, h0, reg)
         if seed_arrays is not None:
             mx.eval(*seed_arrays)
-        groups, feature_groups, rows, blocks = _geometry(n, d)
+        groups, feature_groups, rows, blocks = speculative_geometry(n, d)
         direction_threads = 256 if d >= 2048 and hasattr(metal_loop, "run_cg") else 32
         source = source_for(n, d, d + 1, 10, 8, blocks, groups, rows, feature_groups,
                             weighted, direction_threads)

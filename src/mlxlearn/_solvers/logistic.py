@@ -672,20 +672,6 @@ def _original_float64_certificate(X, y, sw, sw_sum, l2, coef, intercept, n_class
     return objective, norm
 
 
-@mx.compile
-def _center_gpu(X):
-    """A shifted, scaled mean avoids overflow and preserves constant columns.
-
-    Quarter-sized differences are bounded by half the float32 range. Scale
-    before summing, and restore the actual applied shift with the fitted bias.
-    """
-    anchor = X[0] * 0.25
-    correction = mx.sum((X * 0.25 - anchor) * (1.0 / X.shape[0]), axis=0)
-    bound = float(np.finfo(np.float32).max) * 0.25
-    center = mx.clip(anchor + correction, -bound, bound) * 4.0
-    return X - center, center
-
-
 def _multinomial_objective(
     mx, X, y_index, y_onehot, sw, sw_sum, l2, fit_intercept, n_features
 ):
@@ -860,21 +846,6 @@ def solve_logistic(
         ):
             raise ValueError("X_device must match X's shape and have float32 dtype")
         Xm = mx.array(X_host, dtype=mx.float32) if X_device is None else X_device
-        if X_center is not None:
-            if (
-                X_device is None
-                or not config.fit_intercept
-                or X_center.shape != (n_features,)
-                or X_center.dtype != mx.float32
-            ):
-                raise ValueError("X_center requires centered X_device and a float32 feature vector")
-            center = X_center
-        elif config.fit_intercept and n_samples > 0:
-            if device == "gpu":
-                Xm, center = _center_gpu(Xm)
-            else:
-                center = mx.array(X_host.mean(axis=0, dtype=np.float64).astype(NUMPY_FLOAT))
-                Xm = Xm - center
         swm = (
             None
             if sample_weight is None
@@ -885,6 +856,29 @@ def solve_logistic(
         if initial_parts is not None and not native:
             raise ValueError("initial_parts requires the native binary GPU solver")
         ym = mx.array(y_host, dtype=mx.float32) if n_targets == 1 else None
+        if X_center is not None:
+            if (
+                X_device is None
+                or not config.fit_intercept
+                or X_center.shape != (n_features,)
+                or X_center.dtype != mx.float32
+            ):
+                raise ValueError("X_center requires centered X_device and a float32 feature vector")
+            center = X_center
+        elif config.fit_intercept and n_samples > 0 and device == "gpu":
+            # The estimator normally prepares the design. A direct caller gets
+            # the same centered copy and, for the native binary solver, initial
+            # statistics from one pass over the design. Without an intercept
+            # the owned design is used as is; the native solver then collects
+            # its own statistics.
+            from .._kernels.logistic_input import prepare_centered
+
+            Xm, center, _, parts = prepare_centered(Xm, ym if native else None, swm)
+            if native and initial_parts is None:
+                initial_parts = parts
+        elif config.fit_intercept and n_samples > 0:
+            center = mx.array(X_host.mean(axis=0, dtype=np.float64).astype(NUMPY_FLOAT))
+            Xm = Xm - center
         if native:
             fun = _native_binary_objective(
                 Xm, ym, swm, sw_sum, l2, config.fit_intercept
@@ -930,8 +924,11 @@ def solve_logistic(
                 minimize_binary,
             )
 
+            # The scale-skew check reads the curvature diagonal of the centered
+            # design; fits without an intercept keep their previous threshold.
             optimizer_config = _conservative_config_for_skewed_curvature(
-                initial_parts, n_features, sw_sum, l2, optimizer_config
+                initial_parts if config.fit_intercept else None,
+                n_features, sw_sum, l2, optimizer_config,
             )
             # Sketch directions can land on a different gradient-tolerance
             # contour than the scalar history. Require a tighter gradient to

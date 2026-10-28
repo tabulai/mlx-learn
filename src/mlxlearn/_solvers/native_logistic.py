@@ -16,6 +16,7 @@ import numpy as np
 
 from . import native_command
 from .lbfgs import LBFGSConfig, LBFGSState, ObjectiveGradient
+from .native_geometry import MAX_FUSED_FEATURES
 
 __all__ = ["minimize_binary"]
 
@@ -175,35 +176,6 @@ if(t==0){
 """,
 )
 
-_forward_search = mx.fast.metal_kernel(
-    name="mlxlearn_native_lbfgs_forward_search",
-    header=_REDUCE,
-    input_names=["X", "direction", "raw", "y", "sw", "stats", "denom"],
-    output_names=["dr", "partial"],
-    source=r"""
-// Eight SIMD groups process eight rows. Every lane shares its row's dot
-// product; lanes then evaluate distinct backtracking candidates in parallel.
-uint tid=thread_position_in_threadgroup.x,lane=tid%32,sg=tid/32;
-uint row=threadgroup_position_in_grid.x*8+sg;
-float z=0;
-if(row<N && stats[1]==0){for(uint j=lane;j<D;j+=32)z=fma(X[ulong(row)*D+j],direction[j],z);}
-z=simd_sum(z);if(P>D)z+=direction[D];
-if(lane==0 && row<N)dr[row]=z;
-threadgroup float shared[8*CAND];
-if(lane<CAND){float value=0;
- if(row<N && stats[1]==0 && sw[row]>0){
-  float alpha=stats[8]*exp2(-float(lane)),sign=1.0f-2.0f*y[row];
-  float u=sign*raw[row],dz=sign*z*alpha;
-  float diff=abs(dz)<0.5f?log1p_stable(sigmoid_stable(u)*expm1_small(dz)):softplus_stable(u+dz)-softplus_stable(u);
-  value=sw[row]*diff/denom;
- }
- shared[sg*CAND+lane]=value;
-}
-threadgroup_barrier(mem_flags::mem_threadgroup);
-if(sg==0 && lane<CAND){float value=0;for(uint r=0;r<8;++r)value+=shared[r*CAND+lane];partial[ulong(lane)*B+threadgroup_position_in_grid.x]=value;}
-""",
-)
-
 _accept = mx.fast.metal_kernel(
     name="mlxlearn_native_lbfgs_accept",
     header=_REDUCE,
@@ -322,33 +294,18 @@ def direct_arrays(theta, X, y, sw, denom, l2, fit_intercept):
     return loss, penalty, gradient.reshape(theta.shape)
 
 
-_initial = mx.fast.metal_kernel(
-    name="mlxlearn_native_lbfgs_initial",
-    input_names=["X", "y", "sw"],
-    output_names=["parts"],
-    source=r"""
-uint tid=thread_position_in_threadgroup.x,col=threadgroup_position_in_grid.x*32+tid%32;
-uint block=threadgroup_position_in_grid.y,sg=tid/32,start=block*256+sg;
-float grad=0,diag=0;
-if(col<P){for(uint row=start;row<min(uint(N),(block+1)*256);row+=4){float weight=sw[row];if(weight>0){float x=col<D?X[ulong(row)*D+col]:1.0f;grad+=x*(.5f-y[row])*weight;diag+=.25f*x*x*weight;}}}
-threadgroup float gp[128],hp[128];gp[tid]=grad;hp[tid]=diag;threadgroup_barrier(mem_flags::mem_threadgroup);
-if(sg==0 && col<P){parts[ulong(block)*P+col]=gp[tid]+gp[tid+32]+gp[tid+64]+gp[tid+96];parts[ulong(B)*P+ulong(block)*P+col]=hp[tid]+hp[tid+32]+hp[tid+64]+hp[tid+96];}
-""",
-)
-
-
-@mx.compile
 def initial(X, y, sw, p, reg, denom):
-    n, d = X.shape
-    nb = (n + 255) // 256
-    parts = _initial(
-        inputs=[X, y, sw],
-        template=[("N", n), ("D", d), ("P", p), ("B", nb)],
-        grid=(((p + 31) // 32) * 128, nb, 1),
-        threadgroup=(128, 1, 1),
-        output_shapes=[(2, nb, p)],
-        output_dtypes=[mx.float32],
-    )[0]
+    """Initial gradient and scalar metric for a design without prepared parts.
+
+    The estimator collects ``initial_parts`` while copying the design. A
+    direct caller gets the same statistics from the same kernel, at the cost
+    of one discarded copy of its already owned ``X``.
+    """
+    from .._kernels.logistic_input import prepare_centered
+
+    if p not in (X.shape[1], X.shape[1] + 1):
+        raise ValueError("p must be the feature count, plus one for an intercept")
+    _, _, _, parts = prepare_centered(X, y, sw, center=False, intercept=p == X.shape[1] + 1)
     return initial_from_parts(parts, reg, denom)
 
 
@@ -402,24 +359,14 @@ def step(
         output_shapes=[(p,), (m, p), (m, p), (m, 2), (12,)],
         output_dtypes=[mx.float32] * 5,
     )
-    wide = 512 <= d <= 4096
-    if wide:
-        from .native_logistic_fused import forward_gradient
+    # One fused pass over X serves every width: projections, all candidate
+    # loss changes, and the first candidate's gradient. The module is imported
+    # here because it takes this module's shared kernel header at load time.
+    from .native_logistic_fused import forward_gradient
 
-        dr, diffs, first_gradient = forward_gradient(
-            X, direction, raw, y, sw, stats, denom, candidates
-        )
-    else:
-        blocks = (n + 7) // 8
-        dr, partial = _forward_search(
-            inputs=[X, direction, raw, y, sw, stats, denom],
-            template=[("N", n), ("D", d), ("P", p), ("CAND", candidates), ("B", blocks)],
-            grid=(blocks * 256, 1, 1),
-            threadgroup=(256, 1, 1),
-            output_shapes=[(n,), (candidates, blocks)],
-            output_dtypes=[mx.float32] * 2,
-        )
-        diffs = mx.sum(partial, axis=1)
+    dr, diffs, first_gradient = forward_gradient(
+        X, direction, raw, y, sw, stats, denom, candidates
+    )
     neww, newraw, resid, meta = _accept(
         inputs=[w, raw, direction, dr, y, sw, stats, diffs, c1],
         template=[("N", n), ("P", p), ("CAND", candidates)],
@@ -431,16 +378,13 @@ def step(
     # A rejected first batch is resumed from exactly the same gradient and
     # history. Recomputing an unchanged gradient can perturb the direction.
     active = meta[1] == 0
-    if wide:
-        # The acceptance kernel supplies the chosen step, so this does not
-        # repeat its floating-point predicate with a different rounding order.
-        first_accepted = active & (meta[8] == alpha_start)
-        # mx.where alone would evaluate both branches. Pass the predicate into
-        # the backward Metal kernel so first acceptance performs no second X read.
-        fallback = bwd(X, resid, p, active & ~first_accepted) / denom
-        sample_gradient = mx.where(first_accepted, first_gradient, fallback)
-    else:
-        sample_gradient = bwd(X, resid, p, active) / denom
+    # The acceptance kernel supplies the chosen step, so this does not
+    # repeat its floating-point predicate with a different rounding order.
+    first_accepted = active & (meta[8] == alpha_start)
+    # mx.where alone would evaluate both branches. Pass the predicate into
+    # the backward Metal kernel so first acceptance performs no second X read.
+    fallback = bwd(X, resid, p, active & ~first_accepted) / denom
+    sample_gradient = mx.where(first_accepted, first_gradient, fallback)
     newg = mx.where(active, sample_gradient + reg * neww, g)
     return neww, newg, w, g, hs, hy, hc, meta, newraw
 
@@ -539,6 +483,8 @@ def minimize_binary(
     if initial_history is not None and not use_native_loop:
         raise ValueError("initial_history requires the native command loop")
     n, d = X.shape
+    if not 1 <= d <= MAX_FUSED_FEATURES:
+        raise ValueError(f"native binary L-BFGS requires 1 to {MAX_FUSED_FEATURES} features")
     weighted = sw is not None
     p = d + int(fit_intercept)
     if convergence_center is not None and (

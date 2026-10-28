@@ -229,11 +229,20 @@ def test_no_centering_without_an_intercept():
 def test_objective_is_no_worse_at_an_equal_truncated_budget():
     """The fair comparison when neither solver has converged.
 
-    On a hard problem at ``max_iter=100`` both solvers stop on the iteration limit
+    On a hard problem at ``max_iter=100`` neither solver reaches the tolerance
     and both warn. Comparing their coefficients then compares two arbitrary
     intermediate iterates, and the observed gaps are large. What can be asserted —
     and what actually matters — is that mlxlearn has not made *less* progress.
+
+    scikit-learn always spends the whole budget here. mlxlearn's float32
+    objective reaches its resolution floor after about 70 iterations (the
+    remaining decreases are fractions of a float32 ulp), so depending on the
+    GPU's rounding it either spends the budget too or stops a few iterations
+    early with a line-search failure. Both are "not converged"; a stop at the
+    floor only makes the comparison stricter, so the precondition is the
+    tolerance, not the iteration count.
     """
+    from sklearn.exceptions import ConvergenceWarning
     from sklearn.utils.class_weight import compute_class_weight
 
     X, y = make_classification(
@@ -243,13 +252,15 @@ def test_objective_is_no_worse_at_an_equal_truncated_budget():
     X = X * 18.7
     C = 39.0
 
-    with tuning_context(force_backend="mlx"):
+    with tuning_context(force_backend="mlx"), pytest.warns(ConvergenceWarning):
         mlx = LogisticRegression(C=C, class_weight="balanced", max_iter=100).fit(X, y)
-    ref = SkLogisticRegression(
-        C=C, class_weight="balanced", max_iter=100, solver="lbfgs"
-    ).fit(X, y)
+    with pytest.warns(ConvergenceWarning):
+        ref = SkLogisticRegression(
+            C=C, class_weight="balanced", max_iter=100, solver="lbfgs"
+        ).fit(X, y)
 
-    assert mlx.n_iter_[0] == 100 and ref.n_iter_[0] == 100, "precondition: neither converged"
+    assert ref.n_iter_[0] == 100, "precondition: scikit-learn did not converge"
+    assert 70 <= mlx.n_iter_[0] <= 100, "precondition: mlxlearn ran most of the budget"
 
     encoded = np.searchsorted(ref.classes_, y)
     weights = compute_class_weight("balanced", classes=ref.classes_, y=y)[encoded]
