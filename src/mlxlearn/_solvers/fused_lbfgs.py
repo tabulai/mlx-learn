@@ -19,7 +19,7 @@ from typing import Any
 import mlx.core as mx
 import numpy as np
 
-from .lbfgs import LBFGSConfig, LBFGSState, ObjectiveGradient, _LineSearch
+from .lbfgs import LBFGSConfig, LBFGSState, ObjectiveGradient, _LineSearch, curvature_pair_accepted
 
 __all__ = ["minimize"]
 
@@ -157,7 +157,7 @@ def minimize(
         s, y, stats = _curvature(x_new, x, g_new, grad, convergence_center)
         mx.eval(s, y, stats)
         ys, yy, grad_max = np.asarray(stats).astype(np.float64)
-        if ys > config.min_curvature * max(yy, 1.0):
+        if curvature_pair_accepted(float(ys), float(yy), config.min_curvature):
             s_history.append(s)
             y_history.append(y)
             # Keep denominators on device; computing a host reciprocal and

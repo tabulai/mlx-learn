@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from contextlib import contextmanager
 from types import SimpleNamespace
 
@@ -9,7 +10,7 @@ import mlx.core as mx
 import numpy as np
 import pytest
 
-from mlxlearn._common.device import use_device
+from mlxlearn._common.device import gpu_available, use_device
 from mlxlearn._solvers import logistic, native_logistic
 from mlxlearn._solvers.lbfgs import LBFGSState
 from mlxlearn_device import _native_cg, _newton
@@ -122,3 +123,91 @@ def test_hybrid_does_not_select_unsupported_dlpack_version(monkeypatch, version)
     with mx.stream(mx.cpu):
         parts = mx.ones((2, 1, 2049))
         assert not _newton.use_newton_for_curvature(parts, 20_000, 2048, 1.0, 1e-5)
+
+
+@pytest.mark.parametrize(
+    ("tol", "expect_newton"),
+    [(0.0, False), (1e-39, False), (0.5 * float(np.finfo(np.float32).tiny), False),
+     (float(np.finfo(np.float32).tiny), True)],
+)
+def test_zero_or_subnormal_tolerance_stays_on_lbfgs(monkeypatch, tol, expect_newton):
+    """``minimize_newton`` validates a normal float32 tolerance; L-BFGS accepts any."""
+    @contextmanager
+    def pretend_gpu(_device):
+        with use_device("cpu"):
+            yield "gpu"
+
+    monkeypatch.setattr(logistic, "use_device", pretend_gpu)
+    monkeypatch.setattr(logistic, "_use_native_solver", lambda *_args: True)
+    monkeypatch.setattr(_newton, "use_newton_for_curvature", lambda *_args: True)
+    monkeypatch.setattr(logistic, "_needs_float64_certificate", lambda *_args: False)
+    calls = []
+
+    def warm(X, y, sw, sw_sum, l2, fit_intercept, config, fun, **_kwargs):
+        calls.append(("warm", config.max_iter))
+        return LBFGSState(mx.zeros((1, X.shape[1] + 1)), 0.5, 1e-3, config.max_iter, 2,
+                          False, "max_iter")
+
+    def newton(original, centered, center, y, sw, denom, l2, **kwargs):
+        calls.append(("newton", kwargs["tol"]))
+        return _newton.NewtonResult(kwargs["initial"], 3, 5, True, "duality-gap",
+                                    0.4, 0.0, 1e-6, 0.0, 4, True)
+
+    monkeypatch.setattr(native_logistic, "minimize_binary", warm)
+    monkeypatch.setattr(_newton, "minimize_newton", newton)
+    with use_device("cpu"):
+        result = logistic.solve_logistic(
+            np.zeros((3, 512), dtype=np.float32), np.array([0, 1, 0]), n_classes=2,
+            config=logistic.LogisticConfig(device="gpu", max_iter=200, tol=tol),
+            X_device=mx.zeros((3, 512)), X_center=mx.zeros((512,)),
+            initial_parts=mx.ones((2, 1, 513)),
+        )
+    if expect_newton:
+        assert calls == [("warm", 32), ("newton", tol)]
+        assert result.converged and result.n_iter == 35
+    else:
+        # The whole budget goes to L-BFGS instead of a 32-step Newton warm start.
+        assert calls == [("warm", 200)]
+        assert not result.converged and result.n_iter == 200
+
+
+@pytest.mark.gpu
+def test_newton_eligible_fit_accepts_zero_and_subnormal_tolerance():
+    """A fit the curvature gate routes to Newton must not raise for ``tol=0``."""
+    from sklearn.exceptions import ConvergenceWarning
+
+    from mlxlearn._common.config import tuning_context
+    from mlxlearn._solvers import native_command
+    from mlxlearn.linear_model import LogisticRegression
+
+    if (not gpu_available() or native_command._metal_loop is None
+            or not hasattr(native_command._metal_loop, "run_cg")
+            or not native_command._supports_metal_dlpack()):
+        pytest.skip("requires the native Metal CG extension on a supported MLX")
+    rng = np.random.default_rng(0)
+    n, d = 4096, 2048
+    X = rng.normal(size=(n, d)).astype(np.float32)
+    X[:, 0] *= 100.0  # Curvature spread above 100 selects the Newton route.
+    w = rng.normal(size=d) / np.sqrt(d)
+    y = ((X @ w + rng.normal(scale=0.5, size=n)) > 0).astype(int)
+    newton_tolerances = []
+    original = _newton.minimize_newton
+
+    def observe(*args, **kwargs):
+        newton_tolerances.append(kwargs["tol"])
+        return original(*args, **kwargs)
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(_newton, "minimize_newton", observe)
+    try:
+        with tuning_context(force_backend="mlx"), warnings.catch_warnings():
+            warnings.simplefilter("ignore", ConvergenceWarning)
+            LogisticRegression(C=1.0, tol=1e-4, max_iter=100).fit(X, y)
+            assert newton_tolerances == [pytest.approx(5e-5)]  # Control: Newton route taken.
+            for tol in (0.0, 1e-39):
+                model = LogisticRegression(C=1.0, tol=tol, max_iter=4).fit(X, y)
+                assert model._execution_backend_ == "mlx"
+                assert model.n_iter_[0] == 4
+    finally:
+        monkeypatch.undo()
+    assert len(newton_tolerances) == 1

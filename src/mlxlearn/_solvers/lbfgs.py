@@ -82,9 +82,12 @@ class LBFGSConfig:
     c2 : float, default=0.9
         Curvature constant. Must satisfy ``0 < c1 < c2 < 1``.
     min_curvature : float, default=1e-12
-        Relative floor on ``sᵀy`` below which the curvature pair is skipped rather
-        than stored. Storing a pair with ``sᵀy ≤ 0`` makes the two-loop recursion
-        produce an ascent direction.
+        Relative floor on ``sᵀy``: a curvature pair is stored only when
+        ``sᵀy > min_curvature · yᵀy`` (``yᵀH₀y`` in the native solver's metric),
+        otherwise it is skipped. Storing a pair with ``sᵀy ≤ 0`` makes the
+        two-loop recursion produce an ascent direction. The floor scales with
+        the pair itself; an absolute floor would reject every valid pair on
+        designs whose feature scales make ``yᵀy`` small.
     """
 
     max_iter: int = 100
@@ -115,6 +118,18 @@ class LBFGSConfig:
             raise ValueError(
                 f"min_curvature must be non-negative, got {self.min_curvature}"
             )
+
+
+def curvature_pair_accepted(ys: float, yy: float, min_curvature: float) -> bool:
+    """Whether an ``(s, y)`` pair carries usable positive curvature.
+
+    The floor on ``sᵀy`` is relative to ``yᵀy`` (``yᵀH₀y`` in the native
+    solver's metric). An absolute floor rejected every valid pair on designs
+    where one feature's scale makes ``y`` small, froze the history, and left
+    the optimizer at the null model. ``sᵀy`` must also be positive in float32,
+    so a pair with ``y = 0`` is never stored.
+    """
+    return yy > 0.0 and ys > min_curvature * yy
 
 
 @dataclass(frozen=True, slots=True)
@@ -437,7 +452,7 @@ def minimize(fun: ObjectiveGradient, x0: Any, config: LBFGSConfig) -> LBFGSState
         mx.eval(s, y)
         ys = _dot(y, s)
         yy = _dot(y, y)
-        if ys > config.min_curvature * max(yy, 1.0):
+        if curvature_pair_accepted(ys, yy, config.min_curvature):
             s_history.append(s)
             y_history.append(y)
             rho_history.append(1.0 / ys)

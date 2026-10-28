@@ -136,6 +136,31 @@ All notable changes to this project are documented here. The format follows
   scikit-learn, including convergence and independent float64 quality checks:
   `python -m benchmarks.logistic_gpu --profile full`.
 
+### Fixed
+
+- The L-BFGS curvature floor is relative to the pair (`sᵀy > min_curvature·yᵀy`,
+  in the native solver's metric) in the Metal direction kernel, the native
+  command loop and both Python solvers. The former `max(yᵀy, 1)` form was an
+  absolute 1e-12 floor whenever one feature's scale made `yᵀH₀y` small, which
+  rejected every valid pair, froze the history and left a 1e5-scaled design at
+  the null model (accuracy 0.51 against scikit-learn's 0.86). The MLX loop now
+  also treats accepted steps that leave every cached logit unchanged as a
+  stall: it resets the history once, then reports a failed search so the
+  intercept polish and float64 certificate run instead of spending `max_iter`.
+- `tol=0` or a subnormal `tol` no longer raises on the Newton route; such fits
+  stay on L-BFGS, which accepts any tolerance.
+- The `MLXLEARN_LBFGS_SKETCH_SIZE` opt-in (and `tuning_context(lbfgs_sketch_size=...)`)
+  is treated as a capability of the prepared native loop: fits it cannot seed
+  (fewer than 512 or more than 4096 features, small designs, no intercept,
+  multinomial targets, a non-default history, no extension) run unsketched at
+  the requested tolerance instead of raising. A direct `solve_logistic`
+  request for a sketch without that capability is still an error.
+- The native-to-MLX resume guard no longer discards a continuation the direct
+  check certifies, and compares uncertified continuations against the native
+  objective within a float32 rounding band, keeping the iterate with the
+  smaller direct gradient. Tight-tolerance wide fits previously returned a
+  non-converged native iterate with the discarded steps still counted.
+
 ### Measured
 
 - The revised rule passed 700 tests and a 30-repeat targeted benchmark; 20k ×

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from types import SimpleNamespace
 
 import mlx.core as mx
@@ -213,3 +214,151 @@ def test_managed_failed_search_is_not_promoted_by_small_direct_gradient(monkeypa
     assert len(calls) == (4 if max_line_search == 8 else 5)
     assert not result.converged and result.stop_reason == "line-search-failure"
     assert result.grad_max_abs < 1e-4 and result.n_iter == 2
+
+
+def _resume_fixture(monkeypatch, status=2):
+    """A direct-scored native attempt at objective 0.5 whose gradient is above tol."""
+    X, y = mx.ones((3, 2), mx.float32), mx.array([0, 1, 0], mx.float32)
+    parts = mx.zeros((2, 1, 3), mx.float32)
+    w = mx.array([[0.25, 0.5, 0.7]], mx.float32)
+    gradient = mx.array([[0.02, 0.04, 0.01]], mx.float32)
+    native_state = LBFGSState(w, 0.5, 0.04, 3, 25, False, "line-search-failure")
+    monkeypatch.setattr(
+        native_command, "run_native_loop",
+        lambda *a, **kw: native_command.NativeAttempt(native_state, gradient, status),
+    )
+    monkeypatch.setattr(
+        native_logistic, "initial_from_parts",
+        lambda *a: (mx.zeros((3,), mx.float32), mx.ones((3,), mx.float32)),
+    )
+
+    def accepted_step(*args):
+        w, g, oldw, oldg, hs, hy, hc, meta, raw = args[12:]
+        metadata = np.asarray(meta).copy()
+        metadata[0] += 1
+        metadata[9] += 8
+        metadata[10] = -0.01
+        return w + 0.1, g, oldw, oldg, hs, hy, hc, mx.array(metadata), raw + 0.1
+
+    monkeypatch.setattr(native_logistic, "step", accepted_step)
+    return X, y, parts, w, native_state
+
+
+def test_certified_continuation_is_returned_despite_objective_noise(monkeypatch):
+    """A continuation the direct check certifies is never discarded."""
+    with mx.stream(mx.cpu):
+        X, y, parts, w, _ = _resume_fixture(monkeypatch)
+        noisy = 0.5 + 1e-9  # Higher than the native objective by float32 noise.
+        result = native_logistic.minimize_binary(
+            X, y, None, 3.0, 0.1, True, LBFGSConfig(max_iter=4, tol=1e-4, max_line_search=8),
+            lambda theta: (noisy, mx.full(theta.shape, 5e-5)), initial_parts=parts,
+        )
+    np.testing.assert_allclose(result.x, np.asarray(w) + 0.1)
+    assert result.converged and result.stop_reason == "gtol"
+    assert result.objective == noisy and result.grad_max_abs == pytest.approx(5e-5)
+    assert result.n_iter == 4 and result.n_fev == 34
+
+
+@pytest.mark.parametrize(
+    ("objective", "grad", "keeps_native"),
+    [
+        (0.5 + 1e-9, 0.03, False),  # Inside the noise band with a smaller gradient.
+        (0.5 - 1e-9, 0.05, True),  # Inside the band with a larger gradient.
+        (0.5 + 1e-9, 0.04, False),  # Inside the band with an equal gradient.
+        (0.5 + 1e-6, 0.01, True),  # Clearly higher: the former behaviour stands.
+        (0.49, 0.05, False),  # Clearly lower keeps the continuation.
+    ],
+)
+def test_uncertified_continuation_objective_guard_uses_a_noise_band(
+    monkeypatch, objective, grad, keeps_native
+):
+    with mx.stream(mx.cpu):
+        X, y, parts, w, native_state = _resume_fixture(monkeypatch)
+        result = native_logistic.minimize_binary(
+            X, y, None, 3.0, 0.1, True, LBFGSConfig(max_iter=4, tol=1e-4, max_line_search=8),
+            lambda theta: (objective, mx.full(theta.shape, grad)), initial_parts=parts,
+        )
+    assert not result.converged
+    assert result.n_iter == 4 and result.n_fev == 34
+    if keeps_native:
+        np.testing.assert_array_equal(result.x, w)
+        assert result.objective == 0.5 and result.grad_max_abs == 0.04
+        assert result.stop_reason == "line-search-failure"
+    else:
+        np.testing.assert_allclose(result.x, np.asarray(w) + 0.1)
+        assert result.objective == objective and result.grad_max_abs == pytest.approx(grad)
+        assert result.stop_reason == "max_iter"
+
+
+@pytest.mark.parametrize("band_test", [True])
+def test_resume_noise_band_scales_with_the_objective(band_test):
+    previous = LBFGSState(mx.zeros((1, 3)), 2.0, 0.04, 3, 25, False, "line-search-failure")
+    band = native_logistic._RESUME_OBJECTIVE_BAND * 2.0
+    keeps = native_logistic._resume_keeps_native_iterate
+    assert keeps(previous, 2.0 + 2 * band, 0.01, True)
+    assert not keeps(previous, 2.0 + 0.5 * band, 0.03, True)
+    assert keeps(previous, 2.0 + 0.5 * band, 0.05, True)
+    assert not keeps(previous, 2.0 - 2 * band, 0.05, True)
+    assert keeps(previous, 2.0, 0.01, False)
+
+
+@pytest.mark.gpu
+@pytest.mark.parametrize(
+    ("seed", "tol", "estimator_converges"),
+    [(103, 1e-8, True), (100, 3e-9, False)],
+)
+def test_resumed_wide_fit_keeps_its_converged_continuation(seed, tol, estimator_converges):
+    """65536 x 512 at a tight tolerance stops the native loop short and resumes on MLX.
+
+    The continuation reaches the tolerance with an objective higher by float32
+    noise; it used to be discarded and reported as ``line-search-failure``
+    with the discarded steps still counted. At ``3e-9`` the float64 certificate
+    may still reject the float32-converged model; that verdict is independent
+    of the resume guard, so only the solver's result is asserted there.
+    """
+    from sklearn.exceptions import ConvergenceWarning
+
+    from mlxlearn._common.config import tuning_context
+    from mlxlearn._common.device import gpu_available
+    from mlxlearn.linear_model import LogisticRegression
+
+    if (not gpu_available() or native_command._metal_loop is None
+            or not native_command._supports_metal_dlpack()):
+        pytest.skip("requires the native Metal loop on a supported MLX")
+    n, d = 65_536, 512
+    rng = np.random.default_rng(seed)
+    X = rng.standard_normal((n, d)).astype(np.float32)
+    w = rng.standard_normal(d) / np.sqrt(d)
+    y = (X @ w + 0.3 * rng.standard_normal(n) > 0).astype(int)
+    attempts, results = [], []
+    original_loop, original_minimize = native_command.run_native_loop, native_logistic.minimize_binary
+
+    def observe_loop(*args, **kwargs):
+        attempt = original_loop(*args, **kwargs)
+        attempts.append(attempt)
+        return attempt
+
+    def observe_minimize(*args, **kwargs):
+        result = original_minimize(*args, **kwargs)
+        results.append(result)
+        return result
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(native_command, "run_native_loop", observe_loop)
+    monkeypatch.setattr(native_logistic, "minimize_binary", observe_minimize)
+    try:
+        with tuning_context(force_backend="mlx"), warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            model = LogisticRegression(C=1.0, tol=tol, max_iter=200).fit(X, y)
+    finally:
+        monkeypatch.undo()
+    (attempt,), (state,) = attempts, results
+    assert isinstance(attempt, native_command.NativeAttempt) and not attempt.state.converged
+    assert state.converged and state.stop_reason == "gtol"
+    assert state.n_iter > attempt.state.n_iter
+    assert state.grad_max_abs <= tol
+    if estimator_converges:
+        assert not [c for c in caught if issubclass(c.category, ConvergenceWarning)]
+        assert model.n_iter_[0] == state.n_iter
+    else:
+        assert model.n_iter_[0] >= state.n_iter
