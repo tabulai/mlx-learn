@@ -31,11 +31,11 @@ def use_newton_for_curvature(parts, n, d, denominator, l2):
     or introducing a diagonal metric that could alter rank-deficient solutions.
     This heuristic selects an algorithm; it never relaxes stopping checks.
     """
-    from ._native_cg import _workspace_supported, metal_loop
+    from ._native_cg import _MIN_RESOLVED_REGULARIZATION, _workspace_supported, metal_loop
 
     version = getattr(mx, "__version__", None)
     if (parts is None or n < 4096 or not 512 <= d <= 4096
-        or not math.isfinite(l2) or l2 < 1e-7
+        or not math.isfinite(l2) or l2 < _MIN_RESOLVED_REGULARIZATION
         or not _workspace_supported(n, d)
         or not isinstance(version, str) or re.fullmatch(r"0\.32\.(?:0|[1-9]\d{0,2})", version) is None
         or metal_loop is None or not hasattr(metal_loop, "run_cg")):

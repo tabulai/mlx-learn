@@ -150,7 +150,7 @@ def test_accepted_steps_with_unchanged_logits_reset_history_once_then_stop(monke
     [(20_000, 16), (20_000, 1_024)],
     ids=["narrow-mlx-loop", "wide-prepared-native-loop"],
 )
-def test_scaled_column_fit_matches_sklearn_instead_of_the_null_model(n_samples, n_features):
+def test_scaled_column_fit_matches_sklearn_instead_of_the_null_model(monkeypatch, n_samples, n_features):
     """Both GPU routes must fit a 1e5-scaled column to scikit-learn's accuracy.
 
     The frozen history returned the null model (objective ``log 2``, accuracy
@@ -160,6 +160,21 @@ def test_scaled_column_fit_matches_sklearn_instead_of_the_null_model(n_samples, 
     """
     if not gpu_available():
         pytest.skip("requires an MLX GPU")
+    from mlxlearn_device import _newton
+
+    refinements = []
+    original_newton = _newton.minimize_newton
+
+    def observe_newton(*args, **kwargs):
+        result = original_newton(*args, **kwargs)
+        refinements.append({
+            "budget": kwargs["max_iter"], "iterations": result.n_iter,
+            "stop_reason": result.stop_reason, "objective": result.objective,
+            "gradient": result.gradient_max_abs, "hvp_count": result.hvp_count,
+        })
+        return result
+
+    monkeypatch.setattr(_newton, "minimize_newton", observe_newton)
     X, y = _scaled_column_design(n_samples, n_features, 1e5)
     params = {"C": 1.0, "tol": 1e-4, "max_iter": 100}
     with threadpool_limits(limits=1), warnings.catch_warnings():
@@ -174,4 +189,7 @@ def test_scaled_column_fit_matches_sklearn_instead_of_the_null_model(n_samples, 
     objective = reference_objective(model.coef_, model.intercept_, X, y, n_classes=2)
     reference_value = reference_objective(reference.coef_, reference.intercept_, X, y, n_classes=2)
     # The null model sits 1.3 relative above the optimum.
-    assert (objective - reference_value) / reference_value <= 0.05, (objective, reference_value)
+    assert (objective - reference_value) / reference_value <= 0.05, {
+        "objective": objective, "reference": reference_value,
+        "iterations": int(model.n_iter_[0]), "newton": refinements,
+    }

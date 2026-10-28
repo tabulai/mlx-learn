@@ -197,6 +197,13 @@ All notable changes to this project are documented here. The format follows
   accepted-step budget and independent convergence checks. Newton routing
   also checks CG's 64 MiB workspace limit before spending a warm-start budget;
   unsupported shapes keep the full L-BFGS budget.
+- Native CG no longer discards positive low-curvature directions merely
+  because an earlier direction had much higher curvature when every feature's
+  regularization is at least the Newton routing floor. That cutoff stalled
+  even a diagonal positive-definite system with a 1e10 curvature spread.
+  Weakly regularized systems retain the original cutoff to limit null-space
+  drift; finite/positive curvature, residual, budget and outer convergence
+  checks remain in force.
 - The `MLXLEARN_LBFGS_SKETCH_SIZE` opt-in (and `tuning_context(lbfgs_sketch_size=...)`)
   is treated as a capability of the prepared native loop: fits it cannot seed
   (fewer than 512 or more than 4096 features, no intercept,

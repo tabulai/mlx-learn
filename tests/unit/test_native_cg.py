@@ -83,6 +83,30 @@ def test_cg_matches_independent_float64_hessian(d):
 
 
 @pytest.mark.gpu
+def test_cg_retains_identifiable_slow_mode_after_a_large_rayleigh_quotient():
+    """A diagonal SPD system remains identifiable at a 1e10 curvature spread."""
+    _require_native()
+    X = np.array([[1e5, 0], [-1e5, 0], [0, 1], [0, -1]], dtype=np.float32)
+    curvature = np.full(4, 0.0625, dtype=np.float32)
+    gradient = np.array([1, 1, 0], dtype=np.float32)
+    regularization = np.array([1e-4, 1e-4, 0], dtype=np.float32)
+    # The columns and intercept are exactly orthogonal, so the low-curvature
+    # direction is resolvable without subtracting large nearby quantities.
+    diagonal = np.array([1.25e9, 0.125, 0.25]) + regularization
+    expected = -gradient / diagonal
+    with mx.stream(mx.gpu):
+        result, metadata = _native_cg.solve_cg(
+            mx.array(X), mx.array(curvature), mx.array(gradient), mx.array(regularization),
+            forcing=1e-4, max_iter=128,
+        )
+        actual = np.asarray(result, dtype=np.float64)
+    assert metadata[1] == 1, metadata
+    assert 1 < metadata[0] <= 128
+    np.testing.assert_allclose(actual, expected, rtol=3e-4, atol=1e-12)
+    assert np.linalg.norm(diagonal * actual + gradient) / np.linalg.norm(gradient) < 3e-4
+
+
+@pytest.mark.gpu
 def test_cg_preserves_general_exact_dependency_at_weak_regularization():
     _require_native()
     rng = np.random.default_rng(633)
@@ -109,6 +133,33 @@ def test_cg_preserves_general_exact_dependency_at_weak_regularization():
     assert null_ratio < 2e-5
     assert np.linalg.norm(hessian @ actual + gradient) / np.linalg.norm(gradient) < 3e-4
     assert np.linalg.norm(actual - expected) / np.linalg.norm(expected) < 5e-4
+
+
+@pytest.mark.gpu
+def test_weak_regularization_does_not_amplify_roundoff_in_a_null_direction():
+    """A small near-stationary RHS must not produce a huge null-space step.
+
+    The identical columns have one identifiable direction. The 3e-9 component
+    along their difference represents absolute gradient roundoff near an
+    optimum; resolving it against a 1e-10 regularizer would move coefficients
+    by about 30 while barely changing the predictions.
+    """
+    _require_native()
+    with mx.stream(mx.gpu):
+        result, metadata = _native_cg.solve_cg(
+            mx.array([[1.0, 1.0], [-1.0, -1.0], [1.0, 1.0], [-1.0, -1.0]]),
+            mx.full((4,), 0.25),
+            mx.array([1.03e-7, 0.97e-7, 0.0]),
+            mx.array([1e-10, 1e-10, 0.0]),
+            forcing=1e-4, max_iter=128,
+        )
+        actual = np.asarray(result, dtype=np.float64)
+    assert metadata[1] == 2, metadata  # Truncated unresolved curvature.
+    assert np.all(np.isfinite(actual))
+    assert np.linalg.norm(actual) < 1e-6
+    # The useful row-space step is retained despite the unresolved component.
+    np.testing.assert_allclose(actual[0] + actual[1], -1e-7, rtol=2e-3, atol=0)
+    assert actual[2] == 0.0
 
 
 @pytest.mark.gpu
