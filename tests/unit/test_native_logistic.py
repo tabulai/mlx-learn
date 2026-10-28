@@ -236,6 +236,24 @@ def test_device_tolerance_never_rounds_above_the_requested_tolerance(monkeypatch
     assert state.grad_max_abs <= tolerance
 
 
+def test_large_finite_device_tolerance_does_not_overflow(monkeypatch):
+    X, y = _data(n_samples=17, n_features=3)
+    problem = _problem(X, y)
+    original_step = native_logistic.step
+    observed_tolerances = []
+
+    def record_tolerance(*args):
+        observed_tolerances.append(float(args[5]))
+        return original_step(*args)
+
+    monkeypatch.setattr(native_logistic, "step", record_tolerance)
+    with np.errstate(over="raise"):
+        state = _run(problem, LBFGSConfig(max_iter=1, tol=1e40))
+    assert observed_tolerances
+    assert all(value == float(np.finfo(np.float32).max) for value in observed_tolerances)
+    assert state.converged and state.n_iter == 0
+
+
 def test_repeated_reanchor_without_an_accepted_step_reports_failure(monkeypatch):
     """A stale device convergence signal cannot keep retrying indefinitely."""
     X, y = _data(n_samples=17, n_features=3)

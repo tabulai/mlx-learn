@@ -14,6 +14,7 @@ share configuration, state, and line-search control, not mutable workspaces.
 from __future__ import annotations
 
 import math
+from dataclasses import replace
 from typing import Any
 
 import mlx.core as mx
@@ -153,18 +154,23 @@ def minimize(
         search = _LineSearch(make_probe(direction), objective, float(gtd), config)
         accepted, _, x_new, f_new, g_new, _ = search.run(float(t_init))
         n_fev += search.n_fev
-        if (not accepted or not f_new < objective) and s_history:
+        remaining = config.max_line_search - search.n_fev
+        if (not accepted or not f_new < objective) and s_history and remaining > 0:
             # A failed search along a quasi-Newton direction usually indicts a
             # stale history rather than the point. Retry once along the
-            # gradient from a cleared history; only a failure there says the
-            # float32 objective has stopped decreasing along any direction.
+            # gradient from a cleared history using only this iteration's
+            # remaining evaluations. A failed retry remains a line-search
+            # failure; it does not prove the point is optimal.
             s_history.clear()
             y_history.clear()
             ys_history.clear()
             yy_history.clear()
             direction, gtd = -grad, -gg
             t_init = min(1.0, 1.0 / g_l1) if g_l1 > 0.0 else 1.0
-            search = _LineSearch(make_probe(direction), objective, float(gtd), config)
+            search = _LineSearch(
+                make_probe(direction), objective, float(gtd),
+                replace(config, max_line_search=remaining),
+            )
             accepted, _, x_new, f_new, g_new, _ = search.run(float(t_init))
             n_fev += search.n_fev
         if not accepted or not f_new < objective:

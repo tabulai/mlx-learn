@@ -307,12 +307,14 @@ def test_resume_noise_band_scales_with_the_objective(band_test):
     ("seed", "tol", "estimator_converges"),
     [(103, 1e-8, True), (100, 3e-9, False)],
 )
-def test_resumed_wide_fit_keeps_its_converged_continuation(seed, tol, estimator_converges):
-    """65536 x 512 at a tight tolerance stops the native loop short and resumes on MLX.
+def test_wide_fit_keeps_certified_native_or_resumed_result(seed, tol, estimator_converges):
+    """A tight-tolerance wide fit keeps its certified native or resumed result.
 
-    The continuation reaches the tolerance with an objective higher by float32
-    noise; it used to be discarded and reported as ``line-search-failure``
-    with the discarded steps still counted. At ``3e-9`` the float64 certificate
+    Some GPUs converge in the native loop; others need an MLX continuation.
+    A continuation with an objective higher by float32 noise used to be discarded
+    and reported as ``line-search-failure`` with its steps still counted. The
+    deterministic tests above exercise that guard regardless of GPU rounding.
+    At ``3e-9`` the float64 certificate
     may still reject the float32-converged model; that verdict is independent
     of the resume guard, so only the solver's result is asserted there.
     """
@@ -353,10 +355,15 @@ def test_resumed_wide_fit_keeps_its_converged_continuation(seed, tol, estimator_
     finally:
         monkeypatch.undo()
     (attempt,), (state,) = attempts, results
-    assert isinstance(attempt, native_command.NativeAttempt) and not attempt.state.converged
+    assert isinstance(attempt, native_command.NativeAttempt)
     assert state.converged and state.stop_reason == "gtol"
-    assert state.n_iter > attempt.state.n_iter
     assert state.grad_max_abs <= tol
+    if attempt.state.converged:
+        # A certified native result should be returned without another solve.
+        assert state is attempt.state
+    else:
+        # The failed native attempt must be continued within the same budget.
+        assert attempt.state.n_iter < state.n_iter <= 200
     if estimator_converges:
         assert not [c for c in caught if issubclass(c.category, ConvergenceWarning)]
         assert model.n_iter_[0] == state.n_iter

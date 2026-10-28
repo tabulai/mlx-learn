@@ -38,8 +38,10 @@ All notable changes to this project are documented here. The format follows
 - The generic L-BFGS solvers (multinomial, CPU and generic weighted fits)
   no longer stop at the first failed line search along a quasi-Newton
   direction: they clear the curvature history and retry once along the
-  gradient, and only a failure there ends the run with
-  `line-search-failure`. A stale history on a badly scaled problem could
+  gradient when evaluations remain in the iteration's `max_line_search`
+  budget. A failed retry or exhausted budget ends the run with
+  `line-search-failure`. Both searches share that limit. A stale history on a
+  badly scaled problem could
   otherwise end a fit at the first direction along which the float32
   objective shows no decrease; runs that never fail a search are unchanged,
   and a fit that has reached its float32 objective floor still stops with
@@ -183,11 +185,21 @@ All notable changes to this project are documented here. The format follows
   also treats accepted steps that leave every cached logit unchanged as a
   stall: it resets the history once, then reports a failed search so the
   intercept polish and float64 certificate run instead of spending `max_iter`.
-- `tol=0` or a subnormal `tol` no longer raises on the Newton route; such fits
-  stay on L-BFGS, which accepts any tolerance.
+- Zero, subnormal, and finite tolerances above float32's maximum no longer
+  raise on the Newton route; such fits stay on L-BFGS. Native tolerance
+  conversion clamps large finite values before casting, without overflow
+  warnings or relaxing the requested threshold.
+- Fits with 512 to 2047 features and an initial curvature-diagonal spread
+  greater than the reciprocal of float32 epsilon now use the existing
+  Newton-CG refinement when its regularization and device requirements are
+  met. This avoids large objective gaps from L-BFGS history roundoff on
+  extremely scaled columns, while retaining the original objective,
+  accepted-step budget and independent convergence checks. Newton routing
+  also checks CG's 64 MiB workspace limit before spending a warm-start budget;
+  unsupported shapes keep the full L-BFGS budget.
 - The `MLXLEARN_LBFGS_SKETCH_SIZE` opt-in (and `tuning_context(lbfgs_sketch_size=...)`)
   is treated as a capability of the prepared native loop: fits it cannot seed
-  (fewer than 512 or more than 4096 features, small designs, no intercept,
+  (fewer than 512 or more than 4096 features, no intercept,
   multinomial targets, a non-default history, no extension) run unsketched at
   the requested tolerance instead of raising. A direct `solve_logistic`
   request for a sketch without that capability is still an error.

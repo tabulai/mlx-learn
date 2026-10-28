@@ -20,17 +20,23 @@ from ._native_cg import solve_cg
 
 
 def use_newton_for_curvature(parts, n, d, denominator, l2):
-    """Select the wide, scale-skewed regime that benefits from Newton steps.
+    """Select scale-skewed regimes that benefit from Newton steps.
 
     Small regularization magnifies float32 dual-gradient roundoff. Keep those
     problems on scalar-metric L-BFGS, which also preserves its rank behavior.
+    Below 2048 features, reserve Newton for diagonal spreads beyond float32's
+    reciprocal epsilon: L-BFGS history differences can lose the slow directions
+    at that scale even with a relative curvature floor. Newton's matrix-vector
+    products avoid those gradient subtractions without changing the objective
+    or introducing a diagonal metric that could alter rank-deficient solutions.
     This heuristic selects an algorithm; it never relaxes stopping checks.
     """
-    from ._native_cg import metal_loop
+    from ._native_cg import _workspace_supported, metal_loop
 
     version = getattr(mx, "__version__", None)
-    if (parts is None or n < 4096 or not 2048 <= d <= 4096
+    if (parts is None or n < 4096 or not 512 <= d <= 4096
         or not math.isfinite(l2) or l2 < 1e-7
+        or not _workspace_supported(n, d)
         or not isinstance(version, str) or re.fullmatch(r"0\.32\.(?:0|[1-9]\d{0,2})", version) is None
         or metal_loop is None or not hasattr(metal_loop, "run_cg")):
         return False
@@ -38,8 +44,9 @@ def use_newton_for_curvature(parts, n, d, denominator, l2):
     extremes = mx.stack((mx.min(diagonal), mx.max(diagonal)))
     mx.eval(extremes)
     minimum, maximum = extremes.tolist()
+    spread_threshold = 100.0 if d >= 2048 else 1.0 / 1.1920928955078125e-7
     return (math.isfinite(minimum) and math.isfinite(maximum)
-            and minimum > 0 and maximum > 100.0 * minimum)
+            and minimum > 0 and maximum > spread_threshold * minimum)
 
 
 @dataclass(frozen=True)

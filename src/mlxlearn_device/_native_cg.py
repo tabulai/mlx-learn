@@ -12,6 +12,14 @@ import mlx.core as mx
 from ._hessian_vector import _geometry
 from ._native import metal_loop
 
+_MAX_WORKSPACE_BYTES = 64 * 1024 * 1024
+
+
+def _workspace_supported(n, d):
+    """Whether the shared Hessian-product partials fit the native CG budget."""
+    _, _, _, blocks = _geometry(n, d)
+    return blocks * (d + 1) * 4 <= _MAX_WORKSPACE_BYTES
+
 
 @functools.lru_cache(maxsize=16)
 def _source(n, d):
@@ -120,7 +128,7 @@ def solve_cg(X, curvature, gradient, regularization, *, forcing=0.01, max_iter=1
         or type(max_iter) is not int or not 1 <= max_iter <= 512):
         raise ValueError("invalid CG forcing or iteration budget")
     groups, _, _, blocks = _geometry(n, d)
-    if blocks * p * 4 > 64 * 1024 * 1024:
+    if not _workspace_supported(n, d):
         raise ValueError("CG workspace exceeds 64 MiB")
     with mx.stream(mx.gpu):
         output = mx.zeros((p,), dtype=mx.float32)

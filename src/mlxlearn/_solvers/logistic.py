@@ -964,8 +964,9 @@ def solve_logistic(
             used_newton = bool(
                 config.fit_intercept and config.max_iter > 0
                 # minimize_newton validates its tolerance as a normal positive
-                # float32; L-BFGS accepts a zero or subnormal tolerance.
-                and optimizer_config.tol >= float(np.finfo(np.float32).tiny)
+                # float32; L-BFGS accepts any finite nonnegative tolerance.
+                and float(np.finfo(np.float32).tiny) <= optimizer_config.tol
+                <= float(np.finfo(np.float32).max)
                 and use_newton_for_curvature(initial_parts, n_samples, n_features, sw_sum, l2)
             )
             # On very wide, scale-skewed inputs, the strict unseeded native

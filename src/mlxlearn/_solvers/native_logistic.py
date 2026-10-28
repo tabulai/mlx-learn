@@ -546,7 +546,9 @@ def minimize_binary(
     denom = mx.array(sw_sum, dtype=X.dtype)
     # Rounding the threshold upward could let the device stop at a gradient
     # that the host rejects, without taking any step after a reanchor.
-    device_tol = np.float32(config.tol)
+    # A finite host tolerance can exceed float32's range. Clamp before the
+    # cast so the device remains conservative without an overflow warning.
+    device_tol = np.float32(min(config.tol, float(np.finfo(np.float32).max)))
     if float(device_tol) > config.tol:
         device_tol = np.nextafter(device_tol, np.float32(0))
     tol = mx.array(device_tol, dtype=X.dtype)

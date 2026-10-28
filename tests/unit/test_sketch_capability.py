@@ -90,6 +90,42 @@ def test_environment_sketch_opt_in_does_not_break_fits_it_cannot_seed(monkeypatc
 
 
 @pytest.mark.gpu
+def test_supported_width_sketch_opt_in_falls_back_without_native_extension(monkeypatch):
+    """A missing extension alone disables the optional sketch for a public fit."""
+    if not gpu_available():
+        pytest.skip("requires an MLX GPU")
+    monkeypatch.setattr(native_command, "_metal_loop", None)
+    monkeypatch.setattr(native_command, "_supports_metal_dlpack", lambda: True)
+    rng = np.random.default_rng(71)
+    X = rng.standard_normal((2048, 512)).astype(np.float32)
+    y = (X[:, 0] + rng.normal(size=len(X)) > 0).astype(np.int64)
+    observed = []
+    original = estimator.solve_logistic
+
+    def observe(*args, **kwargs):
+        config, parts = kwargs["config"], kwargs["initial_parts"]
+        assert parts is not None
+        # Prove no other gate (width, prepared statistics, or MLX version)
+        # explains the fallback before exercising the actual unseeded solve.
+        with monkeypatch.context() as available:
+            available.setattr(native_command, "_metal_loop", object())
+            assert logistic.sketch_supported(config, 1, X.shape[1], parts)
+        solution = original(*args, **kwargs)
+        observed.append((config, solution))
+        return solution
+
+    monkeypatch.setattr(estimator, "solve_logistic", observe)
+    with tuning_context(force_backend="mlx", lbfgs_sketch_size=4), warnings.catch_warnings():
+        warnings.simplefilter("error", ConvergenceWarning)
+        model = LogisticRegression(C=1.0, tol=1e-4, max_iter=100).fit(X, y)
+    assert model.execution_backend_ == "mlx"
+    (config, solution), = observed
+    assert config.sketch_size == 0
+    assert solution.converged and solution.required_tol == pytest.approx(1e-4)
+    assert np.isfinite(model.coef_).all()
+
+
+@pytest.mark.gpu
 @pytest.mark.parametrize("n_classes", [2, 3])
 def test_direct_sketch_request_without_the_capability_is_still_an_error(n_classes):
     if not gpu_available():

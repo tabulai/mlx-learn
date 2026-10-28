@@ -46,7 +46,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 __all__ = ["LBFGSConfig", "LBFGSState", "minimize"]
@@ -76,7 +76,7 @@ class LBFGSConfig:
         reliably reduce iteration count on these objectives.
     max_line_search : int, default=32
         Objective evaluations the line search may spend per iteration, across both
-        the bracketing and the zoom phase.
+        the bracketing and the zoom phase, including any gradient-direction retry.
     c1 : float, default=1e-4
         Sufficient-decrease (Armijo) constant.
     c2 : float, default=0.9
@@ -441,11 +441,13 @@ def minimize(fun: ObjectiveGradient, x0: Any, config: LBFGSConfig) -> LBFGSState
         accepted, step, x_new, f_new, g_new, _strong = search.run(t_init)
         n_fev += search.n_fev
 
-        if (not accepted or not (f_new < objective)) and s_history:
+        remaining = config.max_line_search - search.n_fev
+        if (not accepted or not (f_new < objective)) and s_history and remaining > 0:
             # A failed search along a quasi-Newton direction usually indicts a
             # stale history rather than the point. Retry once along the
-            # gradient from a cleared history; only a failure there says the
-            # objective has stopped decreasing along any direction.
+            # gradient from a cleared history using only this iteration's
+            # remaining evaluations. A failed retry remains a line-search
+            # failure; it does not prove the point is optimal.
             s_history.clear()
             y_history.clear()
             rho_history.clear()
@@ -453,7 +455,10 @@ def minimize(fun: ObjectiveGradient, x0: Any, config: LBFGSConfig) -> LBFGSState
             gtd = -_dot(grad, grad)
             g_l1 = float(mx.sum(mx.abs(grad)))
             t_init = min(1.0, 1.0 / g_l1) if g_l1 > 0.0 else 1.0
-            search = _LineSearch(make_probe(direction), objective, gtd, config)
+            search = _LineSearch(
+                make_probe(direction), objective, gtd,
+                replace(config, max_line_search=remaining),
+            )
             accepted, step, x_new, f_new, g_new, _strong = search.run(t_init)
             n_fev += search.n_fev
 
