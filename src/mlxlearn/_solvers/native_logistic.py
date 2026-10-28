@@ -132,7 +132,9 @@ if(active && meta[0]>0){
     float sy=0,yy=0;
     for(uint j=t;j<P;j+=THREADS){float s=w[j]-oldw[j],y=g[j]-oldg[j];sy+=s*y;yy+=y*y*h0inv[j];}
     sy=direction_sum(sy,t,shared,THREADS);yy=direction_sum(yy,t,shared,THREADS);
-    if(isfinite(sy) && sy>min_curvature*max(yy,1.0f) && yy>0){
+    // The floor is relative to the pair's own metric norm: an absolute floor
+    // rejects every valid pair once one feature's scale makes y'H0y small.
+    if(isfinite(sy) && yy>0 && sy>min_curvature*yy){
         for(uint j=t;j<P;j+=THREADS){newhs[head*P+j]=w[j]-oldw[j];newhy[head*P+j]=g[j]-oldg[j];}
         if(t==0){newhc[2*head]=1.0f/sy;newhc[2*head+1]=sy/yy;}
         head=(head+1)%M;count=min(count+1,uint(M));
@@ -387,6 +389,33 @@ def step(
     return neww, newg, w, g, hs, hy, hc, meta, newraw
 
 
+#: Two direct objective evaluations of nearly identical parameters differ by
+#: float32 rounding of the per-sample losses. The measured difference between a
+#: native iterate and its continuation is 1e-9 to 4e-9 relative; a band of a
+#: few float32 epsilons separates such noise from an actual objective increase.
+_RESUME_OBJECTIVE_BAND = 4.0 * float(np.finfo(np.float32).eps)
+
+
+def _resume_keeps_native_iterate(
+    previous: LBFGSState, objective: float, grad_max: float, finite: bool
+) -> bool:
+    """Decide whether an uncertified continuation must yield to the native iterate.
+
+    A non-finite or clearly higher objective keeps the native parameters. Inside
+    the rounding band the objectives are indistinguishable, so the iterate with
+    the smaller direct gradient wins. A clearly lower objective keeps the
+    continuation. The caller never applies this to a certified continuation.
+    """
+    if not finite:
+        return True
+    band = _RESUME_OBJECTIVE_BAND * abs(previous.objective)
+    if objective > previous.objective + band:
+        return True
+    if objective >= previous.objective - band:
+        return previous.grad_max_abs < grad_max
+    return False
+
+
 def _conservative_config_for_skewed_curvature(
     parts: mx.array | None, d: int, sw_sum: float, l2: float, config: LBFGSConfig
 ) -> LBFGSConfig:
@@ -517,7 +546,9 @@ def minimize_binary(
     denom = mx.array(sw_sum, dtype=X.dtype)
     # Rounding the threshold upward could let the device stop at a gradient
     # that the host rejects, without taking any step after a reanchor.
-    device_tol = np.float32(config.tol)
+    # A finite host tolerance can exceed float32's range. Clamp before the
+    # cast so the device remains conservative without an overflow warning.
+    device_tol = np.float32(min(config.tol, float(np.finfo(np.float32).max)))
     if float(device_tol) > config.tol:
         device_tol = np.nextafter(device_tol, np.float32(0))
     tol = mx.array(device_tol, dtype=X.dtype)
@@ -563,6 +594,7 @@ def minimize_binary(
     state = (w, g, w, g, hs, hy, hc, meta, raw)
     first_batch = min(8, config.max_line_search)
     search_offset = 0
+    stall_reset = False
 
     while True:
         # Four steps amortize Python evaluation boundaries without allowing a
@@ -572,6 +604,7 @@ def minimize_binary(
         # A resumed search executes only one step: the next iteration starts at
         # unit step size again rather than inheriting the continuation offset.
         chunk = 4 if search_offset == 0 else 1
+        chunk_start, chunk_raw = n_iter, state[8]
         for _ in range(min(chunk, config.max_iter - n_iter)):
             step_args = (
                 X,
@@ -593,7 +626,13 @@ def minimize_binary(
         # direction kernel can set status=1. Check its gradient at this same
         # evaluation boundary, avoiding another whole frozen iteration chunk.
         chunk_grad_max = _convergence_gradient_max(state[1], convergence_center)
-        mx.eval(state, chunk_grad_max)
+        # Accepted steps can leave every cached logit bit-for-bit unchanged
+        # when the parameter change is below float32 resolution of the model:
+        # the gradient then stops changing, no curvature pair can form, and
+        # the same penalty-only Armijo decrease would be accepted until the
+        # budget is spent without the model moving.
+        logits_unchanged = mx.array_equal(state[8], chunk_raw)
+        mx.eval(state, chunk_grad_max, logits_unchanged)
         host_meta = np.asarray(state[7]).copy()
         n_iter, status = int(host_meta[0]), int(host_meta[1])
         recent = abs(float(host_meta[10]))
@@ -607,7 +646,25 @@ def minimize_binary(
         )
         if status == 0 and float(chunk_grad_max) <= float(device_tol) and progress:
             status = 1
-        if status == 2 and search_offset == 0 and first_batch < config.max_line_search:
+        stalled = status == 0 and n_iter > chunk_start and bool(logits_unchanged)
+        if stalled and not stall_reset:
+            # The frozen history cannot produce a different direction. Retry
+            # once from a scalar-metric steepest-descent step.
+            stall_reset = True
+            host_meta[2] = host_meta[3] = 0.0
+            search_offset = 0
+            state = (*state[:4], mx.zeros_like(hs), mx.zeros_like(hy), mx.zeros_like(hc),
+                     mx.array(host_meta, dtype=X.dtype), state[8])
+            continue
+        if stalled:
+            # Report precision stagnation as a failed search, so the caller's
+            # intercept polish and float64 certificate run now instead of
+            # after the whole iteration budget.
+            status = 2
+        if (
+            status == 2 and not stalled and search_offset == 0
+            and first_batch < config.max_line_search
+        ):
             search_offset = first_batch
             host_meta[1] = 0
             state = (*state[:7], mx.array(host_meta, dtype=X.dtype), state[8])
@@ -622,19 +679,6 @@ def minimize_binary(
         direct_evaluations += 1
         grad_max = float(_convergence_gradient_max(direct_gradient, convergence_center))
         finite = math.isfinite(objective) and math.isfinite(grad_max)
-        if native_attempt is not None and (
-            not finite or objective > native_attempt.state.objective
-        ):
-            # The resumed path must not return a worse candidate than the
-            # already direct-scored native iterate. Preserve its parameters and
-            # loss while accounting for all accepted continuation steps.
-            previous = native_attempt.state
-            return LBFGSState(
-                x=previous.x, objective=previous.objective,
-                grad_max_abs=previous.grad_max_abs, n_iter=n_iter,
-                n_fev=int(host_meta[9]) + direct_evaluations, converged=False,
-                stop_reason="non-finite-objective" if not finite else "line-search-failure",
-            )
         direct_progress = (not weighted and (d < 2048 or n_iter == 0)) or grad_max == 0 or (
             (not weighted or n_iter >= 2)
             and
@@ -644,6 +688,21 @@ def minimize_binary(
         # A fully rejected line search is not convergence, even if its
         # independently recomputed gradient happens to be below tolerance.
         converged = status in (0, 1) and finite and grad_max <= config.tol and direct_progress
+        if (
+            native_attempt is not None and not converged
+            and _resume_keeps_native_iterate(native_attempt.state, objective, grad_max, finite)
+        ):
+            # The resumed path must not return a worse candidate than the
+            # already direct-scored native iterate. Preserve its parameters and
+            # loss while accounting for all accepted continuation steps. A
+            # continuation the direct check certifies is never discarded.
+            previous = native_attempt.state
+            return LBFGSState(
+                x=previous.x, objective=previous.objective,
+                grad_max_abs=previous.grad_max_abs, n_iter=n_iter,
+                n_fev=int(host_meta[9]) + direct_evaluations, converged=False,
+                stop_reason="non-finite-objective" if not finite else "line-search-failure",
+            )
         if status == 1 and finite and not converged and n_iter < config.max_iter:
             if n_iter == last_reanchor_iteration:
                 # No accepted step separates these two direct checks. Report

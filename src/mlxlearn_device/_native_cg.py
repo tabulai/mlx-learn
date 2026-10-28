@@ -12,9 +12,20 @@ import mlx.core as mx
 from ._hessian_vector import _geometry
 from ._native import metal_loop
 
+_MAX_WORKSPACE_BYTES = 64 * 1024 * 1024
+# Keep weakly regularized fits on the original conservative curvature guard.
+# The Newton routing policy uses the same floor before selecting refinement.
+_MIN_RESOLVED_REGULARIZATION = 1e-7
+
+
+def _workspace_supported(n, d):
+    """Whether the shared Hessian-product partials fit the native CG budget."""
+    _, _, _, blocks = _geometry(n, d)
+    return blocks * (d + 1) * 4 <= _MAX_WORKSPACE_BYTES
+
 
 @functools.lru_cache(maxsize=16)
-def _source(n, d):
+def _source(n, d, resolve_slow_modes=False):
     p = d + 1
     groups, feature_groups, rows, blocks = _geometry(n, d)
     # Share the single-pass arithmetic with the separately tested MLX HVP.
@@ -28,7 +39,8 @@ def _source(n, d):
     else:
         raise RuntimeError("Hessian-vector source unavailable")
     definitions = {"N": n, "D": d, "P": p, "B": blocks, "GROUPS": groups,
-                   "FEATURE_GROUPS": feature_groups, "ROWS": rows}
+                   "FEATURE_GROUPS": feature_groups, "ROWS": rows,
+                   "RESOLVE_SLOW_MODES": int(resolve_slow_modes)}
     header = "#include <metal_stdlib>\nusing namespace metal;\n"
     header += "".join(f"#define {key} {value}\n" for key, value in definitions.items())
     header += r"""
@@ -68,7 +80,14 @@ kernel void cg_update(device float* x [[buffer(0)]], device float* r [[buffer(1)
  dot=cg_sum(dot,scratch,t);pp=cg_sum(pp,scratch,t);
  float rayleigh=dot/max(pp,1e-30f),oldrr=meta[2];
  bool invalid=!isfinite(dot)||!isfinite(pp)||!isfinite(oldrr)||!isfinite(rayleigh);
- if(invalid || dot<=0 || rayleigh<=meta[4]*(8*1.1920928955078125e-7f)){
+ // A smaller positive Rayleigh quotient can be a genuine slow mode on
+ // scale-skewed inputs. Comparing it with an earlier larger quotient drops
+ // identifiable directions even for a diagonal positive-definite Hessian.
+ // In the regularized Newton regime, retain those positive modes and rely on
+ // residual stopping and independent outer checks. With weaker feature
+ // regularization keep the conservative cutoff, which prevents near-null
+ // gradient roundoff from becoming large coefficient updates.
+ if(invalid || dot<=0 || (!RESOLVE_SLOW_MODES && rayleigh<=meta[4]*(8*1.1920928955078125e-7f))){
   if(t==0)meta[0]=invalid?3:2;return;
  }
  float alpha=oldrr/dot,rr=0;
@@ -93,10 +112,14 @@ kernel void cg_product(device const float* X [[buffer(0)]],
 
 
 def solve_cg(X, curvature, gradient, regularization, *, forcing=0.01, max_iter=128):
-    """Solve H direction = -gradient approximately, retaining float32 rank safety.
+    """Solve H direction = -gradient approximately with bounded float32 iterations.
 
-    Relative residual stopping avoids chasing operator roundoff; unresolved
-    curvature truncates the solve. Neither is an outer convergence certificate.
+    Relative residual stopping avoids over-solving operator roundoff;
+    nonpositive or nonfinite curvature truncates the solve. In the regularized
+    Newton regime, a positive mode is not rejected merely because an earlier
+    direction had larger curvature. Weaker regularization retains the original
+    relative curvature cutoff to protect unresolved null directions. None of
+    these stopping rules is an outer convergence certificate.
     All arrays must be validated, finite, contiguous float32 GPU allocations;
     the caller must independently score and line-search the returned direction.
     The native code checks exact pipeline limits and retains DLPack owners until
@@ -120,15 +143,20 @@ def solve_cg(X, curvature, gradient, regularization, *, forcing=0.01, max_iter=1
         or type(max_iter) is not int or not 1 <= max_iter <= 512):
         raise ValueError("invalid CG forcing or iteration budget")
     groups, _, _, blocks = _geometry(n, d)
-    if blocks * p * 4 > 64 * 1024 * 1024:
+    if not _workspace_supported(n, d):
         raise ValueError("CG workspace exceeds 64 MiB")
     with mx.stream(mx.gpu):
         output = mx.zeros((p,), dtype=mx.float32)
         arrays = (X, curvature, gradient, regularization, output)
-        mx.eval(*arrays)
+        # Exclude the unregularized intercept. This scalar determines only a
+        # curvature safeguard; no feature-dependent metric is introduced.
+        minimum_regularization = mx.min(regularization[:d])
+        mx.eval(*arrays, minimum_regularization)
+        minimum = float(minimum_regularization)
+        resolve_slow_modes = math.isfinite(minimum) and minimum >= _MIN_RESOLVED_REGULARIZATION
         mx.synchronize()
         capsules = tuple(value.__dlpack__() for value in arrays)
         owners = (capsules, *arrays)
-        metadata = metal_loop.run_cg(_source(n, d), capsules, n, d, p, blocks,
+        metadata = metal_loop.run_cg(_source(n, d, resolve_slow_modes), capsules, n, d, p, blocks,
                                      groups, max_iter, float(forcing), owners)
     return output, metadata
