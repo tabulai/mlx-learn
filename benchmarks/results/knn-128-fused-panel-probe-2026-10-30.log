@@ -1,0 +1,77 @@
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/tunguz/Programming/mlxlearn/benchmarks/knn_pipeline.py", line 491, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "/Users/tunguz/Programming/mlxlearn/benchmarks/knn_pipeline.py", line 487, in main
+    return run(args)
+  File "/Users/tunguz/Programming/mlxlearn/benchmarks/knn_pipeline.py", line 410, in run
+    entry["variants"][variant]["cold"] = workers[variant].request({"op": "cold", "case": asdict(case)})
+                                         ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/tunguz/Programming/mlxlearn/benchmarks/knn_pipeline.py", line 165, in request
+    raise RuntimeError(result["error"])
+RuntimeError: Traceback (most recent call last):
+  File "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/base.py", line 63, in mlx_guard
+    yield
+  File "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_base.py", line 272, in kneighbors
+    dist, idx = self._index_.query(
+                ~~~~~~~~~~~~~~~~~~^
+        Q, k, return_distance=return_distance, exclude_self=query_is_train
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/distance.py", line 219, in query
+    mx.eval(indices, *([] if distances is None else [distances]))
+    ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: [metal::Device] Unable to build metal library from source
+mlx/backend/metal/kernels/utils.h:852:79: error: subscripted value is not an array, pointer, or vector
+        const float upper = cutoff * (1.0f + 6.0f * 0x1p-23f) + distance_floor[0];
+                                                                ~~~~~~~~~~~~~~^~
+mlx/backend/metal/kernels/utils.h:852:21: error: default initialization of an object of const type 'const float'
+        const float upper = cutoff * (1.0f + 6.0f * 0x1p-23f) + distance_floor[0];
+                    ^
+                          = 0.0
+mlx/backend/metal/kernels/utils.h:860:316: note: in instantiation of function template specialization 'custom_kernel_mlxlearn_refine_certified_shortlist__128_7_5_1_float_float_int32_t_float_bool_int32_tc_floats_float_int32_t_bool<128, 7, 5, true>' requested here
+template [[host_name("custom_kernel_mlxlearn_refine_certified_shortlist__128_7_5_1_float_float_int32_t_float_bool_int32_tc_floats_float_int32_t_bool")]] [[kernel]] decltype(custom_kernel_mlxlearn_refine_certified_shortlist__128_7_5_1_float_float_int32_t_float_bool_int32_tc_floats_float_int32_t_bool<128, 7, 5, 1>) custom_kernel_mlxlearn_refine_certified_shortlist__128_7_5_1_float_float_int32_t_float_bool_int32_tc_floats_float_int32_t_bool<128, 7, 5, 1>;
+                                                                                                                                                                                                                                                                                                                           ^
+
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/tunguz/Programming/mlxlearn/benchmarks/knn_pipeline.py", line 326, in worker_main
+    result = execute(operation, request["case"])
+  File "/Users/tunguz/Programming/mlxlearn/benchmarks/knn_pipeline.py", line 269, in execute
+    value, query_ms = timed(partial(query, model, data, k))
+                      ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/tunguz/Programming/mlxlearn/benchmarks/knn_pipeline.py", line 213, in timed
+    result = call()
+  File "/Users/tunguz/Programming/mlxlearn/benchmarks/knn_pipeline.py", line 235, in query
+    return model.kneighbors(data["Q"], return_distance=distance)
+           ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_base.py", line 271, in kneighbors
+    with mlx_guard(type(self).__name__, "kneighbors"):
+         ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/contextlib.py", line 162, in __exit__
+    self.gen.throw(value)
+    ~~~~~~~~~~~~~~^^^^^^^
+  File "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/base.py", line 67, in mlx_guard
+    raise BackendExecutionError(
+    ...<5 lines>...
+    ) from exc
+mlxlearn.exceptions.BackendExecutionError: NearestNeighbors.kneighbors failed inside the MLX backend: RuntimeError: [metal::Device] Unable to build metal library from source
+mlx/backend/metal/kernels/utils.h:852:79: error: subscripted value is not an array, pointer, or vector
+        const float upper = cutoff * (1.0f + 6.0f * 0x1p-23f) + distance_floor[0];
+                                                                ~~~~~~~~~~~~~~^~
+mlx/backend/metal/kernels/utils.h:852:21: error: default initialization of an object of const type 'const float'
+        const float upper = cutoff * (1.0f + 6.0f * 0x1p-23f) + distance_floor[0];
+                    ^
+                          = 0.0
+mlx/backend/metal/kernels/utils.h:860:316: note: in instantiation of function template specialization 'custom_kernel_mlxlearn_refine_certified_shortlist__128_7_5_1_float_float_int32_t_float_bool_int32_tc_floats_float_int32_t_bool<128, 7, 5, true>' requested here
+template [[host_name("custom_kernel_mlxlearn_refine_certified_shortlist__128_7_5_1_float_float_int32_t_float_bool_int32_tc_floats_float_int32_t_bool")]] [[kernel]] decltype(custom_kernel_mlxlearn_refine_certified_shortlist__128_7_5_1_float_float_int32_t_float_bool_int32_tc_floats_float_int32_t_bool<128, 7, 5, 1>) custom_kernel_mlxlearn_refine_certified_shortlist__128_7_5_1_float_float_int32_t_float_bool_int32_tc_floats_float_int32_t_bool<128, 7, 5, 1>;
+                                                                                                                                                                                                                                                                                                                           ^
+
+. This is a bug in mlxlearn or MLX, not a capability limit, so mlxlearn did not silently rerun the computation on scikit-learn. Please report it with the traceback below.
+

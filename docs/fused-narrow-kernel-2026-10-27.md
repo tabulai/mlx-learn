@@ -116,10 +116,13 @@ Now every GPU fit goes through `prepare_centered`:
   there is the documented "line-search failure as a stop reason" case, and
   the parity test's precondition now asks that neither solver reached the
   tolerance instead of demanding exactly 100 iterations. Separately, both
-  solvers now clear a quasi-Newton history and retry once along the
-  gradient before reporting `line-search-failure` (on the CI GPU that
-  carried the fixture from iteration 91 to 94); a run that never fails a
-  search is unchanged, and a plateau still ends with the same stop reason.
+  solvers clear a quasi-Newton history and retry once along the gradient
+  when the iteration's line-search evaluation budget has room. The original
+  implementation gave that retry a fresh budget (on the CI GPU it carried
+  the fixture from iteration 91 to 94); the corrected implementation shares
+  `max_line_search` between both attempts. Exhausting that allowance or
+  failing the retry reports `line-search-failure`; a run that never fails a
+  search is unchanged.
 
 Input preparation at 500,000 × 32 drops from about 1.98 ms to 1.12 ms per
 fit and at 500,000 × 128 from 6.96 ms to 3.98 ms (fresh host buffers,

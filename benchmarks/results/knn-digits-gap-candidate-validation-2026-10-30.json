@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "validation_pass": true,
+  "baseline": "knn-startup-final2-2026-10-30",
+  "baseline_native_sha256": "69b80a68bc3fe5a0937b99ab2d030a37b33b5fdfd6b38d632e8c6611555ff2c3",
+  "sha256": {
+    "src/mlxlearn/_kernels/_neighbors_cpu_native.cpp": "d3b116cd2c95c8d2ad05aa7de4e3b5a82761693b7577aa6f7afbfe4d0d5b5bce",
+    "src/mlxlearn/_kernels/_neighbors_cpu_native.cpython-313-darwin.so": "5cb92f7ce3d70e8e1803f9d0b81c9753ec8e611f5c02d375c382fccb094d833a",
+    "src/mlxlearn/_kernels/neighbors_cpu.py": "3e4955ebae4ae0c64ee8c81d7fcacd91dea4fd1f60e8dfbf65207a53c3854b27",
+    "tests/unit/test_neighbors_integer_select.py": "213c2c0141a8fd3beb35cf637305bbe81c6d4eede1b5a913ed35cb32ee4c8905",
+    "benchmarks/results/knn-digits-gap-baseline-stages-2026-10-30.json": "74af2e4fedcc5edf0d9ea73ceadab14fee2e6ed70d024fe496d4abc62b3658c5",
+    "benchmarks/results/knn-digits-gap-fused-ablation-2026-10-30.json": "a1030c2d6981858b97787ee0057216864c5c64dec8b0db179730cf4a899c1eaf",
+    "benchmarks/results/knn-digits-gap-fused-build-2026-10-30.log": "c28ad370c004872b93500e45b83c3ce0a36b7309baff4fdb34f823fa56b32c82",
+    "benchmarks/results/knn-digits-gap-fused-final-tests-2026-10-30.log": "238b47c743d29dd3b6326339f431097984026b67e8f4c8242478279b60f7794a"
+  },
+  "build_command": "python3 setup.py build_ext --inplace > benchmarks/results/knn-digits-gap-fused-build-2026-10-30.log 2>&1",
+  "force_flag": false,
+  "task_environment_overrides": false,
+  "test_command": "python3 -m pytest -q tests/unit/test_neighbors_integer_select.py tests/unit/test_neighbors_cpu_native.py tests/unit/test_neighbors_cpu_exact.py > benchmarks/results/knn-digits-gap-fused-final-tests-2026-10-30.log 2>&1",
+  "tests_passed": 354,
+  "new_cases": 66,
+  "proof": [
+    "Existing integral-coordinate Gram certificate and arithmetic expression remain unchanged. All input dot values retain the integral +/-2**22 check, including subnormal bit rejection.",
+    "Only k=5 fuses validation with selection. Every SIMD and scalar lane is validated before top-five pruning or self exclusion. Invalid lanes are masked before arithmetic.",
+    "All five-neighbor results are staged privately. Output buffers are written only after every row is checked. Domain errors retain priority over negative scores, including an early negative score followed by a late malformed dot.",
+    "Reference IDs still arrive in increasing order and later equal squared distances never replace earlier IDs. All other k retain the prior implementation.",
+    "CPU dispatch, Python engine, native direct-scan search, and GPU code are unchanged."
+  ],
+  "static_reviews": [
+    "root",
+    "auto_dispatch_contract"
+  ],
+  "probe_metadata_clarification": "The fused-ablation method field says each result independently audited; precisely, squared distances and IDs from selector calls and IDs from engine calls were checked each iteration. Public predict timings were measured, while prediction correctness is covered by the separate tests, not checked after every timed predict call. No timing samples or old artifacts were overwritten.",
+  "scope": "Component ablation supports development only; focused isolated GPU control and full benchmark panels remain required."
+}

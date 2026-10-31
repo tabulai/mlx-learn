@@ -3,19 +3,23 @@
 from __future__ import annotations
 
 import numpy as np
-from sklearn.neighbors import KNeighborsClassifier as _SkKNeighborsClassifier
+from sklearn.base import BaseEstimator, ClassifierMixin
 
+from .._common.base import mlx_guard
+from .._common.device import use_device
 from .._common.validation import check_is_fitted
-from ._base import MLXNeighborsMixin, class_probabilities, compute_weights, weighted_mode
+from ._base import MLXNeighborsMixin, compute_weights
 
 __all__ = ["KNeighborsClassifier"]
 
 
-class KNeighborsClassifier(MLXNeighborsMixin, _SkKNeighborsClassifier):
+class KNeighborsClassifier(MLXNeighborsMixin, ClassifierMixin, BaseEstimator):
     """k-nearest-neighbors classifier, accelerated with MLX.
 
     A drop-in replacement for :class:`sklearn.neighbors.KNeighborsClassifier` for
     exact brute-force Euclidean search on dense, single-output data.
+    Concrete sklearn neighbor subclass identity is preserved only by patched
+    variants; direct instances expose their own ``kneighbors_graph`` method.
 
     Parameters
     ----------
@@ -42,9 +46,10 @@ class KNeighborsClassifier(MLXNeighborsMixin, _SkKNeighborsClassifier):
 
     Notes
     -----
-    Ties are resolved exactly as scikit-learn resolves them: neighbors are ordered
-    by ``(distance, training index)``, and a tied vote goes to the smallest class
-    code, i.e. the class that sorts first in ``classes_``.
+    Neighbors are ordered by true distance and then training index. A tied vote
+    goes to the smallest class code, i.e. the class that sorts first in
+    ``classes_``. scikit-learn may choose different members when equal-distance
+    candidates cross the kth-neighbor boundary.
 
     ``weights="distance"`` gives a query that coincides exactly with training
     points all of its weight on those points, matching scikit-learn, rather than
@@ -61,6 +66,19 @@ class KNeighborsClassifier(MLXNeighborsMixin, _SkKNeighborsClassifier):
     array([0])
     """
 
+    _sklearn_class_name = "KNeighborsClassifier"
+
+    def __init__(self, n_neighbors=5, *, weights="uniform", algorithm="auto", leaf_size=30,
+                 p=2, metric="minkowski", metric_params=None, n_jobs=None):
+        self.n_neighbors = n_neighbors
+        self.weights = weights
+        self.algorithm = algorithm
+        self.leaf_size = leaf_size
+        self.p = p
+        self.metric = metric
+        self.metric_params = metric_params
+        self.n_jobs = n_jobs
+
     def fit(self, X, y):
         """Fit the classifier.
 
@@ -74,15 +92,98 @@ class KNeighborsClassifier(MLXNeighborsMixin, _SkKNeighborsClassifier):
         self : KNeighborsClassifier
         """
         if self._fit_neighbors(X, y, target="classification") == "sklearn":
-            super().fit(X, y)
-            self._set_backend("sklearn")
-            return self
+            return self._fit_sklearn(X, y)
 
         y = self._y_checked_
         self.classes_, encoded = np.unique(y, return_inverse=True)
         self._y = encoded.astype(np.intp, copy=False)
+        del self._y_checked_
         self.outputs_2d_ = False
+        if self.execution_policy_ != "auto" or self.execution_backend_ == "mlx":
+            with mlx_guard(type(self).__name__, "fit"):
+                self._ensure_device_targets()
         return self
+
+    @property
+    def _y_device_(self):
+        return self.__dict__.get("_knn_query_state_", {}).get("targets")
+
+    @_y_device_.setter
+    def _y_device_(self, value):
+        self._knn_query_state_["targets"] = value
+
+    def _ensure_device_targets(self):
+        """Upload encoded labels once per fit, rebuilding only after pickle."""
+        import mlx.core as mx
+
+        if getattr(self, "_y_device_", None) is None:
+            backend = "mlx" if self.execution_policy_ == "auto" else self._fitted_backend()
+            with use_device("gpu" if backend == "mlx" else "cpu"):
+                self._y_device_ = mx.array(self._y, dtype=mx.int32)
+                mx.eval(self._y_device_)
+        return self._y_device_
+
+    def _predict_on_device(self, X, *, probabilities):
+        """Search and vote before transferring the public result to NumPy."""
+        if self.weights not in (None, "uniform", "distance"):
+            raise ValueError(
+                "weights not recognized: should be 'uniform' or 'distance', "
+                f"got {self.weights!r}"
+            )
+        operation = "predict_proba" if probabilities else "predict"
+        backend = self._fitted_backend(operation)
+        prepared = None
+        if self.execution_policy_ == "auto":
+            prepared = self._prepare_neighbor_query(X)
+            Q, k, query_is_train = prepared
+            policy = self._index_._query_policy(Q.shape[0], k, Q)
+            backend = policy[0]
+            if backend == "cpu":
+                with mlx_guard(type(self).__name__, operation):
+                    dist, idx = self._index_.query(
+                        Q, k, return_distance=self.weights == "distance",
+                        exclude_self=query_is_train, _policy=policy,
+                    )
+                    weights = compute_weights(dist, self.weights)
+                    votes = np.zeros((len(idx), len(self.classes_)), dtype=np.float64)
+                    rows = np.arange(len(idx))[:, None]
+                    np.add.at(votes, (rows, self._y[idx]), 1.0 if weights is None else weights)
+                    self._record_neighbor_query(operation, Q.shape)
+                    if probabilities:
+                        return votes / votes.sum(axis=1, keepdims=True)
+                    return self.classes_.take(votes.argmax(axis=1))
+        import mlx.core as mx
+
+        from mlxlearn_device._neighbors_votes import class_predictions, class_probabilities
+
+        with mlx_guard(type(self).__name__, operation), use_device(
+            "gpu" if backend == "mlx" else "cpu"
+        ):
+            if prepared is None:
+                dist, idx = self._query_device_indices(
+                    X, need_distance=self.weights == "distance", squared=True
+                )
+            else:
+                dist, idx = self._index_.query_device(
+                    Q, k, return_distance=self.weights == "distance",
+                    exclude_self=query_is_train, _squared=True,
+                )
+                self._record_neighbor_query(operation, Q.shape)
+            aggregate = class_probabilities if probabilities else class_predictions
+            result = aggregate(
+                idx, self._ensure_device_targets(), len(self.classes_), distances=dist,
+                squared_distances=True,
+            )
+            mx.eval(result)
+            if probabilities:
+                output = np.asarray(result, dtype=np.float64)
+                invalid = not np.isfinite(output).all()
+            else:
+                output = np.asarray(result, dtype=np.intp)
+                invalid = np.any(output < 0)
+            if invalid:
+                raise ValueError("All neighbors of some sample are getting zero weights.")
+            return output if probabilities else self.classes_.take(output)
 
     def predict(self, X):
         """Predict class labels.
@@ -99,13 +200,10 @@ class KNeighborsClassifier(MLXNeighborsMixin, _SkKNeighborsClassifier):
         check_is_fitted(self)
         if self._fitted_backend("predict") == "sklearn":
             self._note_inference("predict")
-            return super().predict(X)
+            self._set_query_backend("sklearn")
+            return self._sklearn_delegate().predict(X)
 
-        dist, idx = self._query_indices(X, need_distance=self.weights == "distance")
-        weights = compute_weights(dist, self.weights)
-        codes = self._y[idx]
-        winners = weighted_mode(codes, weights, len(self.classes_))
-        return self.classes_.take(winners)
+        return self._predict_on_device(X, probabilities=False)
 
     def predict_proba(self, X):
         """Predict class probabilities.
@@ -122,9 +220,7 @@ class KNeighborsClassifier(MLXNeighborsMixin, _SkKNeighborsClassifier):
         check_is_fitted(self)
         if self._fitted_backend("predict_proba") == "sklearn":
             self._note_inference("predict_proba")
-            return super().predict_proba(X)
+            self._set_query_backend("sklearn")
+            return self._sklearn_delegate().predict_proba(X)
 
-        dist, idx = self._query_indices(X, need_distance=self.weights == "distance")
-        weights = compute_weights(dist, self.weights)
-        codes = self._y[idx]
-        return class_probabilities(codes, weights, len(self.classes_))
+        return self._predict_on_device(X, probabilities=True)

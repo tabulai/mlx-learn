@@ -1,0 +1,297 @@
+{
+  "schema_version": 1,
+  "written_at": "2026-10-30T22:18:49.557052+00:00",
+  "workspace": "/Users/tunguz/Programming/mlxlearn",
+  "git_head": "5615cb004c065b2b754a247764fd89aa60230b6d",
+  "git_note": "Pre-existing uncommitted development changes retained; source archives identify measured implementation. No commit created.",
+  "hardware": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "python": "3.13.3 (v3.13.3:6280bb54784, Apr  8 2025, 10:47:54) [Clang 15.0.0 (clang-1500.3.9.4)]",
+  "runtime_abi": {
+    "implementation": "cpython",
+    "cache_tag": "cpython-313",
+    "SOABI": "cpython-313-darwin",
+    "EXT_SUFFIX": ".cpython-313-darwin.so",
+    "machine": "arm64",
+    "system": "Darwin",
+    "sysconfig_platform": "macosx-10.13-universal2"
+  },
+  "archives": {
+    "source": {
+      "path": "benchmarks/reference/knn-latency-final-2026-10-30.zip",
+      "sha256": "076333d5835d90f21fe737494866e596b92be9dd4924111f081eaeae2d6a3873",
+      "manifest_sha256": "5721ae167568e2baa06cdd6d6159bd0f2784f1abb263aa1f4d83336d8697519b",
+      "member_count": 63
+    },
+    "-runtime": {
+      "path": "benchmarks/reference/knn-latency-final-2026-10-30-runtime.zip",
+      "sha256": "e9b943e6c215ff9b155b401615dca5a8c756a6a98a647ae3fa0af871bfc1c8f8",
+      "manifest_sha256": "dd1de08c6a094dd7f3884e7156d802ee97905e78d77c503f3e08a5992cdc7bd1",
+      "member_count": 8
+    },
+    "-harnesses": {
+      "path": "benchmarks/reference/knn-latency-final-2026-10-30-harnesses.zip",
+      "sha256": "c2f82281caa96bf19de06365f693adf0e6abf28b6d06f7fdcaa1f7c2a14453b6",
+      "manifest_sha256": "4b25600579d0e6191f1b01a3c73bf1eeb6ec92ae428b1377b0d667bd4cb77c1b",
+      "member_count": 138
+    }
+  },
+  "production_files_changed_from_previous_auto": [
+    "mlxlearn/_kernels/_neighbors_cpu_native.cpp",
+    "mlxlearn/_kernels/distance.py",
+    "mlxlearn/_kernels/neighbors_cpu.py",
+    "mlxlearn/neighbors/_base.py",
+    "mlxlearn/neighbors/_classification.py"
+  ],
+  "gpu_device_source_files_unchanged": 21,
+  "commands": {
+    "native_build": "python3 setup.py build_ext --inplace",
+    "tests": "python3 -m pytest -q tests/unit/test_*neighbors*.py tests/unit/test_validation_range.py tests/unit/test_knn_acceleration_benchmark.py tests/unit/test_knn_warmed_benchmark.py tests/parity/test_neighbors.py tests/parity/test_neighbors_fp32.py tests/patching tests/test_sklearn_compliance.py benchmarks/test_knn_auto_harness.py benchmarks/test_knn_auto_verify.py benchmarks/test_knn_freeze_runtime.py benchmarks/test_knn_native_metadata.py benchmarks/test_knn_followup_benchmarks.py benchmarks/test_knn_cold_tables.py -k 'not LogisticRegression and not SVC'",
+    "package": "python3 -m build --wheel --sdist --no-isolation --outdir /tmp/mlxlearn-knn-latency-final-build",
+    "broad": "python3 -m benchmarks.knn_broad --current-mode auto --source-manifest benchmarks/reference/knn-latency-final-2026-10-30.manifest.json --repeats 15 --warmup 5 --target 2 --output benchmarks/results/knn-latency-final-2026-10-30-broad.json",
+    "control": "python3 -m benchmarks.knn_auto_control --source-manifest benchmarks/reference/knn-latency-final-2026-10-30.manifest.json --previous-archive benchmarks/reference/knn-small-final-2026-10-30.zip --previous-auto-archive benchmarks/reference/knn-auto-final-2026-10-30.zip --previous-auto-runtime benchmarks/reference/knn-auto-final-2026-10-30-runtime.zip --pairs 31 --warmup-seconds .25 --output benchmarks/results/knn-latency-final-2026-10-30-control.json",
+    "cold": "python3 -m benchmarks.knn_cold --source-manifest benchmarks/reference/knn-latency-final-2026-10-30.manifest.json --previous-auto-archive benchmarks/reference/knn-auto-final-2026-10-30.zip --previous-auto-runtime benchmarks/reference/knn-auto-final-2026-10-30-runtime.zip --repeats 5 --output benchmarks/results/knn-latency-final-2026-10-30-cold.json",
+    "focused_repeat": "python3 -m benchmarks.knn_auto_control --source-manifest benchmarks/reference/knn-latency-final-2026-10-30.manifest.json --previous-archive benchmarks/reference/knn-small-final-2026-10-30.zip --previous-auto-archive benchmarks/reference/knn-auto-final-2026-10-30.zip --previous-auto-runtime benchmarks/reference/knn-auto-final-2026-10-30-runtime.zip --case real_digits_raw_k5_seed151 --case real_digits_raw_k5_seed251 --case real_digits_raw_k5_seed252 --case real_breast_cancer_raw_k5_seed151 --case real_breast_cancer_raw_k5_seed251 --case real_breast_cancer_raw_k5_seed252 --case distribution_offset_1e4_4096x128_k5_seed151 --case distribution_offset_1e4_4096x128_k5_seed251 --case distribution_offset_1e4_4096x128_k5_seed252 --pairs 31 --warmup-seconds 1 --output benchmarks/results/knn-latency-final-2026-10-30-warm-exceptions-repeat.json",
+    "independent_audit": "python3 -m benchmarks.knn_auto_verify --broad benchmarks/results/knn-latency-final-2026-10-30-broad.json --control benchmarks/results/knn-latency-final-2026-10-30-control.json --previous-broad benchmarks/results/knn-small-final-2026-10-30-broad.json --previous-auto-broad benchmarks/results/knn-auto-final-2026-10-30-broad.json --cold benchmarks/results/knn-latency-final-2026-10-30-cold.json --runtime-archive benchmarks/reference/knn-latency-final-2026-10-30-runtime.zip --output benchmarks/results/knn-latency-final-2026-10-30-independent-audit.json"
+  },
+  "serial_timing_order": [
+    "broad",
+    "control",
+    "cold",
+    "focused_repeat"
+  ],
+  "source_tests_harness_native_frozen_during_all_final_timing": true,
+  "tests": {
+    "passed": 1191,
+    "deselected": 5,
+    "warnings": 14,
+    "seconds": 12.54,
+    "log": "benchmarks/results/knn-latency-full-tests-final-2026-10-30.log"
+  },
+  "lint_pass": true,
+  "package_validation": {
+    "pass": true,
+    "wheel": {
+      "path": "/tmp/mlxlearn-knn-latency-final-build/mlx_learn-0.1.0a2-cp313-cp313-macosx_11_0_arm64.whl",
+      "sha256": "0bb7cc5c5f4c6bc2cfa28dfb97aeb1ffcbb4822916112b72da487921187bdf4c",
+      "source_files_verified": 63,
+      "native_binary_sha256": "bacc58cf95a565df84eb40dd214d97c3bdf646153ff775e5488105f67120c2b7",
+      "tag": "cp313-cp313-macosx_11_0_arm64",
+      "scipy_direct_dependency": true
+    },
+    "sdist": {
+      "path": "/tmp/mlxlearn-knn-latency-final-build/mlx_learn-0.1.0a2.tar.gz",
+      "sha256": "02138bf72d68c98b7f39185f5801447abd707266b1d6b2827e8f3ac3bcab8b6d",
+      "source_files_verified": 63,
+      "build_files_verified": true
+    },
+    "build_log": "benchmarks/results/knn-latency-package-build-final-2026-10-30.log"
+  },
+  "broad": {
+    "cases": 72,
+    "families": 24,
+    "operations": 9,
+    "retained_calls": 15,
+    "warmup_calls": 5,
+    "headline_cells": 648,
+    "current_strict_audits": {
+      "audit_count": 14472,
+      "strict_passes": 14472,
+      "strict_failures": 0,
+      "failure_kind_counts": {},
+      "maximum_errors": {
+        "distance_max_abs": 7.287521839316469e-06,
+        "distance_max_abs_from_returned_points": 7.287521839316469e-06,
+        "max_abs": 3.902618989082285e-08
+      },
+      "prediction_mismatch_query_evaluations": 0,
+      "prediction_mismatch_boundary_tie_query_evaluations": 0,
+      "prediction_mismatch_without_boundary_tie_query_evaluations": 0
+    }
+  },
+  "control": {
+    "cases": 48,
+    "cells": 222,
+    "variants": 5,
+    "pairs": 31,
+    "warmup_seconds": 0.25
+  },
+  "cold": {
+    "cases": 18,
+    "variants": 5,
+    "launches_per_case_variant": 5,
+    "total_launches": 450
+  },
+  "focused_repeat": {
+    "cases": [
+      "real_digits_raw_k5_seed151",
+      "real_digits_raw_k5_seed251",
+      "real_digits_raw_k5_seed252",
+      "real_breast_cancer_raw_k5_seed151",
+      "real_breast_cancer_raw_k5_seed251",
+      "real_breast_cancer_raw_k5_seed252",
+      "distribution_offset_1e4_4096x128_k5_seed151",
+      "distribution_offset_1e4_4096x128_k5_seed251",
+      "distribution_offset_1e4_4096x128_k5_seed252"
+    ],
+    "case_count": 9,
+    "cells": 60,
+    "variants": 5,
+    "pairs": 31,
+    "warmup_seconds": 1,
+    "selection_reason": "All three seeds from each family containing full-control warmed Digits, small CPU or 128-feature offset exceptions; all operations retained. Full run remains unchanged; neither run selected as winner.",
+    "independent_validation_pass": true,
+    "accuracy_and_integrity_pass": true,
+    "audit": "benchmarks/results/knn-latency-final-2026-10-30-warm-exceptions-repeat-audit.json"
+  },
+  "independent_validation_pass": true,
+  "accuracy_and_integrity_pass": true,
+  "artifacts": {
+    "benchmarks/results/knn-latency-final-2026-10-30-additional-audit.json": {
+      "sha256": "266a7e343d817dc92c6a0e24905b95fb587a0c46da9d4e809f252e41cd045d16",
+      "bytes": 4036926
+    },
+    "benchmarks/results/knn-latency-final-2026-10-30-additional-metrics.json": {
+      "sha256": "c0251b6daf53acc45956d926c4967d77e6845934d1f943bb79eee55a0c7ea76b",
+      "bytes": 1614
+    },
+    "benchmarks/results/knn-latency-final-2026-10-30-broad.json": {
+      "sha256": "214f5c074659ad6dd1c48c7010807b4b91386a8824bdb092f6b452fc190c06ca",
+      "bytes": 68237565
+    },
+    "benchmarks/results/knn-latency-final-2026-10-30-broad.log": {
+      "sha256": "2edf1eeeb04d96bdf11f71271e01ec7c71683df8b5400e5e6c4bc7a156ed49c1",
+      "bytes": 14949
+    },
+    "benchmarks/results/knn-latency-final-2026-10-30-cold-report.log": {
+      "sha256": "84b3d4865f2d1a98efefea0405fa5883fcbb52a4f0251e88638115b6a3294a9b",
+      "bytes": 36
+    },
+    "benchmarks/results/knn-latency-final-2026-10-30-cold-summary.json": {
+      "sha256": "92d8777e299cab37bc6c4446f379da76f08a8ab9a02fd444bc5adf3e43ff3dd8",
+      "bytes": 629841
+    },
+    "benchmarks/results/knn-latency-final-2026-10-30-cold.json": {
+      "sha256": "0fbc5028ac337064a4d270028b909e717f7716535367769f3ba2288769a07443",
+      "bytes": 6092642
+    },
+    "benchmarks/results/knn-latency-final-2026-10-30-cold.log": {
+      "sha256": "106fef415372c3d71a9b325473ce8a05b6f1709990bb769deffe924efc658baf",
+      "bytes": 755
+    },
+    "benchmarks/results/knn-latency-final-2026-10-30-control-compact.json": {
+      "sha256": "ab17df6634d83c02817abc388d51134d97c3fe8a9f73c4f1ef6a85985869bd23",
+      "bytes": 257842
+    },
+    "benchmarks/results/knn-latency-final-2026-10-30-control-report.log": {
+      "sha256": "462b487e9e9a9dd678b32dce298a371c8a577fc1ad09943f1dfdbd17740369a1",
+      "bytes": 39
+    },
+    "benchmarks/results/knn-latency-final-2026-10-30-control.json": {
+      "sha256": "e12764076f2aaa5665324f2ec6a8ab2288eef9c5569bed33ba2a64434f305e95",
+      "bytes": 895343380
+    },
+    "benchmarks/results/knn-latency-final-2026-10-30-control.log": {
+      "sha256": "af09e5561d1c145dbe2ff1c35d81e7afb8248735314d48765ea15b0d34979d64",
+      "bytes": 47258
+    },
+    "benchmarks/results/knn-latency-final-2026-10-30-independent-audit.json": {
+      "sha256": "366ffebef91f89728345215a95326e61f6ee1cc7162dfa6145d34636e26157b8",
+      "bytes": 4656512
+    },
+    "benchmarks/results/knn-latency-final-2026-10-30-independent-audit.log": {
+      "sha256": "06c8a595910d2b02202171bf391925db14a21d7cd804745a89b7a26c0f305b37",
+      "bytes": 242
+    },
+    "benchmarks/results/knn-latency-final-2026-10-30-report.log": {
+      "sha256": "5d83349e2ad4b034b278724961ab501075a90caba6e168e8192e9319692c309e",
+      "bytes": 42
+    },
+    "benchmarks/results/knn-latency-final-2026-10-30-summary.json": {
+      "sha256": "7feee7c1aac1eb5b3745e7f3c5b751726a20c5ce6f78fe29519b9baec53371ba",
+      "bytes": 1864425
+    },
+    "benchmarks/results/knn-latency-final-2026-10-30-warm-exceptions-repeat.json": {
+      "sha256": "310495b7a788c628e821a282dba0b89396281ba09c07d7eb5360cbafceda4bcf",
+      "bytes": 660406018
+    },
+    "benchmarks/results/knn-latency-final-2026-10-30-warm-exceptions-repeat.log": {
+      "sha256": "078e1f0455dd4231d5394e1093fcffe184edba4059b17a2a82d1e9aa4410b2fe",
+      "bytes": 12636
+    },
+    "benchmarks/results/knn-latency-final-lint-2026-10-30.log": {
+      "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+      "bytes": 19
+    },
+    "benchmarks/results/knn-latency-full-tests-final-2026-10-30.log": {
+      "sha256": "9e92c69e5841aaa61132bf0bc83d89793d44ac2b47554a66d58b17b1a53aff93",
+      "bytes": 6949
+    },
+    "benchmarks/results/knn-latency-package-build-final-2026-10-30.log": {
+      "sha256": "f9ae1b63645193991eec40c64abbe1eac252bc4f755d52d24c4520b777e2f99d",
+      "bytes": 29113
+    },
+    "benchmarks/results/knn-latency-package-validation-final-2026-10-30.json": {
+      "sha256": "a899d534b42a5a71203ea2aae857875aee44ef0db69c61bc1b6d1f4ff77f721a",
+      "bytes": 761
+    },
+    "benchmarks/results/knn-native-feature-range-build-2026-10-30.log": {
+      "sha256": "c28ad370c004872b93500e45b83c3ce0a36b7309baff4fdb34f823fa56b32c82",
+      "bytes": 1073
+    },
+    "benchmarks/results/knn-latency-final-2026-10-30-warm-exceptions-repeat-audit.json": {
+      "sha256": "be123ee2fcfaae5851855bb7a6e3114bb4c1295b971c70085712863cbfb3d1c9",
+      "bytes": 2857059
+    }
+  },
+  "limitations": [
+    "Timing summaries are descriptive, not confidence intervals.",
+    "First query, combined fit/query, estimator import-to-result and process-to-result are separate measurements.",
+    "Native loading moved into normal estimator imports; total startup retains its cost.",
+    "Repeated fresh processes do not imply cold OS/filesystem/bytecode/Metal disk caches.",
+    "All remaining slowdown cells and all comparator accuracy failures are retained.",
+    "Focused repeat uses longer warmup; absolute cross-run comparisons are not causal evidence."
+  ],
+  "documentation": {
+    "README.md": {
+      "sha256": "f8d3d3c603e133bd3111ff509ec74f6afdace90c660fa5a3cda8d4d9d68784cc",
+      "bytes": 20898
+    },
+    "CHANGELOG.md": {
+      "sha256": "b6a097f3c64975a3f02c2679151b0d46630677a0327e205d84174f63b1236d83",
+      "bytes": 30055
+    },
+    "docs/knn-latency-benchmarks-2026-10-30.md": {
+      "sha256": "adeac27de4075e10940f702cb6ebdbd7f4d870c319ea536f0f0ac6cde4df3fb3",
+      "bytes": 37812
+    },
+    "docs/knn-latency-cold-2026-10-30.md": {
+      "sha256": "e871f0a9b855a9a6b049b9dd341159534b9c613449e1250e0213c1b2edff1faf",
+      "bytes": 50386
+    },
+    "docs/knn-latency-control-2026-10-30.md": {
+      "sha256": "b5143536279f1c380f0358c21839e66ac87c3ff7dc04113bbb742776a4bd1724",
+      "bytes": 28219
+    },
+    "docs/knn-latency-fix-2026-10-30.md": {
+      "sha256": "2b4060bfef2a51544bd4e0dd9590d8a817833941bbdd34a44f67e42ed0496511",
+      "bytes": 16802
+    },
+    "docs/knn-latency-warm-repeat-2026-10-30.md": {
+      "sha256": "8d7409b967e8b8c0b65778f6b3188e41e5edba1dd24b596c78448754e7d82657",
+      "bytes": 33392
+    }
+  },
+  "figures": {
+    "docs/assets/knn-latency-benchmarks-2026-10-30.png": {
+      "sha256": "dbdb280b73b2a5ea3e7c0f43bf361982cd8e3d3af49c59a05714eadcf84e9b68",
+      "bytes": 346022
+    },
+    "docs/assets/knn-latency-benchmarks-2026-10-30.svg": {
+      "sha256": "cbcf041121c6251123f88bac3bf2ced9a48941773d65f2b10aa339534c4bca68",
+      "bytes": 380094
+    }
+  },
+  "figure_visually_reviewed": true,
+  "local_documentation_links_verified": true,
+  "final_source_and_harness_hashes_match": true
+}

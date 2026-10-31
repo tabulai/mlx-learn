@@ -1,0 +1,137 @@
+{
+  "protocol": "All GPU/performance workloads run sequentially. Every per-variant failure and nonzero exit is retained. No oracle/tolerance changes.",
+  "source_archive": {
+    "path": "benchmarks/reference/knn-precision-verified-2026-10-30.zip",
+    "sha256": "0e39d78240bd2ee87c658abd0d91ce369500b6d07dc4392f2f6e63dd138ae05d"
+  },
+  "runs": [
+    {
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3",
+        "-m",
+        "benchmarks.knn_fresh_dispatch",
+        "--output",
+        "benchmarks/results/knn-precision-verified-dispatch-vs-v3-2026-10-30.json"
+      ],
+      "started_at": "2026-10-30T11:19:36.433660+00:00",
+      "elapsed_seconds": 113.6641169169452,
+      "exit_code": 0,
+      "log": "benchmarks/results/knn-precision-verified-dispatch-vs-v3-2026-10-30.log"
+    },
+    {
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3",
+        "-m",
+        "benchmarks.knn_acceleration",
+        "--reference-archive",
+        "benchmarks/reference/knn-pre-v4-2026-10-28.zip",
+        "--output",
+        "benchmarks/results/knn-precision-verified-original-vs-v3-2026-10-30.json"
+      ],
+      "started_at": "2026-10-30T11:21:30.098507+00:00",
+      "elapsed_seconds": 28.734343874966726,
+      "exit_code": 0,
+      "log": "benchmarks/results/knn-precision-verified-original-vs-v3-2026-10-30.log"
+    },
+    {
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3",
+        "-m",
+        "benchmarks.knn_review_distributions",
+        "--seed",
+        "151",
+        "--output",
+        "benchmarks/results/knn-precision-verified-distributions-seed151-2026-10-30.json"
+      ],
+      "started_at": "2026-10-30T11:21:58.833250+00:00",
+      "elapsed_seconds": 8.632270916947164,
+      "exit_code": 0,
+      "log": "benchmarks/results/knn-precision-verified-distributions-seed151-2026-10-30.log"
+    },
+    {
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3",
+        "-m",
+        "benchmarks.knn_review_distributions",
+        "--seed",
+        "251",
+        "--output",
+        "benchmarks/results/knn-precision-verified-distributions-seed251-2026-10-30.json"
+      ],
+      "started_at": "2026-10-30T11:22:07.465892+00:00",
+      "elapsed_seconds": 8.617883457918651,
+      "exit_code": 1,
+      "log": "benchmarks/results/knn-precision-verified-distributions-seed251-2026-10-30.log"
+    },
+    {
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3",
+        "-m",
+        "benchmarks.knn_review_distributions",
+        "--seed",
+        "252",
+        "--output",
+        "benchmarks/results/knn-precision-verified-distributions-seed252-2026-10-30.json"
+      ],
+      "started_at": "2026-10-30T11:22:16.084122+00:00",
+      "elapsed_seconds": 8.638040208956227,
+      "exit_code": 0,
+      "log": "benchmarks/results/knn-precision-verified-distributions-seed252-2026-10-30.log"
+    },
+    {
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3",
+        "-m",
+        "benchmarks.knn_pipeline",
+        "--profile",
+        "full",
+        "--resident",
+        "--reference-archive",
+        "benchmarks/reference/knn-pre-v4-2026-10-28.zip",
+        "--output",
+        "benchmarks/results/knn-precision-verified-panel-vs-v3-2026-10-30.json"
+      ],
+      "started_at": "2026-10-30T11:22:24.722527+00:00",
+      "elapsed_seconds": 14.385583708062768,
+      "exit_code": 0,
+      "log": "benchmarks/results/knn-precision-verified-panel-vs-v3-2026-10-30.log"
+    },
+    {
+      "command": [
+        "python3",
+        "-m",
+        "benchmarks.knn_pipeline",
+        "--profile",
+        "full",
+        "--resident",
+        "--warmup",
+        "10",
+        "--repeats",
+        "31",
+        "--reference-archive",
+        "benchmarks/reference/knn-pre-v4-2026-10-28.zip",
+        "--output",
+        "benchmarks/results/knn-precision-verified-panel-repeat-2026-10-30.json"
+      ],
+      "started_at_from_log_creation": "2026-10-30T11:24:22.436378+00:00",
+      "elapsed_seconds_from_log_timestamps": 49.573962688446045,
+      "exit_code": 0,
+      "log": "benchmarks/results/knn-precision-verified-panel-repeat-2026-10-30.log",
+      "purpose": "Resolve small-shape timing variability; preserve both complete panels."
+    }
+  ],
+  "final_source_matches_frozen_archive": true,
+  "final_harnesses_match_frozen_archive": true,
+  "tests": {
+    "main": {
+      "passed": 629,
+      "exit_code": 0,
+      "log": "benchmarks/results/knn-precision-verified-tests-2026-10-30.log"
+    },
+    "large_candidate_lists": {
+      "passed": 2,
+      "exit_code": 0,
+      "log": "benchmarks/results/knn-precision-verified-large-list-tests-2026-10-30.log"
+    }
+  }
+}

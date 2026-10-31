@@ -1,0 +1,1710 @@
+{
+  "schema_version": 1,
+  "status": "complete",
+  "seed": 152,
+  "repeats": 9,
+  "warmup": 3,
+  "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "harness_hashes_before": {
+    "benchmarks/knn_review_distributions.py": "e643b3f0e7208b94b62854657fcce3d4697c1065aab2d66170767630ab6f16fa",
+    "benchmarks/knn_pipeline.py": "8413303d0e99b6d3c0bfc056ccab49beb02c49d580d125f5f296f2006fb15543"
+  },
+  "operations": [
+    "fit_query",
+    "kneighbors"
+  ],
+  "reference_label": "Frozen pre-v4 archive: accepted v3 compact-search implementation",
+  "timing_policy": "Persistent isolated public-API workers, alternating variant order per round; synchronized NumPy-to-NumPy calls; every call audited outside its timer. Three fixed-count warmups and nine measured samples by default; no duration warmup.",
+  "fit_query_policy": "Fresh estimator fit plus first query, including deferred preparation.",
+  "cold_policy": "First fit/query for each shape/distribution in its persistent worker after imports; prior distributions may populate compilation caches. Recorded separately from retained samples.",
+  "accuracy_reference": "Exhaustive direct float64 subtraction and squared-sum distance over every training row on the serialized float32 inputs, with full (distance,index) lexicographic ordering. Query blocks of four bound temporary memory; no Gram selection is used.",
+  "query_tolerances": {
+    "atol": 1e-06,
+    "rtol": 1e-06,
+    "indices": "exact equality"
+  },
+  "fixtures": [
+    {
+      "case": {
+        "name": "anisotropic_50000_32_k5",
+        "n_train": 50000,
+        "n_query": 256,
+        "n_features": 32,
+        "k": 5
+      },
+      "distribution": "anisotropic",
+      "seed": 152,
+      "parameters": {
+        "base_distribution": "independent standard normal",
+        "feature_scales": [
+          0.01,
+          0.013459603241553642,
+          0.018116091942004142,
+          0.02438354098268829,
+          0.03281927872511474,
+          0.044173447031400685,
+          0.05945570708544391,
+          0.08002502278161053,
+          0.10771050560367691,
+          0.14497406703726315,
+          0.19512934226359632,
+          0.26263635276533326,
+          0.35349811050301055,
+          0.4757944314009409,
+          0.640400427119728,
+          0.8619535664753032,
+          1.1601553017399715,
+          1.5615230060004965,
+          2.101748011332487,
+          2.8288694346259695,
+          3.807546021222372,
+          5.124805876960932,
+          6.897785379387658,
+          9.284145445194744,
+          12.496091412919867,
+          16.81924324880869,
+          22.638034095214465,
+          30.469895709035082,
+          41.011270705513,
+          55.199543212815676,
+          74.2963950759495,
+          100.0
+        ]
+      },
+      "copied_training_queries": 2,
+      "fixture_sha256": "2aafeea6f2954b2b0dc3929ec7344da2109fb57800d6f4414babc389161ad27b",
+      "array_sha256": {
+        "X": "e28e50dbd928e5dfffa936821b2910057b58e4221d791619a9086ac1086c14db",
+        "Q": "a91571b4d48b5659c31c927918e147683c0c325a156c202554171013a3a0d348",
+        "distances": "fe07d6e2350bafc4e633aea8a1e4ea92113e7d03995ed630d2b9c5d16a7188cf",
+        "indices": "44df5a9d5a2c4de3c1475f2c0a5433f94209f1991417d6f7bb134d5c49176b0e"
+      },
+      "input_dtype": "float32",
+      "train_min": -410.01025390625,
+      "train_max": 397.1520690917969
+    }
+  ],
+  "cases": [
+    {
+      "case": {
+        "name": "anisotropic_50000_32_k5",
+        "n_train": 50000,
+        "n_query": 256,
+        "n_features": 32,
+        "k": 5
+      },
+      "variants": {
+        "current": {
+          "cold": {
+            "fit_ms": 12.64041697140783,
+            "query_ms": 19.01279203593731,
+            "audit": {
+              "pass": true,
+              "indices_match": true,
+              "distance_max_abs": 3.623376855443894e-06
+            },
+            "backend": "mlx",
+            "effective_fit_method": "brute"
+          },
+          "fit_query": {
+            "median_ms": 3.5186250461265445,
+            "min_ms": 3.175874939188361,
+            "max_ms": 8.040667045861483,
+            "completed_samples": 9,
+            "samples": [
+              {
+                "ms": 8.040667045861483,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 7.570665911771357,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 7.692457991652191,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 7.432500016875565,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 3.2254159450531006,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 3.479916020296514,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 3.5186250461265445,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 3.175874939188361,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 3.2691670348867774,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              }
+            ],
+            "warmup_samples": [
+              {
+                "ms": 8.318166946992278,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 8.218916016630828,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 7.83887505531311,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              }
+            ],
+            "quality_pass": true,
+            "warmup_quality_pass": true
+          },
+          "kneighbors": {
+            "median_ms": 3.150957985781133,
+            "min_ms": 2.816332969814539,
+            "max_ms": 3.522208076901734,
+            "completed_samples": 9,
+            "samples": [
+              {
+                "ms": 3.0742079252377152,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 3.150957985781133,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 3.4356670221313834,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 2.816332969814539,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 3.1637499341741204,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 2.8309159679338336,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 3.35545907728374,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 3.12941602896899,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 3.522208076901734,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              }
+            ],
+            "warmup_samples": [
+              {
+                "ms": 3.417750005610287,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 3.0125000048428774,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 3.0974160181358457,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              }
+            ],
+            "quality_pass": true,
+            "warmup_quality_pass": true
+          }
+        },
+        "reference": {
+          "cold": {
+            "fit_ms": 10.174750001169741,
+            "query_ms": 6.907125003635883,
+            "audit": {
+              "pass": true,
+              "indices_match": true,
+              "distance_max_abs": 3.623376855443894e-06
+            },
+            "backend": "mlx",
+            "effective_fit_method": "brute"
+          },
+          "fit_query": {
+            "median_ms": 1.5067079802975059,
+            "min_ms": 1.0502919321879745,
+            "max_ms": 2.42770800832659,
+            "completed_samples": 9,
+            "samples": [
+              {
+                "ms": 2.42770800832659,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 2.194833941757679,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 2.2363750031217933,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 1.4767090324312449,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 1.0502919321879745,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 1.5067079802975059,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 1.4090000186115503,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 1.4184580650180578,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 1.5332080656662583,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              }
+            ],
+            "warmup_samples": [
+              {
+                "ms": 2.744458965025842,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 2.6787499664351344,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 2.3761660559102893,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              }
+            ],
+            "quality_pass": true,
+            "warmup_quality_pass": true
+          },
+          "kneighbors": {
+            "median_ms": 1.1506250593811274,
+            "min_ms": 0.7820419268682599,
+            "max_ms": 1.2110830284655094,
+            "completed_samples": 9,
+            "samples": [
+              {
+                "ms": 1.1835410259664059,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 0.7836670847609639,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 1.1506250593811274,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 0.7820419268682599,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 1.1573330266401172,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 1.0059159249067307,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 1.199166988953948,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 1.2110830284655094,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 0.8891670731827617,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              }
+            ],
+            "warmup_samples": [
+              {
+                "ms": 0.7512499578297138,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 1.1775830062106252,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 0.7022090721875429,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.623376855443894e-06
+                },
+                "backend": "mlx",
+                "effective_fit_method": "brute"
+              }
+            ],
+            "quality_pass": true,
+            "warmup_quality_pass": true
+          }
+        },
+        "sklearn_default": {
+          "cold": {
+            "fit_ms": 0.5618330324068666,
+            "query_ms": 11.470375000499189,
+            "audit": {
+              "pass": false,
+              "indices_match": true,
+              "distance_max_abs": 4.69864782814966e-06
+            },
+            "effective_fit_method": "brute"
+          },
+          "fit_query": {
+            "median_ms": 4.562375019304454,
+            "min_ms": 3.9550000801682472,
+            "max_ms": 4.91208303719759,
+            "completed_samples": 9,
+            "samples": [
+              {
+                "ms": 4.23991703428328,
+                "audit": {
+                  "pass": false,
+                  "indices_match": true,
+                  "distance_max_abs": 4.69864782814966e-06
+                },
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 4.5661249896511436,
+                "audit": {
+                  "pass": false,
+                  "indices_match": true,
+                  "distance_max_abs": 4.69864782814966e-06
+                },
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 3.9550000801682472,
+                "audit": {
+                  "pass": false,
+                  "indices_match": true,
+                  "distance_max_abs": 4.69864782814966e-06
+                },
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 4.91208303719759,
+                "audit": {
+                  "pass": false,
+                  "indices_match": true,
+                  "distance_max_abs": 4.69864782814966e-06
+                },
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 4.562375019304454,
+                "audit": {
+                  "pass": false,
+                  "indices_match": true,
+                  "distance_max_abs": 4.69864782814966e-06
+                },
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 4.816000000573695,
+                "audit": {
+                  "pass": false,
+                  "indices_match": true,
+                  "distance_max_abs": 4.69864782814966e-06
+                },
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 4.608666989952326,
+                "audit": {
+                  "pass": false,
+                  "indices_match": true,
+                  "distance_max_abs": 4.69864782814966e-06
+                },
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 4.290833021514118,
+                "audit": {
+                  "pass": false,
+                  "indices_match": true,
+                  "distance_max_abs": 4.69864782814966e-06
+                },
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 4.413041984662414,
+                "audit": {
+                  "pass": false,
+                  "indices_match": true,
+                  "distance_max_abs": 4.69864782814966e-06
+                },
+                "effective_fit_method": "brute"
+              }
+            ],
+            "warmup_samples": [
+              {
+                "ms": 5.011374945752323,
+                "audit": {
+                  "pass": false,
+                  "indices_match": true,
+                  "distance_max_abs": 4.69864782814966e-06
+                },
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 4.721999983303249,
+                "audit": {
+                  "pass": false,
+                  "indices_match": true,
+                  "distance_max_abs": 4.69864782814966e-06
+                },
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 4.940084065310657,
+                "audit": {
+                  "pass": false,
+                  "indices_match": true,
+                  "distance_max_abs": 4.69864782814966e-06
+                },
+                "effective_fit_method": "brute"
+              }
+            ],
+            "quality_pass": false,
+            "warmup_quality_pass": false
+          },
+          "kneighbors": {
+            "median_ms": 4.831166006624699,
+            "min_ms": 4.1535410564392805,
+            "max_ms": 5.683416035026312,
+            "completed_samples": 9,
+            "samples": [
+              {
+                "ms": 4.1535410564392805,
+                "audit": {
+                  "pass": false,
+                  "indices_match": true,
+                  "distance_max_abs": 4.69864782814966e-06
+                },
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 5.683416035026312,
+                "audit": {
+                  "pass": false,
+                  "indices_match": true,
+                  "distance_max_abs": 4.69864782814966e-06
+                },
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 4.3703330447897315,
+                "audit": {
+                  "pass": false,
+                  "indices_match": true,
+                  "distance_max_abs": 4.69864782814966e-06
+                },
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 4.831166006624699,
+                "audit": {
+                  "pass": false,
+                  "indices_match": true,
+                  "distance_max_abs": 4.69864782814966e-06
+                },
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 4.912958014756441,
+                "audit": {
+                  "pass": false,
+                  "indices_match": true,
+                  "distance_max_abs": 4.69864782814966e-06
+                },
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 4.44050005171448,
+                "audit": {
+                  "pass": false,
+                  "indices_match": true,
+                  "distance_max_abs": 4.69864782814966e-06
+                },
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 5.1760830683633685,
+                "audit": {
+                  "pass": false,
+                  "indices_match": true,
+                  "distance_max_abs": 4.69864782814966e-06
+                },
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 4.5632090186700225,
+                "audit": {
+                  "pass": false,
+                  "indices_match": true,
+                  "distance_max_abs": 4.69864782814966e-06
+                },
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 5.084333010017872,
+                "audit": {
+                  "pass": false,
+                  "indices_match": true,
+                  "distance_max_abs": 4.69864782814966e-06
+                },
+                "effective_fit_method": "brute"
+              }
+            ],
+            "warmup_samples": [
+              {
+                "ms": 4.196249996311963,
+                "audit": {
+                  "pass": false,
+                  "indices_match": true,
+                  "distance_max_abs": 4.69864782814966e-06
+                },
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 3.85112501680851,
+                "audit": {
+                  "pass": false,
+                  "indices_match": true,
+                  "distance_max_abs": 4.69864782814966e-06
+                },
+                "effective_fit_method": "brute"
+              },
+              {
+                "ms": 4.133958020247519,
+                "audit": {
+                  "pass": false,
+                  "indices_match": true,
+                  "distance_max_abs": 4.69864782814966e-06
+                },
+                "effective_fit_method": "brute"
+              }
+            ],
+            "quality_pass": false,
+            "warmup_quality_pass": false
+          }
+        }
+      },
+      "rounds": {
+        "fit_query": [
+          {
+            "round": 0,
+            "warmup": true,
+            "order": [
+              "current",
+              "reference",
+              "sklearn_default"
+            ]
+          },
+          {
+            "round": 1,
+            "warmup": true,
+            "order": [
+              "sklearn_default",
+              "reference",
+              "current"
+            ]
+          },
+          {
+            "round": 2,
+            "warmup": true,
+            "order": [
+              "current",
+              "reference",
+              "sklearn_default"
+            ]
+          },
+          {
+            "round": 3,
+            "warmup": false,
+            "order": [
+              "sklearn_default",
+              "reference",
+              "current"
+            ]
+          },
+          {
+            "round": 4,
+            "warmup": false,
+            "order": [
+              "current",
+              "reference",
+              "sklearn_default"
+            ]
+          },
+          {
+            "round": 5,
+            "warmup": false,
+            "order": [
+              "sklearn_default",
+              "reference",
+              "current"
+            ]
+          },
+          {
+            "round": 6,
+            "warmup": false,
+            "order": [
+              "current",
+              "reference",
+              "sklearn_default"
+            ]
+          },
+          {
+            "round": 7,
+            "warmup": false,
+            "order": [
+              "sklearn_default",
+              "reference",
+              "current"
+            ]
+          },
+          {
+            "round": 8,
+            "warmup": false,
+            "order": [
+              "current",
+              "reference",
+              "sklearn_default"
+            ]
+          },
+          {
+            "round": 9,
+            "warmup": false,
+            "order": [
+              "sklearn_default",
+              "reference",
+              "current"
+            ]
+          },
+          {
+            "round": 10,
+            "warmup": false,
+            "order": [
+              "current",
+              "reference",
+              "sklearn_default"
+            ]
+          },
+          {
+            "round": 11,
+            "warmup": false,
+            "order": [
+              "sklearn_default",
+              "reference",
+              "current"
+            ]
+          }
+        ],
+        "kneighbors": [
+          {
+            "round": 0,
+            "warmup": true,
+            "order": [
+              "current",
+              "reference",
+              "sklearn_default"
+            ]
+          },
+          {
+            "round": 1,
+            "warmup": true,
+            "order": [
+              "sklearn_default",
+              "reference",
+              "current"
+            ]
+          },
+          {
+            "round": 2,
+            "warmup": true,
+            "order": [
+              "current",
+              "reference",
+              "sklearn_default"
+            ]
+          },
+          {
+            "round": 3,
+            "warmup": false,
+            "order": [
+              "sklearn_default",
+              "reference",
+              "current"
+            ]
+          },
+          {
+            "round": 4,
+            "warmup": false,
+            "order": [
+              "current",
+              "reference",
+              "sklearn_default"
+            ]
+          },
+          {
+            "round": 5,
+            "warmup": false,
+            "order": [
+              "sklearn_default",
+              "reference",
+              "current"
+            ]
+          },
+          {
+            "round": 6,
+            "warmup": false,
+            "order": [
+              "current",
+              "reference",
+              "sklearn_default"
+            ]
+          },
+          {
+            "round": 7,
+            "warmup": false,
+            "order": [
+              "sklearn_default",
+              "reference",
+              "current"
+            ]
+          },
+          {
+            "round": 8,
+            "warmup": false,
+            "order": [
+              "current",
+              "reference",
+              "sklearn_default"
+            ]
+          },
+          {
+            "round": 9,
+            "warmup": false,
+            "order": [
+              "sklearn_default",
+              "reference",
+              "current"
+            ]
+          },
+          {
+            "round": 10,
+            "warmup": false,
+            "order": [
+              "current",
+              "reference",
+              "sklearn_default"
+            ]
+          },
+          {
+            "round": 11,
+            "warmup": false,
+            "order": [
+              "sklearn_default",
+              "reference",
+              "current"
+            ]
+          }
+        ]
+      },
+      "speedups": {
+        "fit_query": {
+          "vs_reference": 0.42820930350511643,
+          "vs_sklearn_default": 1.2966357481957094
+        },
+        "kneighbors": {
+          "vs_reference": 0.365166741217555,
+          "vs_sklearn_default": 1.533237202281209
+        }
+      }
+    }
+  ],
+  "reference": {
+    "revision": "5615cb004c065b2b754a247764fd89aa60230b6d",
+    "source_state": "working-tree snapshot after compact certified KNN and lazy independent host storage",
+    "purpose": "Immutable immediate baseline before the every-retained-run 2x requirement",
+    "files": {
+      "mlxlearn/__init__.py": "a382f5fb1a7022d68d4d0bd6f775b10348132d1cc98f5a1a8ec6a2676895d441",
+      "mlxlearn/_common/__init__.py": "736aa2ce3d7d1f74557c76a9b5e5356d15a05e1f02a86204f2508ea6c4767646",
+      "mlxlearn/_common/arrays.py": "981cc12835e2855a75c5331e54f1aabefa2ef92e7525078d789acf6488da46fc",
+      "mlxlearn/_common/base.py": "2054a836fda7dfd1a8a13cff59b219a6cf05998275ab8620327233b4a66f3c54",
+      "mlxlearn/_common/config.py": "84a361101374c28d12cf461d6029a438aa385327211c81381f34b8f9f1da3973",
+      "mlxlearn/_common/device.py": "f8a3e2eac9ffe64d99bded696ffe7e42d14059964fc0c19104c7675e04e2ce74",
+      "mlxlearn/_common/diagnostics.py": "0e6676eef716be71d94c6b1e71ac8d00dee12ff4aac85ff76341cefaee5fe3d9",
+      "mlxlearn/_common/preparation.py": "1dc679dec3d693165a76230f5327fe9341872fec1acfb7552bb11db8e280958f",
+      "mlxlearn/_common/rng.py": "5a4bba4f2a03108c31467692310986107a1178928bd5bab20d258037ff10afef",
+      "mlxlearn/_common/validation.py": "997df987a2b857b2bc5b72c12f5dcd62dc3569e80a90bdf3ae263dfac042ea3a",
+      "mlxlearn/_kernels/__init__.py": "0a2227680a6afb7d09a596f0aaab4ef6671fe9e58169739d1cc3a9e32c3b062e",
+      "mlxlearn/_kernels/distance.py": "7fba195ea0027b06e53aa1e7b5f031a347d6c3019f743e6c97ba0abc1bf87301",
+      "mlxlearn/_kernels/kernels.py": "e9fb262c8de3b1c596537c153f5233ca24813648b67a96fb7b61bcd0b16b05d9",
+      "mlxlearn/_kernels/logistic_input.py": "5f0180ba62076f9899fafca359f67e04f50c796febd2111ea3b3610e6f758efb",
+      "mlxlearn/_solvers/__init__.py": "974fa44cf7975d4fa63d6a9d304219dde43bd86ebcb1c151c7630b0a1c4fdacb",
+      "mlxlearn/_solvers/_metal_cg.h": "b1c6724e7f53643b2160a27662ff5d9f9ab73acffadb65bad8047c670cd088af",
+      "mlxlearn/_solvers/_metal_loop.mm": "ed5b75b074d9f0151033d7ff9fb502aebac2a35ab5e339405fdfcd525a86302e",
+      "mlxlearn/_solvers/fused_lbfgs.py": "1b898ad08028015c3380e8024922abfa424ba4da049be3743067f9c1bf0d85dd",
+      "mlxlearn/_solvers/lbfgs.py": "ba0904bb4edf69197025a4b69d813d021a62547d019e38d6f93842c2cc0f60a8",
+      "mlxlearn/_solvers/logistic.py": "e7d3ce359934e2d1885cbbd72813de2135bd2b3a1db5fddd4ac72b39c404ce94",
+      "mlxlearn/_solvers/native_command.py": "2ccfc1be7555747e08472bf739a7ad08bef02ff1efed103e144ef92dc8848515",
+      "mlxlearn/_solvers/native_geometry.py": "8ac947730be7a72e250816d5203259919a227ffcdb211bf16793f027161b3578",
+      "mlxlearn/_solvers/native_logistic.py": "a9e1db2b7950e862b5ad3db9537ffb99757d48d37e740027c1ae45cb45f50230",
+      "mlxlearn/_solvers/native_logistic_fused.py": "4b1642ed93acded47d8ba4e42cc3f4349ac635abce9f1123d8e21ff8a1408016",
+      "mlxlearn/_solvers/smo.py": "455bc5786ef533ffc080f0e75144d6148ecc0dd6a22a5b08dd3bb25a7eaca19e",
+      "mlxlearn/exceptions.py": "5b9b4efd548f90156d3d10d406aec74d1d6ed4ebaa4859d88d6589f1ba241e2a",
+      "mlxlearn/linear_model/__init__.py": "ea1456645a4d5962e1616a0234a012e2e331dd3750365644fa6cd4d21aaa1293",
+      "mlxlearn/linear_model/_logistic.py": "61159851bb7497e3d90de5aec036ff6c8b76991defbdfeb2ca376418cc126774",
+      "mlxlearn/neighbors/__init__.py": "2f18f3864ba4ea0229a4c2317e0612da2fa458daef7d28a7a88f3e382fb951b4",
+      "mlxlearn/neighbors/_base.py": "87320f076ecf6961bc2bdf6b32f119be1d9318287b29983bf08c3188870b1a48",
+      "mlxlearn/neighbors/_classification.py": "3dc44373d2d3e49bf4c51357ac068a881ed0bb72b089154039c8974a53cf71b9",
+      "mlxlearn/neighbors/_regression.py": "3d4a41aebffae757365c0ee32b9f17df685bfb23d2500a8b9c33a4ca05e21f83",
+      "mlxlearn/neighbors/_unsupervised.py": "bc9a0342514befce11cc75992dae5967d8889ff773899989269845bdda1c0795",
+      "mlxlearn/patching/__init__.py": "46daa0d9c3d8a26b400907e3421a55de239c7032ef7537fd1b955af85f00d551",
+      "mlxlearn/patching/_estimators.py": "1761e73488caaef926b591a0b57cba9045273a043d0383934b46036121c9db04",
+      "mlxlearn/patching/_patch.py": "03331f0b103cdb84944f36a1284ecddb064722032a6b7371b0bce3862115242a",
+      "mlxlearn/patching/_registry.py": "bd02f5436f8b62d28f3a0eca1aca7bc9e99eed31e9156eec844805695dde5e16",
+      "mlxlearn/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "mlxlearn/svm/__init__.py": "3fec63550675c0482c6b9da28e0dcc5fbe7b9c92662bce1e37f2edca4f5ebd66",
+      "mlxlearn/svm/_classes.py": "c8ac08f2dc3cd0da9296fa326340515870ea1ee30e56eec9999fa421fad2c79e",
+      "mlxlearn_device/__init__.py": "a61b0e97913febf3d100b02ae26658a8ff5cee44844ae936970a91e728feb0ef",
+      "mlxlearn_device/_compensated.py": "f3494b103de3bf9e8549412d3b18a43287fa5c03c08502138e18b4537ad5d15d",
+      "mlxlearn_device/_duality.py": "1694aad68fe565d695f6c3795362c9e3bd02c22d8b6a08c18c6c8231786aa04e",
+      "mlxlearn_device/_hessian_vector.py": "75daa73c833a26d6722b1335e03aa2c7eec7cce9e7dfff8657c0df4c4fceeadf",
+      "mlxlearn_device/_logistic.py": "3c5e0f9ec2aa14fafa774ea72aaf27ae2909958981431ee913a08d99de304f08",
+      "mlxlearn_device/_native.py": "a49425c647dab43cc31ea3d29590ee791cfa6b2138d155c2c15b924b4e67869d",
+      "mlxlearn_device/_native_cg.py": "3a3b1aabb9c4684e20f65e3fe9b1c1b9c4a493b064d102ed8fef3445483af0e6",
+      "mlxlearn_device/_neighbors.py": "9fc748e28f5058dd0cbd8d7f91925b3cf740eb3cd8e7c2aadc4aa0045ab1eca1",
+      "mlxlearn_device/_neighbors_compact.py": "b86f7836e41587258e99cd69a0c7239550b22ca4e509274662e50b048a6aa8ed",
+      "mlxlearn_device/_neighbors_fused.py": "99288d343940b8bdbc7179468151dd93b9fc21c10d075f1e96500ce69497eeea",
+      "mlxlearn_device/_neighbors_paired.py": "943ef22c41079ef5544e1d3830905f0f7ac0d11ddb706ece48dec9b56b3bf9bd",
+      "mlxlearn_device/_neighbors_registers.py": "4c698db597f335dde240fb4d605a091f2f665535981dd5da80d8fd4c92d437b5",
+      "mlxlearn_device/_neighbors_votes.py": "e34b08e5d772d39c260f26daa31399b6d88f9d13f4a31ef531a40cc76e99c59f",
+      "mlxlearn_device/_newton.py": "1e79738d7ea4a3711e62a113d1dd14197f127cca1541f75f1ed33e457212fad6",
+      "mlxlearn_device/hessian_sketch.py": "576f6bb49aa4520bbf318ee248cd3f32aca873e799c6e216a098155d8b2ed6b0"
+    },
+    "archive": {
+      "file": "knn-pre-v4-2026-10-28.zip",
+      "sha256": "b581421585695a4778cfdf2eb9894515b9901c52ef2578bc1239291e3f7a8a42",
+      "source_bytes": 566456
+    }
+  },
+  "workers": {
+    "current": {
+      "variant": "current",
+      "python": "3.13.3 (v3.13.3:6280bb54784, Apr  8 2025, 10:47:54) [Clang 15.0.0 (clang-1500.3.9.4)]",
+      "mlx": "0.32.2",
+      "numpy": "2.5.2",
+      "sklearn": "1.9.0",
+      "threadpools": [
+        {
+          "user_api": "openmp",
+          "internal_api": "openmp",
+          "num_threads": 16,
+          "prefix": "libomp",
+          "filepath": "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/sklearn/.dylibs/libomp.dylib",
+          "version": null
+        }
+      ],
+      "hardware": {
+        "device_name": "Apple M4 Max",
+        "max_recommended_working_set_size": 115448725504,
+        "memory_size": 137438953472,
+        "architecture": "applegpu_g16s",
+        "max_buffer_length": 86586540032,
+        "resource_limit": 499000
+      },
+      "source_root": "/Users/tunguz/Programming/mlxlearn/src",
+      "source_hashes": {
+        "mlxlearn/__init__.py": "a382f5fb1a7022d68d4d0bd6f775b10348132d1cc98f5a1a8ec6a2676895d441",
+        "mlxlearn/_common/__init__.py": "736aa2ce3d7d1f74557c76a9b5e5356d15a05e1f02a86204f2508ea6c4767646",
+        "mlxlearn/_common/arrays.py": "981cc12835e2855a75c5331e54f1aabefa2ef92e7525078d789acf6488da46fc",
+        "mlxlearn/_common/base.py": "2054a836fda7dfd1a8a13cff59b219a6cf05998275ab8620327233b4a66f3c54",
+        "mlxlearn/_common/config.py": "84a361101374c28d12cf461d6029a438aa385327211c81381f34b8f9f1da3973",
+        "mlxlearn/_common/device.py": "f8a3e2eac9ffe64d99bded696ffe7e42d14059964fc0c19104c7675e04e2ce74",
+        "mlxlearn/_common/diagnostics.py": "0e6676eef716be71d94c6b1e71ac8d00dee12ff4aac85ff76341cefaee5fe3d9",
+        "mlxlearn/_common/preparation.py": "1dc679dec3d693165a76230f5327fe9341872fec1acfb7552bb11db8e280958f",
+        "mlxlearn/_common/rng.py": "5a4bba4f2a03108c31467692310986107a1178928bd5bab20d258037ff10afef",
+        "mlxlearn/_common/validation.py": "997df987a2b857b2bc5b72c12f5dcd62dc3569e80a90bdf3ae263dfac042ea3a",
+        "mlxlearn/_kernels/__init__.py": "0a2227680a6afb7d09a596f0aaab4ef6671fe9e58169739d1cc3a9e32c3b062e",
+        "mlxlearn/_kernels/distance.py": "7fba195ea0027b06e53aa1e7b5f031a347d6c3019f743e6c97ba0abc1bf87301",
+        "mlxlearn/_kernels/kernels.py": "e9fb262c8de3b1c596537c153f5233ca24813648b67a96fb7b61bcd0b16b05d9",
+        "mlxlearn/_kernels/logistic_input.py": "5f0180ba62076f9899fafca359f67e04f50c796febd2111ea3b3610e6f758efb",
+        "mlxlearn/_solvers/__init__.py": "974fa44cf7975d4fa63d6a9d304219dde43bd86ebcb1c151c7630b0a1c4fdacb",
+        "mlxlearn/_solvers/_metal_cg.h": "b1c6724e7f53643b2160a27662ff5d9f9ab73acffadb65bad8047c670cd088af",
+        "mlxlearn/_solvers/_metal_loop.mm": "ed5b75b074d9f0151033d7ff9fb502aebac2a35ab5e339405fdfcd525a86302e",
+        "mlxlearn/_solvers/fused_lbfgs.py": "1b898ad08028015c3380e8024922abfa424ba4da049be3743067f9c1bf0d85dd",
+        "mlxlearn/_solvers/lbfgs.py": "ba0904bb4edf69197025a4b69d813d021a62547d019e38d6f93842c2cc0f60a8",
+        "mlxlearn/_solvers/logistic.py": "e7d3ce359934e2d1885cbbd72813de2135bd2b3a1db5fddd4ac72b39c404ce94",
+        "mlxlearn/_solvers/native_command.py": "2ccfc1be7555747e08472bf739a7ad08bef02ff1efed103e144ef92dc8848515",
+        "mlxlearn/_solvers/native_geometry.py": "8ac947730be7a72e250816d5203259919a227ffcdb211bf16793f027161b3578",
+        "mlxlearn/_solvers/native_logistic.py": "a9e1db2b7950e862b5ad3db9537ffb99757d48d37e740027c1ae45cb45f50230",
+        "mlxlearn/_solvers/native_logistic_fused.py": "4b1642ed93acded47d8ba4e42cc3f4349ac635abce9f1123d8e21ff8a1408016",
+        "mlxlearn/_solvers/smo.py": "455bc5786ef533ffc080f0e75144d6148ecc0dd6a22a5b08dd3bb25a7eaca19e",
+        "mlxlearn/exceptions.py": "5b9b4efd548f90156d3d10d406aec74d1d6ed4ebaa4859d88d6589f1ba241e2a",
+        "mlxlearn/linear_model/__init__.py": "ea1456645a4d5962e1616a0234a012e2e331dd3750365644fa6cd4d21aaa1293",
+        "mlxlearn/linear_model/_logistic.py": "61159851bb7497e3d90de5aec036ff6c8b76991defbdfeb2ca376418cc126774",
+        "mlxlearn/neighbors/__init__.py": "2f18f3864ba4ea0229a4c2317e0612da2fa458daef7d28a7a88f3e382fb951b4",
+        "mlxlearn/neighbors/_base.py": "87320f076ecf6961bc2bdf6b32f119be1d9318287b29983bf08c3188870b1a48",
+        "mlxlearn/neighbors/_classification.py": "3dc44373d2d3e49bf4c51357ac068a881ed0bb72b089154039c8974a53cf71b9",
+        "mlxlearn/neighbors/_regression.py": "3d4a41aebffae757365c0ee32b9f17df685bfb23d2500a8b9c33a4ca05e21f83",
+        "mlxlearn/neighbors/_unsupervised.py": "bc9a0342514befce11cc75992dae5967d8889ff773899989269845bdda1c0795",
+        "mlxlearn/patching/__init__.py": "46daa0d9c3d8a26b400907e3421a55de239c7032ef7537fd1b955af85f00d551",
+        "mlxlearn/patching/_estimators.py": "1761e73488caaef926b591a0b57cba9045273a043d0383934b46036121c9db04",
+        "mlxlearn/patching/_patch.py": "03331f0b103cdb84944f36a1284ecddb064722032a6b7371b0bce3862115242a",
+        "mlxlearn/patching/_registry.py": "bd02f5436f8b62d28f3a0eca1aca7bc9e99eed31e9156eec844805695dde5e16",
+        "mlxlearn/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "mlxlearn/svm/__init__.py": "3fec63550675c0482c6b9da28e0dcc5fbe7b9c92662bce1e37f2edca4f5ebd66",
+        "mlxlearn/svm/_classes.py": "c8ac08f2dc3cd0da9296fa326340515870ea1ee30e56eec9999fa421fad2c79e",
+        "mlxlearn_device/__init__.py": "a61b0e97913febf3d100b02ae26658a8ff5cee44844ae936970a91e728feb0ef",
+        "mlxlearn_device/_compensated.py": "f3494b103de3bf9e8549412d3b18a43287fa5c03c08502138e18b4537ad5d15d",
+        "mlxlearn_device/_duality.py": "1694aad68fe565d695f6c3795362c9e3bd02c22d8b6a08c18c6c8231786aa04e",
+        "mlxlearn_device/_hessian_vector.py": "75daa73c833a26d6722b1335e03aa2c7eec7cce9e7dfff8657c0df4c4fceeadf",
+        "mlxlearn_device/_logistic.py": "3c5e0f9ec2aa14fafa774ea72aaf27ae2909958981431ee913a08d99de304f08",
+        "mlxlearn_device/_native.py": "a49425c647dab43cc31ea3d29590ee791cfa6b2138d155c2c15b924b4e67869d",
+        "mlxlearn_device/_native_cg.py": "3a3b1aabb9c4684e20f65e3fe9b1c1b9c4a493b064d102ed8fef3445483af0e6",
+        "mlxlearn_device/_neighbors.py": "b16da44f189acfdd87226d2303252182eebfecb8bef377a78329c4bdcfd3fc34",
+        "mlxlearn_device/_neighbors_compact.py": "b86f7836e41587258e99cd69a0c7239550b22ca4e509274662e50b048a6aa8ed",
+        "mlxlearn_device/_neighbors_fused.py": "99288d343940b8bdbc7179468151dd93b9fc21c10d075f1e96500ce69497eeea",
+        "mlxlearn_device/_neighbors_integer.py": "5bfd208d6cf2af76cf0d5a8394955b654a30a991c73c1689f35f52df13322a58",
+        "mlxlearn_device/_neighbors_paired.py": "943ef22c41079ef5544e1d3830905f0f7ac0d11ddb706ece48dec9b56b3bf9bd",
+        "mlxlearn_device/_neighbors_registers.py": "4c698db597f335dde240fb4d605a091f2f665535981dd5da80d8fd4c92d437b5",
+        "mlxlearn_device/_neighbors_votes.py": "e34b08e5d772d39c260f26daa31399b6d88f9d13f4a31ef531a40cc76e99c59f",
+        "mlxlearn_device/_newton.py": "1e79738d7ea4a3711e62a113d1dd14197f127cca1541f75f1ed33e457212fad6",
+        "mlxlearn_device/hessian_sketch.py": "576f6bb49aa4520bbf318ee248cd3f32aca873e799c6e216a098155d8b2ed6b0"
+      }
+    },
+    "reference": {
+      "variant": "reference",
+      "python": "3.13.3 (v3.13.3:6280bb54784, Apr  8 2025, 10:47:54) [Clang 15.0.0 (clang-1500.3.9.4)]",
+      "mlx": "0.32.2",
+      "numpy": "2.5.2",
+      "sklearn": "1.9.0",
+      "threadpools": [
+        {
+          "user_api": "openmp",
+          "internal_api": "openmp",
+          "num_threads": 16,
+          "prefix": "libomp",
+          "filepath": "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/sklearn/.dylibs/libomp.dylib",
+          "version": null
+        }
+      ],
+      "hardware": {
+        "device_name": "Apple M4 Max",
+        "max_recommended_working_set_size": 115448725504,
+        "memory_size": 137438953472,
+        "architecture": "applegpu_g16s",
+        "max_buffer_length": 86586540032,
+        "resource_limit": 499000
+      },
+      "source_root": "/private/var/folders/rj/2r_78zvx5r1265qkzhz8xwzc0000gn/T/mlxlearn-knn-distributions-08lxgr4d/reference",
+      "source_hashes": {
+        "mlxlearn/__init__.py": "a382f5fb1a7022d68d4d0bd6f775b10348132d1cc98f5a1a8ec6a2676895d441",
+        "mlxlearn/_common/__init__.py": "736aa2ce3d7d1f74557c76a9b5e5356d15a05e1f02a86204f2508ea6c4767646",
+        "mlxlearn/_common/arrays.py": "981cc12835e2855a75c5331e54f1aabefa2ef92e7525078d789acf6488da46fc",
+        "mlxlearn/_common/base.py": "2054a836fda7dfd1a8a13cff59b219a6cf05998275ab8620327233b4a66f3c54",
+        "mlxlearn/_common/config.py": "84a361101374c28d12cf461d6029a438aa385327211c81381f34b8f9f1da3973",
+        "mlxlearn/_common/device.py": "f8a3e2eac9ffe64d99bded696ffe7e42d14059964fc0c19104c7675e04e2ce74",
+        "mlxlearn/_common/diagnostics.py": "0e6676eef716be71d94c6b1e71ac8d00dee12ff4aac85ff76341cefaee5fe3d9",
+        "mlxlearn/_common/preparation.py": "1dc679dec3d693165a76230f5327fe9341872fec1acfb7552bb11db8e280958f",
+        "mlxlearn/_common/rng.py": "5a4bba4f2a03108c31467692310986107a1178928bd5bab20d258037ff10afef",
+        "mlxlearn/_common/validation.py": "997df987a2b857b2bc5b72c12f5dcd62dc3569e80a90bdf3ae263dfac042ea3a",
+        "mlxlearn/_kernels/__init__.py": "0a2227680a6afb7d09a596f0aaab4ef6671fe9e58169739d1cc3a9e32c3b062e",
+        "mlxlearn/_kernels/distance.py": "7fba195ea0027b06e53aa1e7b5f031a347d6c3019f743e6c97ba0abc1bf87301",
+        "mlxlearn/_kernels/kernels.py": "e9fb262c8de3b1c596537c153f5233ca24813648b67a96fb7b61bcd0b16b05d9",
+        "mlxlearn/_kernels/logistic_input.py": "5f0180ba62076f9899fafca359f67e04f50c796febd2111ea3b3610e6f758efb",
+        "mlxlearn/_solvers/__init__.py": "974fa44cf7975d4fa63d6a9d304219dde43bd86ebcb1c151c7630b0a1c4fdacb",
+        "mlxlearn/_solvers/_metal_cg.h": "b1c6724e7f53643b2160a27662ff5d9f9ab73acffadb65bad8047c670cd088af",
+        "mlxlearn/_solvers/_metal_loop.mm": "ed5b75b074d9f0151033d7ff9fb502aebac2a35ab5e339405fdfcd525a86302e",
+        "mlxlearn/_solvers/fused_lbfgs.py": "1b898ad08028015c3380e8024922abfa424ba4da049be3743067f9c1bf0d85dd",
+        "mlxlearn/_solvers/lbfgs.py": "ba0904bb4edf69197025a4b69d813d021a62547d019e38d6f93842c2cc0f60a8",
+        "mlxlearn/_solvers/logistic.py": "e7d3ce359934e2d1885cbbd72813de2135bd2b3a1db5fddd4ac72b39c404ce94",
+        "mlxlearn/_solvers/native_command.py": "2ccfc1be7555747e08472bf739a7ad08bef02ff1efed103e144ef92dc8848515",
+        "mlxlearn/_solvers/native_geometry.py": "8ac947730be7a72e250816d5203259919a227ffcdb211bf16793f027161b3578",
+        "mlxlearn/_solvers/native_logistic.py": "a9e1db2b7950e862b5ad3db9537ffb99757d48d37e740027c1ae45cb45f50230",
+        "mlxlearn/_solvers/native_logistic_fused.py": "4b1642ed93acded47d8ba4e42cc3f4349ac635abce9f1123d8e21ff8a1408016",
+        "mlxlearn/_solvers/smo.py": "455bc5786ef533ffc080f0e75144d6148ecc0dd6a22a5b08dd3bb25a7eaca19e",
+        "mlxlearn/exceptions.py": "5b9b4efd548f90156d3d10d406aec74d1d6ed4ebaa4859d88d6589f1ba241e2a",
+        "mlxlearn/linear_model/__init__.py": "ea1456645a4d5962e1616a0234a012e2e331dd3750365644fa6cd4d21aaa1293",
+        "mlxlearn/linear_model/_logistic.py": "61159851bb7497e3d90de5aec036ff6c8b76991defbdfeb2ca376418cc126774",
+        "mlxlearn/neighbors/__init__.py": "2f18f3864ba4ea0229a4c2317e0612da2fa458daef7d28a7a88f3e382fb951b4",
+        "mlxlearn/neighbors/_base.py": "87320f076ecf6961bc2bdf6b32f119be1d9318287b29983bf08c3188870b1a48",
+        "mlxlearn/neighbors/_classification.py": "3dc44373d2d3e49bf4c51357ac068a881ed0bb72b089154039c8974a53cf71b9",
+        "mlxlearn/neighbors/_regression.py": "3d4a41aebffae757365c0ee32b9f17df685bfb23d2500a8b9c33a4ca05e21f83",
+        "mlxlearn/neighbors/_unsupervised.py": "bc9a0342514befce11cc75992dae5967d8889ff773899989269845bdda1c0795",
+        "mlxlearn/patching/__init__.py": "46daa0d9c3d8a26b400907e3421a55de239c7032ef7537fd1b955af85f00d551",
+        "mlxlearn/patching/_estimators.py": "1761e73488caaef926b591a0b57cba9045273a043d0383934b46036121c9db04",
+        "mlxlearn/patching/_patch.py": "03331f0b103cdb84944f36a1284ecddb064722032a6b7371b0bce3862115242a",
+        "mlxlearn/patching/_registry.py": "bd02f5436f8b62d28f3a0eca1aca7bc9e99eed31e9156eec844805695dde5e16",
+        "mlxlearn/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "mlxlearn/svm/__init__.py": "3fec63550675c0482c6b9da28e0dcc5fbe7b9c92662bce1e37f2edca4f5ebd66",
+        "mlxlearn/svm/_classes.py": "c8ac08f2dc3cd0da9296fa326340515870ea1ee30e56eec9999fa421fad2c79e",
+        "mlxlearn_device/__init__.py": "a61b0e97913febf3d100b02ae26658a8ff5cee44844ae936970a91e728feb0ef",
+        "mlxlearn_device/_compensated.py": "f3494b103de3bf9e8549412d3b18a43287fa5c03c08502138e18b4537ad5d15d",
+        "mlxlearn_device/_duality.py": "1694aad68fe565d695f6c3795362c9e3bd02c22d8b6a08c18c6c8231786aa04e",
+        "mlxlearn_device/_hessian_vector.py": "75daa73c833a26d6722b1335e03aa2c7eec7cce9e7dfff8657c0df4c4fceeadf",
+        "mlxlearn_device/_logistic.py": "3c5e0f9ec2aa14fafa774ea72aaf27ae2909958981431ee913a08d99de304f08",
+        "mlxlearn_device/_native.py": "a49425c647dab43cc31ea3d29590ee791cfa6b2138d155c2c15b924b4e67869d",
+        "mlxlearn_device/_native_cg.py": "3a3b1aabb9c4684e20f65e3fe9b1c1b9c4a493b064d102ed8fef3445483af0e6",
+        "mlxlearn_device/_neighbors.py": "9fc748e28f5058dd0cbd8d7f91925b3cf740eb3cd8e7c2aadc4aa0045ab1eca1",
+        "mlxlearn_device/_neighbors_compact.py": "b86f7836e41587258e99cd69a0c7239550b22ca4e509274662e50b048a6aa8ed",
+        "mlxlearn_device/_neighbors_fused.py": "99288d343940b8bdbc7179468151dd93b9fc21c10d075f1e96500ce69497eeea",
+        "mlxlearn_device/_neighbors_paired.py": "943ef22c41079ef5544e1d3830905f0f7ac0d11ddb706ece48dec9b56b3bf9bd",
+        "mlxlearn_device/_neighbors_registers.py": "4c698db597f335dde240fb4d605a091f2f665535981dd5da80d8fd4c92d437b5",
+        "mlxlearn_device/_neighbors_votes.py": "e34b08e5d772d39c260f26daa31399b6d88f9d13f4a31ef531a40cc76e99c59f",
+        "mlxlearn_device/_newton.py": "1e79738d7ea4a3711e62a113d1dd14197f127cca1541f75f1ed33e457212fad6",
+        "mlxlearn_device/hessian_sketch.py": "576f6bb49aa4520bbf318ee248cd3f32aca873e799c6e216a098155d8b2ed6b0"
+      }
+    },
+    "sklearn_default": {
+      "variant": "sklearn_default",
+      "python": "3.13.3 (v3.13.3:6280bb54784, Apr  8 2025, 10:47:54) [Clang 15.0.0 (clang-1500.3.9.4)]",
+      "mlx": "0.32.2",
+      "numpy": "2.5.2",
+      "sklearn": "1.9.0",
+      "threadpools": [
+        {
+          "user_api": "openmp",
+          "internal_api": "openmp",
+          "num_threads": 16,
+          "prefix": "libomp",
+          "filepath": "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/sklearn/.dylibs/libomp.dylib",
+          "version": null
+        }
+      ],
+      "hardware": {
+        "device_name": "Apple M4 Max",
+        "max_recommended_working_set_size": 115448725504,
+        "memory_size": 137438953472,
+        "architecture": "applegpu_g16s",
+        "max_buffer_length": 86586540032,
+        "resource_limit": 499000
+      },
+      "source_root": "/Users/tunguz/Programming/mlxlearn/src",
+      "source_hashes": {
+        "mlxlearn/__init__.py": "a382f5fb1a7022d68d4d0bd6f775b10348132d1cc98f5a1a8ec6a2676895d441",
+        "mlxlearn/_common/__init__.py": "736aa2ce3d7d1f74557c76a9b5e5356d15a05e1f02a86204f2508ea6c4767646",
+        "mlxlearn/_common/arrays.py": "981cc12835e2855a75c5331e54f1aabefa2ef92e7525078d789acf6488da46fc",
+        "mlxlearn/_common/base.py": "2054a836fda7dfd1a8a13cff59b219a6cf05998275ab8620327233b4a66f3c54",
+        "mlxlearn/_common/config.py": "84a361101374c28d12cf461d6029a438aa385327211c81381f34b8f9f1da3973",
+        "mlxlearn/_common/device.py": "f8a3e2eac9ffe64d99bded696ffe7e42d14059964fc0c19104c7675e04e2ce74",
+        "mlxlearn/_common/diagnostics.py": "0e6676eef716be71d94c6b1e71ac8d00dee12ff4aac85ff76341cefaee5fe3d9",
+        "mlxlearn/_common/preparation.py": "1dc679dec3d693165a76230f5327fe9341872fec1acfb7552bb11db8e280958f",
+        "mlxlearn/_common/rng.py": "5a4bba4f2a03108c31467692310986107a1178928bd5bab20d258037ff10afef",
+        "mlxlearn/_common/validation.py": "997df987a2b857b2bc5b72c12f5dcd62dc3569e80a90bdf3ae263dfac042ea3a",
+        "mlxlearn/_kernels/__init__.py": "0a2227680a6afb7d09a596f0aaab4ef6671fe9e58169739d1cc3a9e32c3b062e",
+        "mlxlearn/_kernels/distance.py": "7fba195ea0027b06e53aa1e7b5f031a347d6c3019f743e6c97ba0abc1bf87301",
+        "mlxlearn/_kernels/kernels.py": "e9fb262c8de3b1c596537c153f5233ca24813648b67a96fb7b61bcd0b16b05d9",
+        "mlxlearn/_kernels/logistic_input.py": "5f0180ba62076f9899fafca359f67e04f50c796febd2111ea3b3610e6f758efb",
+        "mlxlearn/_solvers/__init__.py": "974fa44cf7975d4fa63d6a9d304219dde43bd86ebcb1c151c7630b0a1c4fdacb",
+        "mlxlearn/_solvers/_metal_cg.h": "b1c6724e7f53643b2160a27662ff5d9f9ab73acffadb65bad8047c670cd088af",
+        "mlxlearn/_solvers/_metal_loop.mm": "ed5b75b074d9f0151033d7ff9fb502aebac2a35ab5e339405fdfcd525a86302e",
+        "mlxlearn/_solvers/fused_lbfgs.py": "1b898ad08028015c3380e8024922abfa424ba4da049be3743067f9c1bf0d85dd",
+        "mlxlearn/_solvers/lbfgs.py": "ba0904bb4edf69197025a4b69d813d021a62547d019e38d6f93842c2cc0f60a8",
+        "mlxlearn/_solvers/logistic.py": "e7d3ce359934e2d1885cbbd72813de2135bd2b3a1db5fddd4ac72b39c404ce94",
+        "mlxlearn/_solvers/native_command.py": "2ccfc1be7555747e08472bf739a7ad08bef02ff1efed103e144ef92dc8848515",
+        "mlxlearn/_solvers/native_geometry.py": "8ac947730be7a72e250816d5203259919a227ffcdb211bf16793f027161b3578",
+        "mlxlearn/_solvers/native_logistic.py": "a9e1db2b7950e862b5ad3db9537ffb99757d48d37e740027c1ae45cb45f50230",
+        "mlxlearn/_solvers/native_logistic_fused.py": "4b1642ed93acded47d8ba4e42cc3f4349ac635abce9f1123d8e21ff8a1408016",
+        "mlxlearn/_solvers/smo.py": "455bc5786ef533ffc080f0e75144d6148ecc0dd6a22a5b08dd3bb25a7eaca19e",
+        "mlxlearn/exceptions.py": "5b9b4efd548f90156d3d10d406aec74d1d6ed4ebaa4859d88d6589f1ba241e2a",
+        "mlxlearn/linear_model/__init__.py": "ea1456645a4d5962e1616a0234a012e2e331dd3750365644fa6cd4d21aaa1293",
+        "mlxlearn/linear_model/_logistic.py": "61159851bb7497e3d90de5aec036ff6c8b76991defbdfeb2ca376418cc126774",
+        "mlxlearn/neighbors/__init__.py": "2f18f3864ba4ea0229a4c2317e0612da2fa458daef7d28a7a88f3e382fb951b4",
+        "mlxlearn/neighbors/_base.py": "87320f076ecf6961bc2bdf6b32f119be1d9318287b29983bf08c3188870b1a48",
+        "mlxlearn/neighbors/_classification.py": "3dc44373d2d3e49bf4c51357ac068a881ed0bb72b089154039c8974a53cf71b9",
+        "mlxlearn/neighbors/_regression.py": "3d4a41aebffae757365c0ee32b9f17df685bfb23d2500a8b9c33a4ca05e21f83",
+        "mlxlearn/neighbors/_unsupervised.py": "bc9a0342514befce11cc75992dae5967d8889ff773899989269845bdda1c0795",
+        "mlxlearn/patching/__init__.py": "46daa0d9c3d8a26b400907e3421a55de239c7032ef7537fd1b955af85f00d551",
+        "mlxlearn/patching/_estimators.py": "1761e73488caaef926b591a0b57cba9045273a043d0383934b46036121c9db04",
+        "mlxlearn/patching/_patch.py": "03331f0b103cdb84944f36a1284ecddb064722032a6b7371b0bce3862115242a",
+        "mlxlearn/patching/_registry.py": "bd02f5436f8b62d28f3a0eca1aca7bc9e99eed31e9156eec844805695dde5e16",
+        "mlxlearn/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "mlxlearn/svm/__init__.py": "3fec63550675c0482c6b9da28e0dcc5fbe7b9c92662bce1e37f2edca4f5ebd66",
+        "mlxlearn/svm/_classes.py": "c8ac08f2dc3cd0da9296fa326340515870ea1ee30e56eec9999fa421fad2c79e",
+        "mlxlearn_device/__init__.py": "a61b0e97913febf3d100b02ae26658a8ff5cee44844ae936970a91e728feb0ef",
+        "mlxlearn_device/_compensated.py": "f3494b103de3bf9e8549412d3b18a43287fa5c03c08502138e18b4537ad5d15d",
+        "mlxlearn_device/_duality.py": "1694aad68fe565d695f6c3795362c9e3bd02c22d8b6a08c18c6c8231786aa04e",
+        "mlxlearn_device/_hessian_vector.py": "75daa73c833a26d6722b1335e03aa2c7eec7cce9e7dfff8657c0df4c4fceeadf",
+        "mlxlearn_device/_logistic.py": "3c5e0f9ec2aa14fafa774ea72aaf27ae2909958981431ee913a08d99de304f08",
+        "mlxlearn_device/_native.py": "a49425c647dab43cc31ea3d29590ee791cfa6b2138d155c2c15b924b4e67869d",
+        "mlxlearn_device/_native_cg.py": "3a3b1aabb9c4684e20f65e3fe9b1c1b9c4a493b064d102ed8fef3445483af0e6",
+        "mlxlearn_device/_neighbors.py": "b16da44f189acfdd87226d2303252182eebfecb8bef377a78329c4bdcfd3fc34",
+        "mlxlearn_device/_neighbors_compact.py": "b86f7836e41587258e99cd69a0c7239550b22ca4e509274662e50b048a6aa8ed",
+        "mlxlearn_device/_neighbors_fused.py": "99288d343940b8bdbc7179468151dd93b9fc21c10d075f1e96500ce69497eeea",
+        "mlxlearn_device/_neighbors_integer.py": "5bfd208d6cf2af76cf0d5a8394955b654a30a991c73c1689f35f52df13322a58",
+        "mlxlearn_device/_neighbors_paired.py": "943ef22c41079ef5544e1d3830905f0f7ac0d11ddb706ece48dec9b56b3bf9bd",
+        "mlxlearn_device/_neighbors_registers.py": "4c698db597f335dde240fb4d605a091f2f665535981dd5da80d8fd4c92d437b5",
+        "mlxlearn_device/_neighbors_votes.py": "e34b08e5d772d39c260f26daa31399b6d88f9d13f4a31ef531a40cc76e99c59f",
+        "mlxlearn_device/_newton.py": "1e79738d7ea4a3711e62a113d1dd14197f127cca1541f75f1ed33e457212fad6",
+        "mlxlearn_device/hessian_sketch.py": "576f6bb49aa4520bbf318ee248cd3f32aca873e799c6e216a098155d8b2ed6b0"
+      }
+    }
+  },
+  "certificate_diagnostics": {
+    "timing_policy": "Untimed; run after all cold, warmup and retained public-API calls.",
+    "cases": [
+      {
+        "case": {
+          "name": "anisotropic_50000_32_k5",
+          "n_train": 50000,
+          "n_query": 256,
+          "n_features": 32,
+          "k": 5
+        },
+        "algorithms": {
+          "compact": {
+            "status": "complete",
+            "certified_count": 256,
+            "query_count": 256,
+            "certified_fraction": 1.0,
+            "fallback_count": 0,
+            "oracle_audit": {
+              "pass": true,
+              "indices_match": true,
+              "distances_exact_match": false,
+              "distances_match": true,
+              "distance_max_abs": 3.623376855443894e-06
+            }
+          },
+          "integer": {
+            "status": "complete",
+            "certified_count": 209,
+            "query_count": 256,
+            "certified_fraction": 0.81640625,
+            "fallback_count": 47,
+            "oracle_audit": {
+              "pass": true,
+              "indices_match": true,
+              "distances_exact_match": false,
+              "distances_match": true,
+              "distance_max_abs": 3.623376855443894e-06
+            }
+          }
+        },
+        "integer_vs_compact": {
+          "indices_exact_match": true,
+          "squared_distances_exact_match": true,
+          "squared_distance_max_abs": 0.0
+        }
+      }
+    ],
+    "module_paths": {
+      "mlxlearn_device": "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/__init__.py",
+      "mlxlearn_device._neighbors_compact": "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_neighbors_compact.py",
+      "mlxlearn_device._neighbors_integer": "/Users/tunguz/Programming/mlxlearn/src/mlxlearn_device/_neighbors_integer.py"
+    },
+    "compact_source_hashes": {
+      "loaded_current": "b86f7836e41587258e99cd69a0c7239550b22ca4e509274662e50b048a6aa8ed",
+      "current_worker_before": "b86f7836e41587258e99cd69a0c7239550b22ca4e509274662e50b048a6aa8ed",
+      "reference_manifest": "b86f7836e41587258e99cd69a0c7239550b22ca4e509274662e50b048a6aa8ed"
+    },
+    "compact_matches_frozen_reference": true,
+    "integer_source_sha256": "5bfd208d6cf2af76cf0d5a8394955b654a30a991c73c1689f35f52df13322a58",
+    "integer_supported": true,
+    "quality_pass": true,
+    "status": "complete"
+  },
+  "source_hashes_after": {
+    "current": {
+      "mlxlearn/__init__.py": "a382f5fb1a7022d68d4d0bd6f775b10348132d1cc98f5a1a8ec6a2676895d441",
+      "mlxlearn/_common/__init__.py": "736aa2ce3d7d1f74557c76a9b5e5356d15a05e1f02a86204f2508ea6c4767646",
+      "mlxlearn/_common/arrays.py": "981cc12835e2855a75c5331e54f1aabefa2ef92e7525078d789acf6488da46fc",
+      "mlxlearn/_common/base.py": "2054a836fda7dfd1a8a13cff59b219a6cf05998275ab8620327233b4a66f3c54",
+      "mlxlearn/_common/config.py": "84a361101374c28d12cf461d6029a438aa385327211c81381f34b8f9f1da3973",
+      "mlxlearn/_common/device.py": "f8a3e2eac9ffe64d99bded696ffe7e42d14059964fc0c19104c7675e04e2ce74",
+      "mlxlearn/_common/diagnostics.py": "0e6676eef716be71d94c6b1e71ac8d00dee12ff4aac85ff76341cefaee5fe3d9",
+      "mlxlearn/_common/preparation.py": "1dc679dec3d693165a76230f5327fe9341872fec1acfb7552bb11db8e280958f",
+      "mlxlearn/_common/rng.py": "5a4bba4f2a03108c31467692310986107a1178928bd5bab20d258037ff10afef",
+      "mlxlearn/_common/validation.py": "997df987a2b857b2bc5b72c12f5dcd62dc3569e80a90bdf3ae263dfac042ea3a",
+      "mlxlearn/_kernels/__init__.py": "0a2227680a6afb7d09a596f0aaab4ef6671fe9e58169739d1cc3a9e32c3b062e",
+      "mlxlearn/_kernels/distance.py": "7fba195ea0027b06e53aa1e7b5f031a347d6c3019f743e6c97ba0abc1bf87301",
+      "mlxlearn/_kernels/kernels.py": "e9fb262c8de3b1c596537c153f5233ca24813648b67a96fb7b61bcd0b16b05d9",
+      "mlxlearn/_kernels/logistic_input.py": "5f0180ba62076f9899fafca359f67e04f50c796febd2111ea3b3610e6f758efb",
+      "mlxlearn/_solvers/__init__.py": "974fa44cf7975d4fa63d6a9d304219dde43bd86ebcb1c151c7630b0a1c4fdacb",
+      "mlxlearn/_solvers/_metal_cg.h": "b1c6724e7f53643b2160a27662ff5d9f9ab73acffadb65bad8047c670cd088af",
+      "mlxlearn/_solvers/_metal_loop.mm": "ed5b75b074d9f0151033d7ff9fb502aebac2a35ab5e339405fdfcd525a86302e",
+      "mlxlearn/_solvers/fused_lbfgs.py": "1b898ad08028015c3380e8024922abfa424ba4da049be3743067f9c1bf0d85dd",
+      "mlxlearn/_solvers/lbfgs.py": "ba0904bb4edf69197025a4b69d813d021a62547d019e38d6f93842c2cc0f60a8",
+      "mlxlearn/_solvers/logistic.py": "e7d3ce359934e2d1885cbbd72813de2135bd2b3a1db5fddd4ac72b39c404ce94",
+      "mlxlearn/_solvers/native_command.py": "2ccfc1be7555747e08472bf739a7ad08bef02ff1efed103e144ef92dc8848515",
+      "mlxlearn/_solvers/native_geometry.py": "8ac947730be7a72e250816d5203259919a227ffcdb211bf16793f027161b3578",
+      "mlxlearn/_solvers/native_logistic.py": "a9e1db2b7950e862b5ad3db9537ffb99757d48d37e740027c1ae45cb45f50230",
+      "mlxlearn/_solvers/native_logistic_fused.py": "4b1642ed93acded47d8ba4e42cc3f4349ac635abce9f1123d8e21ff8a1408016",
+      "mlxlearn/_solvers/smo.py": "455bc5786ef533ffc080f0e75144d6148ecc0dd6a22a5b08dd3bb25a7eaca19e",
+      "mlxlearn/exceptions.py": "5b9b4efd548f90156d3d10d406aec74d1d6ed4ebaa4859d88d6589f1ba241e2a",
+      "mlxlearn/linear_model/__init__.py": "ea1456645a4d5962e1616a0234a012e2e331dd3750365644fa6cd4d21aaa1293",
+      "mlxlearn/linear_model/_logistic.py": "61159851bb7497e3d90de5aec036ff6c8b76991defbdfeb2ca376418cc126774",
+      "mlxlearn/neighbors/__init__.py": "2f18f3864ba4ea0229a4c2317e0612da2fa458daef7d28a7a88f3e382fb951b4",
+      "mlxlearn/neighbors/_base.py": "87320f076ecf6961bc2bdf6b32f119be1d9318287b29983bf08c3188870b1a48",
+      "mlxlearn/neighbors/_classification.py": "3dc44373d2d3e49bf4c51357ac068a881ed0bb72b089154039c8974a53cf71b9",
+      "mlxlearn/neighbors/_regression.py": "3d4a41aebffae757365c0ee32b9f17df685bfb23d2500a8b9c33a4ca05e21f83",
+      "mlxlearn/neighbors/_unsupervised.py": "bc9a0342514befce11cc75992dae5967d8889ff773899989269845bdda1c0795",
+      "mlxlearn/patching/__init__.py": "46daa0d9c3d8a26b400907e3421a55de239c7032ef7537fd1b955af85f00d551",
+      "mlxlearn/patching/_estimators.py": "1761e73488caaef926b591a0b57cba9045273a043d0383934b46036121c9db04",
+      "mlxlearn/patching/_patch.py": "03331f0b103cdb84944f36a1284ecddb064722032a6b7371b0bce3862115242a",
+      "mlxlearn/patching/_registry.py": "bd02f5436f8b62d28f3a0eca1aca7bc9e99eed31e9156eec844805695dde5e16",
+      "mlxlearn/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "mlxlearn/svm/__init__.py": "3fec63550675c0482c6b9da28e0dcc5fbe7b9c92662bce1e37f2edca4f5ebd66",
+      "mlxlearn/svm/_classes.py": "c8ac08f2dc3cd0da9296fa326340515870ea1ee30e56eec9999fa421fad2c79e",
+      "mlxlearn_device/__init__.py": "a61b0e97913febf3d100b02ae26658a8ff5cee44844ae936970a91e728feb0ef",
+      "mlxlearn_device/_compensated.py": "f3494b103de3bf9e8549412d3b18a43287fa5c03c08502138e18b4537ad5d15d",
+      "mlxlearn_device/_duality.py": "1694aad68fe565d695f6c3795362c9e3bd02c22d8b6a08c18c6c8231786aa04e",
+      "mlxlearn_device/_hessian_vector.py": "75daa73c833a26d6722b1335e03aa2c7eec7cce9e7dfff8657c0df4c4fceeadf",
+      "mlxlearn_device/_logistic.py": "3c5e0f9ec2aa14fafa774ea72aaf27ae2909958981431ee913a08d99de304f08",
+      "mlxlearn_device/_native.py": "a49425c647dab43cc31ea3d29590ee791cfa6b2138d155c2c15b924b4e67869d",
+      "mlxlearn_device/_native_cg.py": "3a3b1aabb9c4684e20f65e3fe9b1c1b9c4a493b064d102ed8fef3445483af0e6",
+      "mlxlearn_device/_neighbors.py": "b16da44f189acfdd87226d2303252182eebfecb8bef377a78329c4bdcfd3fc34",
+      "mlxlearn_device/_neighbors_compact.py": "b86f7836e41587258e99cd69a0c7239550b22ca4e509274662e50b048a6aa8ed",
+      "mlxlearn_device/_neighbors_fused.py": "99288d343940b8bdbc7179468151dd93b9fc21c10d075f1e96500ce69497eeea",
+      "mlxlearn_device/_neighbors_integer.py": "5bfd208d6cf2af76cf0d5a8394955b654a30a991c73c1689f35f52df13322a58",
+      "mlxlearn_device/_neighbors_paired.py": "943ef22c41079ef5544e1d3830905f0f7ac0d11ddb706ece48dec9b56b3bf9bd",
+      "mlxlearn_device/_neighbors_registers.py": "4c698db597f335dde240fb4d605a091f2f665535981dd5da80d8fd4c92d437b5",
+      "mlxlearn_device/_neighbors_votes.py": "e34b08e5d772d39c260f26daa31399b6d88f9d13f4a31ef531a40cc76e99c59f",
+      "mlxlearn_device/_newton.py": "1e79738d7ea4a3711e62a113d1dd14197f127cca1541f75f1ed33e457212fad6",
+      "mlxlearn_device/hessian_sketch.py": "576f6bb49aa4520bbf318ee248cd3f32aca873e799c6e216a098155d8b2ed6b0"
+    },
+    "reference": {
+      "mlxlearn/__init__.py": "a382f5fb1a7022d68d4d0bd6f775b10348132d1cc98f5a1a8ec6a2676895d441",
+      "mlxlearn/_common/__init__.py": "736aa2ce3d7d1f74557c76a9b5e5356d15a05e1f02a86204f2508ea6c4767646",
+      "mlxlearn/_common/arrays.py": "981cc12835e2855a75c5331e54f1aabefa2ef92e7525078d789acf6488da46fc",
+      "mlxlearn/_common/base.py": "2054a836fda7dfd1a8a13cff59b219a6cf05998275ab8620327233b4a66f3c54",
+      "mlxlearn/_common/config.py": "84a361101374c28d12cf461d6029a438aa385327211c81381f34b8f9f1da3973",
+      "mlxlearn/_common/device.py": "f8a3e2eac9ffe64d99bded696ffe7e42d14059964fc0c19104c7675e04e2ce74",
+      "mlxlearn/_common/diagnostics.py": "0e6676eef716be71d94c6b1e71ac8d00dee12ff4aac85ff76341cefaee5fe3d9",
+      "mlxlearn/_common/preparation.py": "1dc679dec3d693165a76230f5327fe9341872fec1acfb7552bb11db8e280958f",
+      "mlxlearn/_common/rng.py": "5a4bba4f2a03108c31467692310986107a1178928bd5bab20d258037ff10afef",
+      "mlxlearn/_common/validation.py": "997df987a2b857b2bc5b72c12f5dcd62dc3569e80a90bdf3ae263dfac042ea3a",
+      "mlxlearn/_kernels/__init__.py": "0a2227680a6afb7d09a596f0aaab4ef6671fe9e58169739d1cc3a9e32c3b062e",
+      "mlxlearn/_kernels/distance.py": "7fba195ea0027b06e53aa1e7b5f031a347d6c3019f743e6c97ba0abc1bf87301",
+      "mlxlearn/_kernels/kernels.py": "e9fb262c8de3b1c596537c153f5233ca24813648b67a96fb7b61bcd0b16b05d9",
+      "mlxlearn/_kernels/logistic_input.py": "5f0180ba62076f9899fafca359f67e04f50c796febd2111ea3b3610e6f758efb",
+      "mlxlearn/_solvers/__init__.py": "974fa44cf7975d4fa63d6a9d304219dde43bd86ebcb1c151c7630b0a1c4fdacb",
+      "mlxlearn/_solvers/_metal_cg.h": "b1c6724e7f53643b2160a27662ff5d9f9ab73acffadb65bad8047c670cd088af",
+      "mlxlearn/_solvers/_metal_loop.mm": "ed5b75b074d9f0151033d7ff9fb502aebac2a35ab5e339405fdfcd525a86302e",
+      "mlxlearn/_solvers/fused_lbfgs.py": "1b898ad08028015c3380e8024922abfa424ba4da049be3743067f9c1bf0d85dd",
+      "mlxlearn/_solvers/lbfgs.py": "ba0904bb4edf69197025a4b69d813d021a62547d019e38d6f93842c2cc0f60a8",
+      "mlxlearn/_solvers/logistic.py": "e7d3ce359934e2d1885cbbd72813de2135bd2b3a1db5fddd4ac72b39c404ce94",
+      "mlxlearn/_solvers/native_command.py": "2ccfc1be7555747e08472bf739a7ad08bef02ff1efed103e144ef92dc8848515",
+      "mlxlearn/_solvers/native_geometry.py": "8ac947730be7a72e250816d5203259919a227ffcdb211bf16793f027161b3578",
+      "mlxlearn/_solvers/native_logistic.py": "a9e1db2b7950e862b5ad3db9537ffb99757d48d37e740027c1ae45cb45f50230",
+      "mlxlearn/_solvers/native_logistic_fused.py": "4b1642ed93acded47d8ba4e42cc3f4349ac635abce9f1123d8e21ff8a1408016",
+      "mlxlearn/_solvers/smo.py": "455bc5786ef533ffc080f0e75144d6148ecc0dd6a22a5b08dd3bb25a7eaca19e",
+      "mlxlearn/exceptions.py": "5b9b4efd548f90156d3d10d406aec74d1d6ed4ebaa4859d88d6589f1ba241e2a",
+      "mlxlearn/linear_model/__init__.py": "ea1456645a4d5962e1616a0234a012e2e331dd3750365644fa6cd4d21aaa1293",
+      "mlxlearn/linear_model/_logistic.py": "61159851bb7497e3d90de5aec036ff6c8b76991defbdfeb2ca376418cc126774",
+      "mlxlearn/neighbors/__init__.py": "2f18f3864ba4ea0229a4c2317e0612da2fa458daef7d28a7a88f3e382fb951b4",
+      "mlxlearn/neighbors/_base.py": "87320f076ecf6961bc2bdf6b32f119be1d9318287b29983bf08c3188870b1a48",
+      "mlxlearn/neighbors/_classification.py": "3dc44373d2d3e49bf4c51357ac068a881ed0bb72b089154039c8974a53cf71b9",
+      "mlxlearn/neighbors/_regression.py": "3d4a41aebffae757365c0ee32b9f17df685bfb23d2500a8b9c33a4ca05e21f83",
+      "mlxlearn/neighbors/_unsupervised.py": "bc9a0342514befce11cc75992dae5967d8889ff773899989269845bdda1c0795",
+      "mlxlearn/patching/__init__.py": "46daa0d9c3d8a26b400907e3421a55de239c7032ef7537fd1b955af85f00d551",
+      "mlxlearn/patching/_estimators.py": "1761e73488caaef926b591a0b57cba9045273a043d0383934b46036121c9db04",
+      "mlxlearn/patching/_patch.py": "03331f0b103cdb84944f36a1284ecddb064722032a6b7371b0bce3862115242a",
+      "mlxlearn/patching/_registry.py": "bd02f5436f8b62d28f3a0eca1aca7bc9e99eed31e9156eec844805695dde5e16",
+      "mlxlearn/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "mlxlearn/svm/__init__.py": "3fec63550675c0482c6b9da28e0dcc5fbe7b9c92662bce1e37f2edca4f5ebd66",
+      "mlxlearn/svm/_classes.py": "c8ac08f2dc3cd0da9296fa326340515870ea1ee30e56eec9999fa421fad2c79e",
+      "mlxlearn_device/__init__.py": "a61b0e97913febf3d100b02ae26658a8ff5cee44844ae936970a91e728feb0ef",
+      "mlxlearn_device/_compensated.py": "f3494b103de3bf9e8549412d3b18a43287fa5c03c08502138e18b4537ad5d15d",
+      "mlxlearn_device/_duality.py": "1694aad68fe565d695f6c3795362c9e3bd02c22d8b6a08c18c6c8231786aa04e",
+      "mlxlearn_device/_hessian_vector.py": "75daa73c833a26d6722b1335e03aa2c7eec7cce9e7dfff8657c0df4c4fceeadf",
+      "mlxlearn_device/_logistic.py": "3c5e0f9ec2aa14fafa774ea72aaf27ae2909958981431ee913a08d99de304f08",
+      "mlxlearn_device/_native.py": "a49425c647dab43cc31ea3d29590ee791cfa6b2138d155c2c15b924b4e67869d",
+      "mlxlearn_device/_native_cg.py": "3a3b1aabb9c4684e20f65e3fe9b1c1b9c4a493b064d102ed8fef3445483af0e6",
+      "mlxlearn_device/_neighbors.py": "9fc748e28f5058dd0cbd8d7f91925b3cf740eb3cd8e7c2aadc4aa0045ab1eca1",
+      "mlxlearn_device/_neighbors_compact.py": "b86f7836e41587258e99cd69a0c7239550b22ca4e509274662e50b048a6aa8ed",
+      "mlxlearn_device/_neighbors_fused.py": "99288d343940b8bdbc7179468151dd93b9fc21c10d075f1e96500ce69497eeea",
+      "mlxlearn_device/_neighbors_paired.py": "943ef22c41079ef5544e1d3830905f0f7ac0d11ddb706ece48dec9b56b3bf9bd",
+      "mlxlearn_device/_neighbors_registers.py": "4c698db597f335dde240fb4d605a091f2f665535981dd5da80d8fd4c92d437b5",
+      "mlxlearn_device/_neighbors_votes.py": "e34b08e5d772d39c260f26daa31399b6d88f9d13f4a31ef531a40cc76e99c59f",
+      "mlxlearn_device/_newton.py": "1e79738d7ea4a3711e62a113d1dd14197f127cca1541f75f1ed33e457212fad6",
+      "mlxlearn_device/hessian_sketch.py": "576f6bb49aa4520bbf318ee248cd3f32aca873e799c6e216a098155d8b2ed6b0"
+    },
+    "sklearn_default": {
+      "mlxlearn/__init__.py": "a382f5fb1a7022d68d4d0bd6f775b10348132d1cc98f5a1a8ec6a2676895d441",
+      "mlxlearn/_common/__init__.py": "736aa2ce3d7d1f74557c76a9b5e5356d15a05e1f02a86204f2508ea6c4767646",
+      "mlxlearn/_common/arrays.py": "981cc12835e2855a75c5331e54f1aabefa2ef92e7525078d789acf6488da46fc",
+      "mlxlearn/_common/base.py": "2054a836fda7dfd1a8a13cff59b219a6cf05998275ab8620327233b4a66f3c54",
+      "mlxlearn/_common/config.py": "84a361101374c28d12cf461d6029a438aa385327211c81381f34b8f9f1da3973",
+      "mlxlearn/_common/device.py": "f8a3e2eac9ffe64d99bded696ffe7e42d14059964fc0c19104c7675e04e2ce74",
+      "mlxlearn/_common/diagnostics.py": "0e6676eef716be71d94c6b1e71ac8d00dee12ff4aac85ff76341cefaee5fe3d9",
+      "mlxlearn/_common/preparation.py": "1dc679dec3d693165a76230f5327fe9341872fec1acfb7552bb11db8e280958f",
+      "mlxlearn/_common/rng.py": "5a4bba4f2a03108c31467692310986107a1178928bd5bab20d258037ff10afef",
+      "mlxlearn/_common/validation.py": "997df987a2b857b2bc5b72c12f5dcd62dc3569e80a90bdf3ae263dfac042ea3a",
+      "mlxlearn/_kernels/__init__.py": "0a2227680a6afb7d09a596f0aaab4ef6671fe9e58169739d1cc3a9e32c3b062e",
+      "mlxlearn/_kernels/distance.py": "7fba195ea0027b06e53aa1e7b5f031a347d6c3019f743e6c97ba0abc1bf87301",
+      "mlxlearn/_kernels/kernels.py": "e9fb262c8de3b1c596537c153f5233ca24813648b67a96fb7b61bcd0b16b05d9",
+      "mlxlearn/_kernels/logistic_input.py": "5f0180ba62076f9899fafca359f67e04f50c796febd2111ea3b3610e6f758efb",
+      "mlxlearn/_solvers/__init__.py": "974fa44cf7975d4fa63d6a9d304219dde43bd86ebcb1c151c7630b0a1c4fdacb",
+      "mlxlearn/_solvers/_metal_cg.h": "b1c6724e7f53643b2160a27662ff5d9f9ab73acffadb65bad8047c670cd088af",
+      "mlxlearn/_solvers/_metal_loop.mm": "ed5b75b074d9f0151033d7ff9fb502aebac2a35ab5e339405fdfcd525a86302e",
+      "mlxlearn/_solvers/fused_lbfgs.py": "1b898ad08028015c3380e8024922abfa424ba4da049be3743067f9c1bf0d85dd",
+      "mlxlearn/_solvers/lbfgs.py": "ba0904bb4edf69197025a4b69d813d021a62547d019e38d6f93842c2cc0f60a8",
+      "mlxlearn/_solvers/logistic.py": "e7d3ce359934e2d1885cbbd72813de2135bd2b3a1db5fddd4ac72b39c404ce94",
+      "mlxlearn/_solvers/native_command.py": "2ccfc1be7555747e08472bf739a7ad08bef02ff1efed103e144ef92dc8848515",
+      "mlxlearn/_solvers/native_geometry.py": "8ac947730be7a72e250816d5203259919a227ffcdb211bf16793f027161b3578",
+      "mlxlearn/_solvers/native_logistic.py": "a9e1db2b7950e862b5ad3db9537ffb99757d48d37e740027c1ae45cb45f50230",
+      "mlxlearn/_solvers/native_logistic_fused.py": "4b1642ed93acded47d8ba4e42cc3f4349ac635abce9f1123d8e21ff8a1408016",
+      "mlxlearn/_solvers/smo.py": "455bc5786ef533ffc080f0e75144d6148ecc0dd6a22a5b08dd3bb25a7eaca19e",
+      "mlxlearn/exceptions.py": "5b9b4efd548f90156d3d10d406aec74d1d6ed4ebaa4859d88d6589f1ba241e2a",
+      "mlxlearn/linear_model/__init__.py": "ea1456645a4d5962e1616a0234a012e2e331dd3750365644fa6cd4d21aaa1293",
+      "mlxlearn/linear_model/_logistic.py": "61159851bb7497e3d90de5aec036ff6c8b76991defbdfeb2ca376418cc126774",
+      "mlxlearn/neighbors/__init__.py": "2f18f3864ba4ea0229a4c2317e0612da2fa458daef7d28a7a88f3e382fb951b4",
+      "mlxlearn/neighbors/_base.py": "87320f076ecf6961bc2bdf6b32f119be1d9318287b29983bf08c3188870b1a48",
+      "mlxlearn/neighbors/_classification.py": "3dc44373d2d3e49bf4c51357ac068a881ed0bb72b089154039c8974a53cf71b9",
+      "mlxlearn/neighbors/_regression.py": "3d4a41aebffae757365c0ee32b9f17df685bfb23d2500a8b9c33a4ca05e21f83",
+      "mlxlearn/neighbors/_unsupervised.py": "bc9a0342514befce11cc75992dae5967d8889ff773899989269845bdda1c0795",
+      "mlxlearn/patching/__init__.py": "46daa0d9c3d8a26b400907e3421a55de239c7032ef7537fd1b955af85f00d551",
+      "mlxlearn/patching/_estimators.py": "1761e73488caaef926b591a0b57cba9045273a043d0383934b46036121c9db04",
+      "mlxlearn/patching/_patch.py": "03331f0b103cdb84944f36a1284ecddb064722032a6b7371b0bce3862115242a",
+      "mlxlearn/patching/_registry.py": "bd02f5436f8b62d28f3a0eca1aca7bc9e99eed31e9156eec844805695dde5e16",
+      "mlxlearn/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "mlxlearn/svm/__init__.py": "3fec63550675c0482c6b9da28e0dcc5fbe7b9c92662bce1e37f2edca4f5ebd66",
+      "mlxlearn/svm/_classes.py": "c8ac08f2dc3cd0da9296fa326340515870ea1ee30e56eec9999fa421fad2c79e",
+      "mlxlearn_device/__init__.py": "a61b0e97913febf3d100b02ae26658a8ff5cee44844ae936970a91e728feb0ef",
+      "mlxlearn_device/_compensated.py": "f3494b103de3bf9e8549412d3b18a43287fa5c03c08502138e18b4537ad5d15d",
+      "mlxlearn_device/_duality.py": "1694aad68fe565d695f6c3795362c9e3bd02c22d8b6a08c18c6c8231786aa04e",
+      "mlxlearn_device/_hessian_vector.py": "75daa73c833a26d6722b1335e03aa2c7eec7cce9e7dfff8657c0df4c4fceeadf",
+      "mlxlearn_device/_logistic.py": "3c5e0f9ec2aa14fafa774ea72aaf27ae2909958981431ee913a08d99de304f08",
+      "mlxlearn_device/_native.py": "a49425c647dab43cc31ea3d29590ee791cfa6b2138d155c2c15b924b4e67869d",
+      "mlxlearn_device/_native_cg.py": "3a3b1aabb9c4684e20f65e3fe9b1c1b9c4a493b064d102ed8fef3445483af0e6",
+      "mlxlearn_device/_neighbors.py": "b16da44f189acfdd87226d2303252182eebfecb8bef377a78329c4bdcfd3fc34",
+      "mlxlearn_device/_neighbors_compact.py": "b86f7836e41587258e99cd69a0c7239550b22ca4e509274662e50b048a6aa8ed",
+      "mlxlearn_device/_neighbors_fused.py": "99288d343940b8bdbc7179468151dd93b9fc21c10d075f1e96500ce69497eeea",
+      "mlxlearn_device/_neighbors_integer.py": "5bfd208d6cf2af76cf0d5a8394955b654a30a991c73c1689f35f52df13322a58",
+      "mlxlearn_device/_neighbors_paired.py": "943ef22c41079ef5544e1d3830905f0f7ac0d11ddb706ece48dec9b56b3bf9bd",
+      "mlxlearn_device/_neighbors_registers.py": "4c698db597f335dde240fb4d605a091f2f665535981dd5da80d8fd4c92d437b5",
+      "mlxlearn_device/_neighbors_votes.py": "e34b08e5d772d39c260f26daa31399b6d88f9d13f4a31ef531a40cc76e99c59f",
+      "mlxlearn_device/_newton.py": "1e79738d7ea4a3711e62a113d1dd14197f127cca1541f75f1ed33e457212fad6",
+      "mlxlearn_device/hessian_sketch.py": "576f6bb49aa4520bbf318ee248cd3f32aca873e799c6e216a098155d8b2ed6b0"
+    }
+  },
+  "source_integrity_pass": true,
+  "harness_hashes_after": {
+    "benchmarks/knn_review_distributions.py": "e643b3f0e7208b94b62854657fcce3d4697c1065aab2d66170767630ab6f16fa",
+    "benchmarks/knn_pipeline.py": "8413303d0e99b6d3c0bfc056ccab49beb02c49d580d125f5f296f2006fb15543"
+  },
+  "harness_integrity_pass": true,
+  "quality_by_variant": {
+    "current": true,
+    "reference": true,
+    "sklearn_default": false
+  },
+  "quality_pass": false,
+  "implementation_quality_pass": true
+}

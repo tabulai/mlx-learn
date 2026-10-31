@@ -6,6 +6,11 @@ ragged, so each query is compared on its own.
 
 from __future__ import annotations
 
+import inspect
+import subprocess
+import sys
+import textwrap
+
 import numpy as np
 import pytest
 from sklearn import neighbors as sk_neighbors
@@ -56,6 +61,23 @@ def test_radius_ties_break_on_training_index(backend):
     )
     np.testing.assert_array_equal(idx[0], [0, 1, 2])
     np.testing.assert_allclose(dist[0], [1.0, 1.0, 1.0])
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_radius_keeps_neighbors_in_distant_clusters(backend):
+    # Both clusters sit far from the shared mean, so the Gram identity cancels
+    # values near 2e8 to recover distances near 1.
+    offset = np.array([1.0e4, -1.0e4], dtype=np.float32)
+    grid = np.array([[0, 0], [0.5, 0], [0, 0.5], [0.5, 0.5]], dtype=np.float32)
+    X = np.vstack([grid + offset, grid - offset])
+    Q = X[:4] + np.float32(0.25)
+
+    dist, idx = build_index(X, backend=backend).query_radius(Q, 0.75, sort_results=True)
+    ref_dist, ref_idx = sk_reference(X, radius=0.75).radius_neighbors(
+        Q.astype(np.float64), sort_results=True
+    )
+    assert_radius_parity(idx, ref_idx, dist, ref_dist)
+    assert len(idx[0]) == 4
 
 
 @pytest.mark.parametrize("backend", BACKENDS)
@@ -114,12 +136,13 @@ def test_nearest_neighbors_radius_matches_sklearn(classification_data, rng):
     query = np.vstack([X[:15], rng.normal(size=(20, X.shape[1]))])
     radius = 8.0
 
-    mlx = NearestNeighbors(radius=radius).fit(X)
+    with tuning_context(force_backend="mlx"):
+        mlx = NearestNeighbors(radius=radius).fit(X)
     ref = sk_neighbors.NearestNeighbors(radius=radius, algorithm="brute").fit(X)
     mlx_dist, mlx_idx = mlx.radius_neighbors(query, sort_results=True)
     ref_dist, ref_idx = ref.radius_neighbors(query, sort_results=True)
     assert_radius_parity(mlx_idx, ref_idx, mlx_dist, ref_dist)
-    assert mlx.execution_backend_ == "mlx"
+    assert mlx.execution_backend_ == "mlx" and mlx.last_query_backend_ == "mlx"
 
 
 def test_radius_self_query_matches_sklearn(classification_data):
@@ -135,7 +158,8 @@ def test_radius_self_query_matches_sklearn(classification_data):
 @pytest.mark.parametrize("weights", ["uniform", "distance"])
 def test_classifier_parity(weights, classification_data, rng):
     X, y = classification_data
-    query = np.vstack([X[:20], rng.normal(scale=0.5, size=(15, X.shape[1]))])
+    # Offset from the training rows for the reason given in test_regressor_parity.
+    query = np.vstack([X[:20] + 1e-2, rng.normal(scale=0.5, size=(15, X.shape[1]))])
     radius = 12.0
 
     mlx = RadiusNeighborsClassifier(radius=radius, weights=weights).fit(X, y)
@@ -150,7 +174,9 @@ def test_classifier_parity(weights, classification_data, rng):
 @pytest.mark.parametrize("weights", ["uniform", "distance"])
 def test_regressor_parity(weights, regression_data, rng):
     X, y = regression_data
-    query = np.vstack([X[:20], rng.normal(size=(15, X.shape[1]))])
+    # Offset the training rows: sklearn's float64 distance to an identical row
+    # can round to a tiny nonzero value, so 1/d weights there compare BLAS noise.
+    query = np.vstack([X[:20] + 1e-2, rng.normal(size=(15, X.shape[1]))])
     radius = 10.0
 
     mlx = RadiusNeighborsRegressor(radius=radius, weights=weights).fit(X, y)
@@ -159,6 +185,13 @@ def test_regressor_parity(weights, regression_data, rng):
     ).fit(X, y)
 
     np.testing.assert_allclose(mlx.predict(query), ref.predict(query), atol=1e-5, rtol=1e-5)
+
+
+def test_regressor_distance_weights_on_a_coincident_query():
+    X = np.array([[0.0], [1.0], [2.0]])
+    y = np.array([3.0, 5.0, 7.0])
+    reg = RadiusNeighborsRegressor(radius=1.5, weights="distance").fit(X, y)
+    np.testing.assert_array_equal(reg.predict([[1.0]]), [5.0])
 
 
 def test_outlier_label_none_raises_on_empty_neighborhood():
@@ -216,9 +249,11 @@ def test_inference_reuses_the_fitted_backend(classification_data):
     from mlxlearn import get_backend_diagnostics
 
     X, y = classification_data
-    model = RadiusNeighborsClassifier(radius=12.0).fit(X, y)
+    with tuning_context(force_backend="cpu"):
+        model = RadiusNeighborsClassifier(radius=12.0).fit(X, y)
     fitted = model.execution_backend_
-    model.predict(X[:8])
+    with tuning_context(force_backend="mlx"):
+        model.predict(X[:8])
 
     inference = [
         e
@@ -228,6 +263,35 @@ def test_inference_reuses_the_fitted_backend(classification_data):
     assert inference
     assert all(e.backend == fitted for e in inference)
     assert all(e.reason == "sticky" for e in inference)
+
+
+def test_radius_estimators_do_not_import_sklearn_neighbors():
+    program = textwrap.dedent("""
+        import pickle
+        import sys
+        import numpy as np
+        from mlxlearn.neighbors import RadiusNeighborsClassifier, RadiusNeighborsRegressor
+        X = np.arange(48, dtype=np.float32).reshape(16, 3) / 8
+        y = np.arange(len(X)) % 3
+        for cls in (RadiusNeighborsClassifier, RadiusNeighborsRegressor):
+            model = cls(radius=2.0).fit(X, y)
+            restored = pickle.loads(pickle.dumps(model))
+            np.testing.assert_array_equal(restored.predict(X[[2, 9]]), model.predict(X[[2, 9]]))
+        assert not any(name == 'sklearn.neighbors' or name.startswith('sklearn.neighbors.')
+                       for name in sys.modules)
+    """)
+    result = subprocess.run([sys.executable, "-c", program], capture_output=True,
+                            text=True, timeout=30)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("name", ["RadiusNeighborsClassifier", "RadiusNeighborsRegressor"])
+def test_radius_constructor_matches_stock(name):
+    from mlxlearn import neighbors
+
+    assert inspect.signature(getattr(neighbors, name)) == inspect.signature(
+        getattr(sk_neighbors, name)
+    )
 
 
 def test_small_problems_use_the_cpu_path(small_classification_data):

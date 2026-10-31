@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "purpose": "Retain exact component probe code and clarify coverage; no new timing, estimator imports, tests or builds executed.",
+  "drivers": [
+    {
+      "path": "benchmarks/experiments/knn-digits-gap-stage-probe.py",
+      "sha256": "dd32869309b4dccd702f95da52fdc3a9eb308514d1f117ae3a688da753aad69b",
+      "exact_original": "/tmp/knn_digits_gap_probe.py",
+      "actual_command": "python3 /tmp/knn_digits_gap_probe.py benchmarks/results/knn-digits-gap-baseline-stages-2026-10-30.json",
+      "output": "benchmarks/results/knn-digits-gap-baseline-stages-2026-10-30.json",
+      "original_runtime": "knn-startup-final2-2026-10-30 source/runtime; native69b80a68bc3fe5a0937b99ab2d030a37b33b5fdfd6b38d632e8c6611555ff2c3",
+      "rerun_precondition": "A baseline replay must use the archived baseline source/runtime environment; the same script run against a later installed extension measures that later extension."
+    },
+    {
+      "path": "benchmarks/experiments/knn-digits-gap-ablation-probe.py",
+      "sha256": "e1f5393c34ea2c631edf54dd73593c3849cdeab3716fd92fd1c454264cc425be",
+      "exact_original": "/tmp/knn_digits_gap_ablation.py",
+      "actual_command": "python3 /tmp/knn_digits_gap_ablation.py benchmarks/results/knn-digits-gap-fused-ablation-2026-10-30.json",
+      "output": "benchmarks/results/knn-digits-gap-fused-ablation-2026-10-30.json",
+      "baseline_binary_prerequisite": {
+        "archive": "benchmarks/reference/knn-startup-final2-2026-10-30-runtime.zip",
+        "member": "src/mlxlearn/_kernels/_neighbors_cpu_native.cpython-313-darwin.so",
+        "extract_to": "/tmp/mlxlearn-knn-digits-gap-baseline/_neighbors_cpu_native.cpython-313-darwin.so",
+        "sha256": "69b80a68bc3fe5a0937b99ab2d030a37b33b5fdfd6b38d632e8c6611555ff2c3"
+      },
+      "candidate_runtime_sha256": "5cb92f7ce3d70e8e1803f9d0b81c9753ec8e611f5c02d375c382fccb094d833a"
+    }
+  ],
+  "output_policy": "Drivers reject existing output paths. Use a new output filename for any rerun. Existing raw JSON was not edited.",
+  "probe_audit_scope": {
+    "stage_probe": "Independent float64 cdist/stable-index oracle checks the public neighbor results before component timing. Stage timers are attribution measurements; not every timed stage return is independently audited.",
+    "ablation_probe": "Every native selector result has squared distances and IDs checked against independent cdist/stable ordering; every engine result has IDs checked. Timed regressor predictions are not checked after each call. End-to-end precision is covered by separate tests. The raw ablation method shorthand each result independently audited is clarified here and in candidate-validation JSON.",
+    "limits": "Component timings do not establish GPU-control or universal speedup claims."
+  },
+  "fallback_static_review": {
+    "portable_python_fallback": "tests/unit/test_neighbors_cpu_exact.py uses an autouse fixture disabling all four native hooks, including query_concentrated, integer selector and feature ranges; meaningful exact-order, bound, fractional-query and tiling tests execute without native help.",
+    "native_scalar_logic": "Existing minimum-count late-winner tests and new malformed scalar-tail/mixed-error tests execute the scalar inner logic on ARM, alongside vector tests.",
+    "non_arm_native_build": "No standalone non-ARM C++ build was executed. setup.py builds the native extension only on macOS arm64; normal non-ARM installations use portable Python. Full non-NEON native configuration should not be claimed tested.",
+    "static_correctness": "The non-NEON k=5 path performs bounded-integer validation on every scalar before score arithmetic and pruning, tracks domain/negative errors globally, and uses the same staged commit. No static defect found."
+  }
+}

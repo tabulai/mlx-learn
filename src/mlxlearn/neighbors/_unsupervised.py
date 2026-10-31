@@ -2,25 +2,27 @@
 
 from __future__ import annotations
 
-from sklearn.neighbors import NearestNeighbors as _SkNearestNeighbors
+from sklearn.base import BaseEstimator
 
 from ._base import MLXNeighborsMixin, MLXRadiusMixin
 
 __all__ = ["NearestNeighbors"]
 
 
-class NearestNeighbors(MLXRadiusMixin, MLXNeighborsMixin, _SkNearestNeighbors):
+class NearestNeighbors(MLXRadiusMixin, MLXNeighborsMixin, BaseEstimator):
     """Unsupervised nearest-neighbor search, accelerated with MLX.
 
     A drop-in replacement for :class:`sklearn.neighbors.NearestNeighbors` for
     exact brute-force Euclidean search. Parameters, fitted attributes and error
-    messages follow scikit-learn.
+    messages follow scikit-learn. Concrete sklearn neighbor subclass identity
+    is preserved only by patched variants; direct instances expose their own
+    ``kneighbors_graph`` and ``radius_neighbors_graph`` methods.
 
     Parameters
     ----------
     n_neighbors : int, default=5
     radius : float, default=1.0
-        Inclusive Euclidean radius used by :meth:`radius_neighbors`.
+        Used by :meth:`radius_neighbors`.
     algorithm : {"auto", "brute"}, default="auto"
         Only brute-force search is accelerated. ``"kd_tree"`` and ``"ball_tree"``
         raise :class:`~mlxlearn.exceptions.UnsupportedParameterError` on direct
@@ -42,13 +44,19 @@ class NearestNeighbors(MLXRadiusMixin, MLXNeighborsMixin, _SkNearestNeighbors):
     n_features_in_ : int
     effective_metric_ : str
     execution_backend_ : {"mlx", "cpu", "sklearn"}
-        Which backend fitted this estimator. Every subsequent query uses it.
+        Which backend initially stored the fitted training data.
+    execution_policy_ : {"auto", "fixed"}
+        The policy captured at fit. ``"auto"`` selects the owned CPU or GPU
+        search for each query batch; explicit device choices are ``"fixed"``.
+    last_query_backend_ : {"mlx", "cpu", "sklearn"}
+        Backend used by the most recent :meth:`kneighbors` or
+        :meth:`radius_neighbors` call. Defined after the first completed query.
 
     Notes
     -----
-    :meth:`radius_neighbors` runs on the same blocked MLX kernel as
-    :meth:`kneighbors`. Membership is decided on refined Euclidean distances;
-    each row is returned as a 1-d array because neighborhoods are ragged.
+    :meth:`radius_neighbors` runs on the same MLX backend as the fitted index.
+    Membership is decided on refined Euclidean distances; each row is returned
+    as a 1-d array because neighborhoods are ragged.
 
     Examples
     --------
@@ -60,6 +68,19 @@ class NearestNeighbors(MLXRadiusMixin, MLXNeighborsMixin, _SkNearestNeighbors):
     >>> ind
     array([[0, 1]])
     """
+
+    _sklearn_class_name = "NearestNeighbors"
+
+    def __init__(self, *, n_neighbors=5, radius=1.0, algorithm="auto", leaf_size=30,
+                 metric="minkowski", p=2, metric_params=None, n_jobs=None):
+        self.n_neighbors = n_neighbors
+        self.radius = radius
+        self.algorithm = algorithm
+        self.leaf_size = leaf_size
+        self.metric = metric
+        self.p = p
+        self.metric_params = metric_params
+        self.n_jobs = n_jobs
 
     def fit(self, X, y=None):
         """Fit the index.
@@ -74,6 +95,5 @@ class NearestNeighbors(MLXRadiusMixin, MLXNeighborsMixin, _SkNearestNeighbors):
         self : NearestNeighbors
         """
         if self._fit_neighbors(X, None) == "sklearn":
-            super().fit(X, y)
-            self._set_backend("sklearn")
+            self._fit_sklearn(X, y)
         return self

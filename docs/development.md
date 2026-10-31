@@ -26,16 +26,27 @@ The layering is enforced, not merely described:
   can be tested without constructing an estimator.
 - A `sklearn._*` import outside `patching/` fails CI. Inside `patching/` it must be on an
   explicit allowlist in `tools/compliance.py`, which is currently empty.
-- Layer 1 raises on a capability mismatch. Layer 2 falls back. The whole difference is
-  `_mlxlearn_allow_fallback`, and any behavior that cannot be expressed as flipping that
-  flag is a design error.
+- Layer 1 raises on a capability mismatch. Layer 2 enables fallback through
+  `_mlxlearn_allow_fallback`. Patched KNN classes also inherit the captured stock class
+  to preserve `isinstance` compatibility; direct KNN classes use the adapter described
+  below. Both use the same owned solver and dispatch policy.
 
 ## Adding an estimator
 
-**Subclass the scikit-learn estimator.** Never redefine `__init__`. Subclassing inherits
+**Normally subclass the scikit-learn estimator.** Subclassing inherits
 the exact constructor signature, `get_params`/`set_params`, `_parameter_constraints`, and
 the estimator tags, so `clone`, `Pipeline`, `GridSearchCV` and `isinstance` keep working —
 and `super().fit(...)` becomes an exact scikit-learn fallback with no extra machinery.
+
+The direct KNN estimators are an intentional startup exception. They use public
+`BaseEstimator` and classifier/regressor mixins, explicit matching constructors,
+and lazy stock-neighbor delegation. Their owned search must not import
+`sklearn.neighbors`. They retain estimator compatibility but do not promise
+`isinstance` compatibility with stock neighbor classes. Constructor signatures,
+validation, tags, metadata routing, graph/radius methods, serialization and the
+patched fallback require independent tests when this adapter changes. Do not
+copy this exception to other estimators without measuring the startup benefit
+and defining the compatibility tradeoff.
 
 The shape of a `fit`:
 
@@ -60,9 +71,11 @@ def predict(self, X):
     ...
 ```
 
-Inference never re-decides the backend. That is the sticky invariant, and it is what stops
-an MLX-fitted model from wandering into scikit-learn's inference path holding state that
-path cannot read.
+Inference retains the fitted execution policy. KNN automatic mode may route each
+query to its owned CPU or GPU search; it does not switch to a sklearn solver.
+Other estimators and explicit device choices retain a fixed backend. This stops
+an owned fitted model from entering a sklearn inference path with incompatible
+state.
 
 Wrap every MLX block in `mlx_guard(...)` so an unexpected failure becomes
 `BackendExecutionError` rather than a silent fallback.

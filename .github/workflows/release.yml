@@ -17,26 +17,36 @@ permissions:
 
 jobs:
   build:
-    name: build distributions
+    name: build distributions (Python ${{ matrix.python }})
     runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: ${{ matrix.python }}
       - run: python -m pip install --upgrade pip build twine
-      - run: python -m build
+      - run: python -m build --wheel
+      - name: Build one source distribution
+        if: matrix.python == '3.13'
+        run: python -m build --sdist
       - run: python -m twine check --strict dist/*
       - name: Verify native wheel is present
         run: |
           python - <<'PY'
-          import pathlib, zipfile
+          import pathlib, sys, sysconfig, zipfile
           wheels = list(pathlib.Path("dist").glob("*.whl"))
           assert len(wheels) == 1, wheels
-          assert "-cp310-abi3-macosx" in wheels[0].name, wheels[0].name
+          tag = f"cp{sys.version_info.major}{sys.version_info.minor}"
+          assert f"-{tag}-{tag}-macosx" in wheels[0].name, wheels[0].name
           assert wheels[0].name.endswith("_arm64.whl"), wheels[0].name
           with zipfile.ZipFile(wheels[0]) as wheel:
               assert any(n.endswith("/_metal_loop.abi3.so") for n in wheel.namelist())
+              cpu = "mlxlearn/_kernels/_neighbors_cpu_native" + sysconfig.get_config_var("EXT_SUFFIX")
+              assert cpu in wheel.namelist(), cpu
           PY
       - name: Tag matches package version
         if: startsWith(github.ref, 'refs/tags/')
@@ -52,7 +62,7 @@ jobs:
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: dist
+          name: dist-${{ matrix.python }}
           path: dist/
 
   publish:
@@ -67,6 +77,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: dist
+          pattern: dist-*
+          merge-multiple: true
           path: dist/
       - uses: pypa/gh-action-pypi-publish@release/v1

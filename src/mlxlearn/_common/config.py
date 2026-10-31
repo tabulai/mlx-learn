@@ -53,8 +53,12 @@ class Config:
     ----------
     device : {"auto", "gpu", "cpu"}
         Which MLX device to compute on. ``"auto"`` prefers the GPU and falls back
-        to the CPU when no Metal device is usable. The names are MLX's, not
-        Metal's: there is deliberately no ``"mps"``.
+        to the CPU when no Metal device is usable. NumPy KNN estimators also use
+        their own CPU search for small workloads under ``"auto"`` and choose
+        between CPU and GPU for each query batch. This policy is captured at fit;
+        later configuration changes do not reroute an already fitted estimator.
+        For these estimators, explicit ``"gpu"`` and ``"cpu"`` choices remain
+        fixed. The names are MLX's, not Metal's: there is deliberately no ``"mps"``.
     fallback_policy : {"warn", "raise", "silent"}
         What patched mode does on a *capability* mismatch. ``"warn"`` falls back
         and warns once per estimator class and reason; ``"raise"`` turns any
@@ -121,9 +125,9 @@ class Tuning:
     """Private tuning knobs. Not public API; may change in any release.
 
     Every default here is a *measurement*, or a placeholder waiting for one. The
-    crossover thresholds are the sizes below which stock scikit-learn wins, taken
-    from ``docs/benchmarks.md``; dispatch reads them so that "we are never slower"
-    is enforced by handing small problems away rather than by hoping.
+    crossover thresholds for logistic regression and SVC come from measured
+    workloads. Automatic NumPy KNN dispatch additionally considers query size
+    and uses its own certified CPU search for latency-sensitive workloads.
     """
 
     # ---- dispatch crossovers: below these, stock scikit-learn is used ----------------
@@ -133,9 +137,9 @@ class Tuning:
     # only if it is small on *both* counts, so wide data at low row counts still
     # reaches MLX.
     #
-    # KNN queries beat scikit-learn from about 250 rows upward — 2.9x to 17x on
-    # medians, 1.2x to 5.6x comparing best case to best case. The threshold is
-    # therefore low. It was 4096 as a placeholder, which gave away most of that.
+    # Legacy KNN fit thresholds remain parseable for environment compatibility.
+    # Native automatic KNN now dispatches per query through NeighborIndex; these
+    # historical fit-only values no longer hand small fits to sklearn.
     knn_min_train_samples: int = 256
     knn_min_work: int = 2_048  # n_train * n_features
     #

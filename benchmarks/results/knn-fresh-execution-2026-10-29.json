@@ -1,0 +1,166 @@
+{
+  "runs": [
+    {
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3",
+        "-m",
+        "benchmarks.knn_acceleration",
+        "--reference-archive",
+        "benchmarks/reference/knn-pre-v4-2026-10-28.zip",
+        "--output",
+        "benchmarks/results/knn-fresh-original-vs-v3-2026-10-29.json"
+      ],
+      "started_at": "2026-10-30T00:25:53.595394+00:00",
+      "elapsed_seconds": 27.36670279095415,
+      "exit_code": 0,
+      "log": "benchmarks/results/knn-fresh-original-vs-v3-2026-10-29.log"
+    },
+    {
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3",
+        "-m",
+        "benchmarks.knn_review_distributions",
+        "--seed",
+        "151",
+        "--output",
+        "benchmarks/results/knn-fresh-distributions-seed151-2026-10-29.json"
+      ],
+      "started_at": "2026-10-30T00:26:32.392641+00:00",
+      "elapsed_seconds": 8.363543874933384,
+      "exit_code": 0,
+      "log": "benchmarks/results/knn-fresh-distributions-seed151-2026-10-29.log"
+    },
+    {
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3",
+        "-m",
+        "benchmarks.knn_review_distributions",
+        "--seed",
+        "251",
+        "--output",
+        "benchmarks/results/knn-fresh-distributions-seed251-2026-10-29.json"
+      ],
+      "started_at": "2026-10-30T00:26:40.756636+00:00",
+      "elapsed_seconds": 8.342578084091656,
+      "exit_code": 1,
+      "log": "benchmarks/results/knn-fresh-distributions-seed251-2026-10-29.log"
+    },
+    {
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3",
+        "-m",
+        "benchmarks.knn_review_distributions",
+        "--seed",
+        "252",
+        "--output",
+        "benchmarks/results/knn-fresh-distributions-seed252-2026-10-29.json"
+      ],
+      "started_at": "2026-10-30T00:26:49.099542+00:00",
+      "elapsed_seconds": 8.474758749944158,
+      "exit_code": 0,
+      "log": "benchmarks/results/knn-fresh-distributions-seed252-2026-10-29.log"
+    },
+    {
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3",
+        "-m",
+        "benchmarks.knn_pipeline",
+        "--profile",
+        "full",
+        "--resident",
+        "--reference-archive",
+        "benchmarks/reference/knn-pre-v4-2026-10-28.zip",
+        "--output",
+        "benchmarks/results/knn-fresh-panel-vs-v3-2026-10-29.json"
+      ],
+      "started_at": "2026-10-30T00:26:57.574619+00:00",
+      "elapsed_seconds": 13.564434207975864,
+      "exit_code": 0,
+      "log": "benchmarks/results/knn-fresh-panel-vs-v3-2026-10-29.log"
+    },
+    {
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3",
+        "-m",
+        "pytest",
+        "-q",
+        "tests/unit/test_neighbors_float32_validation.py",
+        "tests/unit/test_validation_range.py",
+        "tests/patching/test_patch_sklearn.py",
+        "tests/test_sklearn_compliance.py",
+        "-k",
+        "not LogisticRegression and not SVC"
+      ],
+      "started_at": "2026-10-30T00:27:23.159056+00:00",
+      "elapsed_seconds": 3.196671584038995,
+      "exit_code": 1,
+      "log": "benchmarks/results/knn-fresh-validation-tests-2026-10-29.log"
+    },
+    {
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3",
+        "-m",
+        "pytest",
+        "-q",
+        "tests/unit/test_neighbors_float32_validation.py",
+        "tests/unit/test_validation_range.py",
+        "tests/patching/test_patch_sklearn.py",
+        "tests/test_sklearn_compliance.py",
+        "-k",
+        "not LogisticRegression and not SVC"
+      ],
+      "started_at": "2026-10-30T00:28:12.342024+00:00",
+      "elapsed_seconds": 2.8419389160117134,
+      "exit_code": 0,
+      "log": "benchmarks/results/knn-fresh-validation-tests-final-2026-10-29.log"
+    },
+    {
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3",
+        "-m",
+        "benchmarks.knn_fresh_dispatch",
+        "--seed",
+        "151",
+        "--pairs",
+        "3",
+        "--warmup-seconds",
+        "0.1",
+        "--output",
+        "benchmarks/results/knn-fresh-dispatch-smoke-2026-10-29.json"
+      ],
+      "started_at": "2026-10-30T00:29:06.432991+00:00",
+      "elapsed_seconds": 4.67464425007347,
+      "exit_code": 0,
+      "log": "benchmarks/results/knn-fresh-dispatch-smoke-2026-10-29.log"
+    },
+    {
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3",
+        "-m",
+        "benchmarks.knn_fresh_dispatch",
+        "--output",
+        "benchmarks/results/knn-fresh-dispatch-vs-v3-2026-10-29.json"
+      ],
+      "started_at": "2026-10-30T00:29:27.949736+00:00",
+      "elapsed_seconds": 113.6006207499886,
+      "exit_code": 0,
+      "log": "benchmarks/results/knn-fresh-dispatch-vs-v3-2026-10-29.log"
+    }
+  ],
+  "final_verification": {
+    "source_matches_archive": true,
+    "controlled_sources_match_archive": true,
+    "source_and_harness_archives_verified": true,
+    "report_local_links_verified": 20,
+    "ruff": "passed: src/mlxlearn/neighbors/_base.py tests/unit/test_neighbors_float32_validation.py benchmarks/knn_fresh_dispatch.py",
+    "core_tests": {
+      "passed": 513,
+      "log": "benchmarks/results/knn-fresh-core-tests-2026-10-29.log"
+    },
+    "additional_tests": {
+      "passed": 85,
+      "deselected": 5,
+      "log": "benchmarks/results/knn-fresh-validation-tests-final-2026-10-29.log"
+    }
+  }
+}

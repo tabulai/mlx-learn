@@ -1,0 +1,910 @@
+....................................................................FFFF....FF........................................FFF........................
+=================================== FAILURES ===================================
+_ test_compact_adversarial_arithmetic_matches_original_scan[float_subnormal-8] _
+
+features = 8, case = 'float_subnormal'
+
+    @pytest.mark.parametrize("features", [8, 32])
+    @pytest.mark.parametrize("case", [
+        "duplicate", "half_rounding_ties", "half_subnormal", "float_subnormal",
+        "overflow", "half_overflow_edge", "negative_offset", "tiny_squared", "mixed_scale",
+    ])
+    def test_compact_adversarial_arithmetic_matches_original_scan(features, case):
+        rng = np.random.default_rng(120 + features)
+        train = rng.normal(size=(67, features)).astype(np.float32)
+        query = rng.normal(size=(5, features)).astype(np.float32)
+        if case == "duplicate":
+            train[:20] = train[21]
+            query[:3] = train[21]
+        elif case == "half_rounding_ties":
+            train[:] = np.float32(1.00048828125)
+            train[:, 0] += np.arange(len(train), dtype=np.float32) * np.float32(2**-23)
+            query[:] = train[34]
+        elif case == "half_subnormal":
+            train *= np.float32(2**-20)
+            query *= np.float32(2**-20)
+            train[:5, 0] = np.array([2**-24, -(2**-24), 2**-25, 2**-14, -(2**-14)], np.float32)
+        elif case == "float_subnormal":
+            train *= np.float32(2**-140)
+            query *= np.float32(2**-140)
+        elif case == "overflow":
+            train[::2, 0] = np.float32(1e30)
+            query[:, 0] = np.float32(-1e30)
+        elif case == "half_overflow_edge":
+            train[:] = np.float32(65504)
+            train[:, 0] += np.arange(len(train), dtype=np.float32) - 32
+            query[:] = np.float32(65504)
+        elif case == "negative_offset":
+            train -= np.float32(1e6)
+            query -= np.float32(1e6)
+        elif case == "tiny_squared":
+            train *= np.float32(1e-19)
+            query *= np.float32(1e-19)
+        else:
+            train[:, 0] = np.float32(1e20)
+            query[:, 0] = np.float32(1e20)
+            train[5, 1] = np.float32(-1e30)
+        X, Q = mx.array(train), mx.array(query)
+>       check_exact(X, Q, 5)
+
+tests/unit/test_neighbors_compact.py:114: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+train = array([[2.45227e-43, -1.15607e-42, -5.87144e-43, ..., -2.03188e-43, 5.59118e-43, 8.88423e-43],
+       [-8.82818e-44, 4...88e-44],
+       [9.10844e-43, 4.76441e-43, -1.98984e-43, ..., 1.31722e-42, -2.17762e-42, -9.20653e-43]], dtype=float32)
+queries = array([[2.24208e-43, -4.2039e-44, -1.24155e-42, ..., -1.12524e-42, -4.38606e-43, 9.90718e-43],
+       [-1.06078e-42, -....79366e-43],
+       [5.64723e-43, 7.25873e-43, 7.37083e-43, ..., 8.68805e-43, 6.22177e-43, -2.158e-43]], dtype=float32)
+k = 5, kwargs = {}
+expected = (array([[0, 0, 0, 0, 0],
+       [0, 0, 0, 0, 0],
+       [0, 0, 0, 0, 0],
+       [0, 0, 0, 0, 0],
+       [0, 0, 0, 0, 0..., 4, 3],
+       [8, 4, 5, 6, 7],
+       [7, 4, 2, 6, 5],
+       [0, 3, 4, 2, 6],
+       [6, 4, 1, 7, 2]], dtype=int32))
+actual = (array([[0, 0, 0, 0, 0],
+       [0, 0, 0, 0, 0],
+       [0, 0, 0, 0, 0],
+       [0, 0, 0, 0, 0],
+       [0, 0, 0, 0, 0... 28, 32, 60, 25],
+       [60, 31, 18, 46, 62],
+       [19, 51, 10, 22, 31],
+       [49, 37, 38, 17, 55]], dtype=int32))
+@py_assert1 = None, @py_assert2 = None, @py_assert4 = None, @py_assert8 = None
+@py_assert6 = None
+
+    def check_exact(train, queries, k, **kwargs):
+        expected = original_neighbors(train, queries, k, **kwargs)
+        actual = compact_neighbors(train, queries, k, prepare_compact(train), **kwargs)
+        assert actual[0].dtype == mx.float32 and actual[1].dtype == mx.int32
+        assert actual[0].shape == actual[1].shape == (queries.shape[0], k)
+        for value, reference in zip(actual, expected, strict=True):
+>           np.testing.assert_array_equal(value, reference)
+E           AssertionError: 
+E           Arrays are not equal
+E           
+E           Mismatched elements: 25 / 25 (100%)
+E           First 5 mismatches are at indices:
+E            [0, 0]: 44 (ACTUAL), 0 (DESIRED)
+E            [0, 1]: 51 (ACTUAL), 6 (DESIRED)
+E            [0, 2]: 21 (ACTUAL), 2 (DESIRED)
+E            [0, 3]: 19 (ACTUAL), 4 (DESIRED)
+E            [0, 4]: 50 (ACTUAL), 3 (DESIRED)
+E           Max absolute difference among violations: 57
+E           Max relative difference among violations: 37.
+E            ACTUAL: array([[44, 51, 21, 19, 50],
+E                  [14, 28, 32, 60, 25],
+E                  [60, 31, 18, 46, 62],...
+E            DESIRED: array([[0, 6, 2, 4, 3],
+E                  [8, 4, 5, 6, 7],
+E                  [7, 4, 2, 6, 5],...
+
+tests/unit/test_neighbors_compact.py:52: AssertionError
+_ test_compact_adversarial_arithmetic_matches_original_scan[float_subnormal-32] _
+
+features = 32, case = 'float_subnormal'
+
+    @pytest.mark.parametrize("features", [8, 32])
+    @pytest.mark.parametrize("case", [
+        "duplicate", "half_rounding_ties", "half_subnormal", "float_subnormal",
+        "overflow", "half_overflow_edge", "negative_offset", "tiny_squared", "mixed_scale",
+    ])
+    def test_compact_adversarial_arithmetic_matches_original_scan(features, case):
+        rng = np.random.default_rng(120 + features)
+        train = rng.normal(size=(67, features)).astype(np.float32)
+        query = rng.normal(size=(5, features)).astype(np.float32)
+        if case == "duplicate":
+            train[:20] = train[21]
+            query[:3] = train[21]
+        elif case == "half_rounding_ties":
+            train[:] = np.float32(1.00048828125)
+            train[:, 0] += np.arange(len(train), dtype=np.float32) * np.float32(2**-23)
+            query[:] = train[34]
+        elif case == "half_subnormal":
+            train *= np.float32(2**-20)
+            query *= np.float32(2**-20)
+            train[:5, 0] = np.array([2**-24, -(2**-24), 2**-25, 2**-14, -(2**-14)], np.float32)
+        elif case == "float_subnormal":
+            train *= np.float32(2**-140)
+            query *= np.float32(2**-140)
+        elif case == "overflow":
+            train[::2, 0] = np.float32(1e30)
+            query[:, 0] = np.float32(-1e30)
+        elif case == "half_overflow_edge":
+            train[:] = np.float32(65504)
+            train[:, 0] += np.arange(len(train), dtype=np.float32) - 32
+            query[:] = np.float32(65504)
+        elif case == "negative_offset":
+            train -= np.float32(1e6)
+            query -= np.float32(1e6)
+        elif case == "tiny_squared":
+            train *= np.float32(1e-19)
+            query *= np.float32(1e-19)
+        else:
+            train[:, 0] = np.float32(1e20)
+            query[:, 0] = np.float32(1e20)
+            train[5, 1] = np.float32(-1e30)
+        X, Q = mx.array(train), mx.array(query)
+>       check_exact(X, Q, 5)
+
+tests/unit/test_neighbors_compact.py:114: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+train = array([[-6.95044e-43, -3.50325e-44, -5.61921e-43, ..., -5.47908e-43, -6.92241e-43, -7.53899e-43],
+       [-1.37467e-42...4843e-42],
+       [-8.61799e-43, -1.24435e-42, 1.4013e-45, ..., -2.17201e-43, 7.2307e-43, 1.44894e-42]], dtype=float32)
+queries = array([[5.04467e-44, 6.76827e-43, -7.39886e-43, ..., 2.94273e-44, 2.36819e-43, 6.3619e-43],
+       [7.41287e-43, 5.226...48293e-43],
+       [1.22333e-42, 8.53391e-43, 2.74654e-43, ..., 3.95166e-43, 1.52742e-43, 7.83326e-43]], dtype=float32)
+k = 5, kwargs = {}
+expected = (array([[0, 0, 0, 0, 0],
+       [0, 0, 0, 0, 0],
+       [0, 0, 0, 0, 0],
+       [0, 0, 0, 0, 0],
+       [0, 0, 0, 0, 0..., 1, 5],
+       [0, 3, 4, 5, 2],
+       [7, 5, 0, 8, 3],
+       [4, 0, 1, 7, 2],
+       [0, 4, 3, 6, 5]], dtype=int32))
+actual = (array([[0, 0, 0, 0, 0],
+       [0, 0, 0, 0, 0],
+       [0, 0, 0, 0, 0],
+       [0, 0, 0, 0, 0],
+       [0, 0, 0, 0, 0..., 32, 10, 0, 25],
+       [22, 12, 24, 40, 48],
+       [65, 63, 50, 13, 47],
+       [47, 25, 60, 30, 24]], dtype=int32))
+@py_assert1 = None, @py_assert2 = None, @py_assert4 = None, @py_assert8 = None
+@py_assert6 = None
+
+    def check_exact(train, queries, k, **kwargs):
+        expected = original_neighbors(train, queries, k, **kwargs)
+        actual = compact_neighbors(train, queries, k, prepare_compact(train), **kwargs)
+        assert actual[0].dtype == mx.float32 and actual[1].dtype == mx.int32
+        assert actual[0].shape == actual[1].shape == (queries.shape[0], k)
+        for value, reference in zip(actual, expected, strict=True):
+>           np.testing.assert_array_equal(value, reference)
+E           AssertionError: 
+E           Arrays are not equal
+E           
+E           Mismatched elements: 25 / 25 (100%)
+E           First 5 mismatches are at indices:
+E            [0, 0]: 50 (ACTUAL), 0 (DESIRED)
+E            [0, 1]: 16 (ACTUAL), 3 (DESIRED)
+E            [0, 2]: 25 (ACTUAL), 7 (DESIRED)
+E            [0, 3]: 59 (ACTUAL), 1 (DESIRED)
+E            [0, 4]: 47 (ACTUAL), 5 (DESIRED)
+E           Max absolute difference among violations: 63
+E           Max relative difference among violations: 58.
+E            ACTUAL: array([[50, 16, 25, 59, 47],
+E                  [47, 32, 10,  0, 25],
+E                  [22, 12, 24, 40, 48],...
+E            DESIRED: array([[0, 3, 7, 1, 5],
+E                  [0, 3, 4, 5, 2],
+E                  [7, 5, 0, 8, 3],...
+
+tests/unit/test_neighbors_compact.py:52: AssertionError
+____ test_compact_adversarial_arithmetic_matches_original_scan[overflow-8] _____
+
+features = 8, case = 'overflow'
+
+    @pytest.mark.parametrize("features", [8, 32])
+    @pytest.mark.parametrize("case", [
+        "duplicate", "half_rounding_ties", "half_subnormal", "float_subnormal",
+        "overflow", "half_overflow_edge", "negative_offset", "tiny_squared", "mixed_scale",
+    ])
+    def test_compact_adversarial_arithmetic_matches_original_scan(features, case):
+        rng = np.random.default_rng(120 + features)
+        train = rng.normal(size=(67, features)).astype(np.float32)
+        query = rng.normal(size=(5, features)).astype(np.float32)
+        if case == "duplicate":
+            train[:20] = train[21]
+            query[:3] = train[21]
+        elif case == "half_rounding_ties":
+            train[:] = np.float32(1.00048828125)
+            train[:, 0] += np.arange(len(train), dtype=np.float32) * np.float32(2**-23)
+            query[:] = train[34]
+        elif case == "half_subnormal":
+            train *= np.float32(2**-20)
+            query *= np.float32(2**-20)
+            train[:5, 0] = np.array([2**-24, -(2**-24), 2**-25, 2**-14, -(2**-14)], np.float32)
+        elif case == "float_subnormal":
+            train *= np.float32(2**-140)
+            query *= np.float32(2**-140)
+        elif case == "overflow":
+            train[::2, 0] = np.float32(1e30)
+            query[:, 0] = np.float32(-1e30)
+        elif case == "half_overflow_edge":
+            train[:] = np.float32(65504)
+            train[:, 0] += np.arange(len(train), dtype=np.float32) - 32
+            query[:] = np.float32(65504)
+        elif case == "negative_offset":
+            train -= np.float32(1e6)
+            query -= np.float32(1e6)
+        elif case == "tiny_squared":
+            train *= np.float32(1e-19)
+            query *= np.float32(1e-19)
+        else:
+            train[:, 0] = np.float32(1e20)
+            query[:, 0] = np.float32(1e20)
+            train[5, 1] = np.float32(-1e30)
+        X, Q = mx.array(train), mx.array(query)
+>       check_exact(X, Q, 5)
+
+tests/unit/test_neighbors_compact.py:114: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+train = array([[1e+30, -1.61099, -0.81832, ..., -0.282596, 0.778359, 1.23844],
+       [-0.123841, 0.690147, 1.36266, ..., -0.6..., -0.174903, -1.94906, -0.103527],
+       [1e+30, 0.66397, -0.277129, ..., 1.83572, -3.0356, -1.28283]], dtype=float32)
+queries = array([[-1e+30, -0.0587866, -1.73093, ..., -1.56927, -0.611526, 1.38073],
+       [-1e+30, -0.13195, 1.85356, ..., 0.30... -0.526556, -0.508804, 0.249041],
+       [-1e+30, 1.01253, 1.02659, ..., 1.21161, 0.867429, -0.301422]], dtype=float32)
+k = 5, kwargs = {}
+expected = (array([[inf, inf, inf, inf, inf],
+       [inf, inf, inf, inf, inf],
+       [inf, inf, inf, inf, inf],
+       [inf, in..., 3, 0],
+       [1, 5, 7, 3, 6],
+       [1, 5, 7, 3, 2],
+       [1, 5, 7, 3, 0],
+       [1, 5, 7, 3, 6]], dtype=int32))
+actual = (array([[inf, inf, inf, inf, inf],
+       [inf, inf, inf, inf, inf],
+       [inf, inf, inf, inf, inf],
+       [inf, in... 47, 33, 61, 43],
+       [25, 47, 33, 61, 43],
+       [25, 47, 33, 61, 43],
+       [25, 47, 33, 61, 43]], dtype=int32))
+@py_assert1 = None, @py_assert2 = None, @py_assert4 = None, @py_assert8 = None
+@py_assert6 = None
+
+    def check_exact(train, queries, k, **kwargs):
+        expected = original_neighbors(train, queries, k, **kwargs)
+        actual = compact_neighbors(train, queries, k, prepare_compact(train), **kwargs)
+        assert actual[0].dtype == mx.float32 and actual[1].dtype == mx.int32
+        assert actual[0].shape == actual[1].shape == (queries.shape[0], k)
+        for value, reference in zip(actual, expected, strict=True):
+>           np.testing.assert_array_equal(value, reference)
+E           AssertionError: 
+E           Arrays are not equal
+E           
+E           Mismatched elements: 25 / 25 (100%)
+E           First 5 mismatches are at indices:
+E            [0, 0]: 25 (ACTUAL), 1 (DESIRED)
+E            [0, 1]: 47 (ACTUAL), 5 (DESIRED)
+E            [0, 2]: 33 (ACTUAL), 7 (DESIRED)
+E            [0, 3]: 61 (ACTUAL), 3 (DESIRED)
+E            [0, 4]: 43 (ACTUAL), 0 (DESIRED)
+E           Max absolute difference among violations: 58
+E           Max relative difference among violations: 24.
+E            ACTUAL: array([[25, 47, 33, 61, 43],
+E                  [25, 47, 33, 61, 43],
+E                  [25, 47, 33, 61, 43],...
+E            DESIRED: array([[1, 5, 7, 3, 0],
+E                  [1, 5, 7, 3, 6],
+E                  [1, 5, 7, 3, 2],...
+
+tests/unit/test_neighbors_compact.py:52: AssertionError
+____ test_compact_adversarial_arithmetic_matches_original_scan[overflow-32] ____
+
+features = 32, case = 'overflow'
+
+    @pytest.mark.parametrize("features", [8, 32])
+    @pytest.mark.parametrize("case", [
+        "duplicate", "half_rounding_ties", "half_subnormal", "float_subnormal",
+        "overflow", "half_overflow_edge", "negative_offset", "tiny_squared", "mixed_scale",
+    ])
+    def test_compact_adversarial_arithmetic_matches_original_scan(features, case):
+        rng = np.random.default_rng(120 + features)
+        train = rng.normal(size=(67, features)).astype(np.float32)
+        query = rng.normal(size=(5, features)).astype(np.float32)
+        if case == "duplicate":
+            train[:20] = train[21]
+            query[:3] = train[21]
+        elif case == "half_rounding_ties":
+            train[:] = np.float32(1.00048828125)
+            train[:, 0] += np.arange(len(train), dtype=np.float32) * np.float32(2**-23)
+            query[:] = train[34]
+        elif case == "half_subnormal":
+            train *= np.float32(2**-20)
+            query *= np.float32(2**-20)
+            train[:5, 0] = np.array([2**-24, -(2**-24), 2**-25, 2**-14, -(2**-14)], np.float32)
+        elif case == "float_subnormal":
+            train *= np.float32(2**-140)
+            query *= np.float32(2**-140)
+        elif case == "overflow":
+            train[::2, 0] = np.float32(1e30)
+            query[:, 0] = np.float32(-1e30)
+        elif case == "half_overflow_edge":
+            train[:] = np.float32(65504)
+            train[:, 0] += np.arange(len(train), dtype=np.float32) - 32
+            query[:] = np.float32(65504)
+        elif case == "negative_offset":
+            train -= np.float32(1e6)
+            query -= np.float32(1e6)
+        elif case == "tiny_squared":
+            train *= np.float32(1e-19)
+            query *= np.float32(1e-19)
+        else:
+            train[:, 0] = np.float32(1e20)
+            query[:, 0] = np.float32(1e20)
+            train[5, 1] = np.float32(-1e30)
+        X, Q = mx.array(train), mx.array(query)
+>       check_exact(X, Q, 5)
+
+tests/unit/test_neighbors_compact.py:114: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+train = array([[1e+30, -0.0480402, -0.783383, ..., -0.76401, -0.964878, -1.04985],
+       [-1.91506, -1.24738, 0.203753, ..., ......, 1.70409, -1.0852, 2.15727],
+       [1e+30, -1.73525, 0.00155321, ..., -0.302214, 1.0084, 2.02019]], dtype=float32)
+queries = array([[-1e+30, 0.943994, -1.03147, ..., 0.0402855, 0.329871, 0.886162],
+       [-1e+30, 0.729283, 0.0991519, ..., 0.0... -0.00420767, -0.516836, 1.04317],
+       [-1e+30, 1.19005, 0.383257, ..., 0.551062, 0.213806, 1.0909]], dtype=float32)
+k = 5, kwargs = {}
+expected = (array([[inf, inf, inf, inf, inf],
+       [inf, inf, inf, inf, inf],
+       [inf, inf, inf, inf, inf],
+       [inf, in..., 7, 0],
+       [1, 5, 3, 7, 0],
+       [1, 5, 3, 7, 0],
+       [1, 5, 3, 7, 0],
+       [1, 5, 3, 7, 0]], dtype=int32))
+actual = (array([[inf, inf, inf, inf, inf],
+       [inf, inf, inf, inf, inf],
+       [inf, inf, inf, inf, inf],
+       [inf, in...    [35, 1, 15, 5, 57],
+       [35, 1, 15, 5, 57],
+       [35, 1, 15, 5, 57],
+       [35, 1, 15, 5, 57]], dtype=int32))
+@py_assert1 = None, @py_assert2 = None, @py_assert4 = None, @py_assert8 = None
+@py_assert6 = None
+
+    def check_exact(train, queries, k, **kwargs):
+        expected = original_neighbors(train, queries, k, **kwargs)
+        actual = compact_neighbors(train, queries, k, prepare_compact(train), **kwargs)
+        assert actual[0].dtype == mx.float32 and actual[1].dtype == mx.int32
+        assert actual[0].shape == actual[1].shape == (queries.shape[0], k)
+        for value, reference in zip(actual, expected, strict=True):
+>           np.testing.assert_array_equal(value, reference)
+E           AssertionError: 
+E           Arrays are not equal
+E           
+E           Mismatched elements: 25 / 25 (100%)
+E           First 5 mismatches are at indices:
+E            [0, 0]: 35 (ACTUAL), 1 (DESIRED)
+E            [0, 1]: 1 (ACTUAL), 5 (DESIRED)
+E            [0, 2]: 15 (ACTUAL), 3 (DESIRED)
+E            [0, 3]: 5 (ACTUAL), 7 (DESIRED)
+E            [0, 4]: 57 (ACTUAL), 0 (DESIRED)
+E           Max absolute difference among violations: 57
+E           Max relative difference among violations: 34.
+E            ACTUAL: array([[35,  1, 15,  5, 57],
+E                  [35,  1, 15,  5, 57],
+E                  [35,  1, 15,  5, 57],...
+E            DESIRED: array([[1, 5, 3, 7, 0],
+E                  [1, 5, 3, 7, 0],
+E                  [1, 5, 3, 7, 0],...
+
+tests/unit/test_neighbors_compact.py:52: AssertionError
+__ test_compact_adversarial_arithmetic_matches_original_scan[tiny_squared-8] ___
+
+features = 8, case = 'tiny_squared'
+
+    @pytest.mark.parametrize("features", [8, 32])
+    @pytest.mark.parametrize("case", [
+        "duplicate", "half_rounding_ties", "half_subnormal", "float_subnormal",
+        "overflow", "half_overflow_edge", "negative_offset", "tiny_squared", "mixed_scale",
+    ])
+    def test_compact_adversarial_arithmetic_matches_original_scan(features, case):
+        rng = np.random.default_rng(120 + features)
+        train = rng.normal(size=(67, features)).astype(np.float32)
+        query = rng.normal(size=(5, features)).astype(np.float32)
+        if case == "duplicate":
+            train[:20] = train[21]
+            query[:3] = train[21]
+        elif case == "half_rounding_ties":
+            train[:] = np.float32(1.00048828125)
+            train[:, 0] += np.arange(len(train), dtype=np.float32) * np.float32(2**-23)
+            query[:] = train[34]
+        elif case == "half_subnormal":
+            train *= np.float32(2**-20)
+            query *= np.float32(2**-20)
+            train[:5, 0] = np.array([2**-24, -(2**-24), 2**-25, 2**-14, -(2**-14)], np.float32)
+        elif case == "float_subnormal":
+            train *= np.float32(2**-140)
+            query *= np.float32(2**-140)
+        elif case == "overflow":
+            train[::2, 0] = np.float32(1e30)
+            query[:, 0] = np.float32(-1e30)
+        elif case == "half_overflow_edge":
+            train[:] = np.float32(65504)
+            train[:, 0] += np.arange(len(train), dtype=np.float32) - 32
+            query[:] = np.float32(65504)
+        elif case == "negative_offset":
+            train -= np.float32(1e6)
+            query -= np.float32(1e6)
+        elif case == "tiny_squared":
+            train *= np.float32(1e-19)
+            query *= np.float32(1e-19)
+        else:
+            train[:, 0] = np.float32(1e20)
+            query[:, 0] = np.float32(1e20)
+            train[5, 1] = np.float32(-1e30)
+        X, Q = mx.array(train), mx.array(query)
+>       check_exact(X, Q, 5)
+
+tests/unit/test_neighbors_compact.py:114: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+train = array([[3.4252e-20, -1.61099e-19, -8.1832e-20, ..., -2.82596e-20, 7.78359e-20, 1.23844e-19],
+       [-1.23841e-20, 6.9...527e-20],
+       [1.26956e-19, 6.63969e-20, -2.77129e-20, ..., 1.83572e-19, -3.0356e-19, -1.28283e-19]], dtype=float32)
+queries = array([[3.12843e-20, -5.87866e-21, -1.73093e-19, ..., -1.56927e-19, -6.11526e-20, 1.38073e-19],
+       [-1.47832e-19, ...9041e-20],
+       [7.87616e-20, 1.01253e-19, 1.02659e-19, ..., 1.21161e-19, 8.67429e-20, -3.01422e-20]], dtype=float32)
+k = 5, kwargs = {}
+expected = (array([[2.0646e-38, 4.17689e-38, 5.93879e-38, 5.74404e-38, 5.9235e-38],
+       [4.25014e-38, 4.57872e-38, 4.91907e-38... 60, 28, 32, 25],
+       [31, 60, 46, 18, 62],
+       [19, 10, 51, 54, 31],
+       [49, 37, 38, 17, 12]], dtype=int32))
+actual = (array([[2.0646e-38, 4.17689e-38, 5.93879e-38, 5.74404e-38, 7.70667e-38],
+       [4.25014e-38, 4.91907e-38, 3.59378e-3... 28, 32, 60, 25],
+       [60, 31, 18, 46, 62],
+       [19, 51, 10, 22, 31],
+       [49, 37, 38, 17, 55]], dtype=int32))
+@py_assert1 = None, @py_assert2 = None, @py_assert4 = None, @py_assert8 = None
+@py_assert6 = None
+
+    def check_exact(train, queries, k, **kwargs):
+        expected = original_neighbors(train, queries, k, **kwargs)
+        actual = compact_neighbors(train, queries, k, prepare_compact(train), **kwargs)
+        assert actual[0].dtype == mx.float32 and actual[1].dtype == mx.int32
+        assert actual[0].shape == actual[1].shape == (queries.shape[0], k)
+        for value, reference in zip(actual, expected, strict=True):
+>           np.testing.assert_array_equal(value, reference)
+E           AssertionError: 
+E           Arrays are not equal
+E           
+E           Mismatched elements: 12 / 25 (48%)
+E           First 5 mismatches are at indices:
+E            [0, 4]: 7.706669035944324e-38 (ACTUAL), 5.923496561393108e-38 (DESIRED)
+E            [1, 1]: 4.919070485018051e-38 (ACTUAL), 4.5787208719252963e-38 (DESIRED)
+E            [1, 2]: 3.593775927060976e-38 (ACTUAL), 4.919070485018051e-38 (DESIRED)
+E            [1, 3]: 4.5787208719252963e-38 (ACTUAL), 3.593775927060976e-38 (DESIRED)
+E            [2, 0]: 6.913061587294307e-38 (ACTUAL), 6.050158248025271e-38 (DESIRED)
+E           Max absolute difference among violations: 1.7831725e-38
+E           Max relative difference among violations: 0.7307501
+E            ACTUAL: array([[2.064598e-38, 4.176890e-38, 5.938786e-38, 5.744040e-38,
+E                   7.706669e-38],
+E                  [4.250144e-38, 4.919070e-38, 3.593776e-38, 4.578721e-38,...
+E            DESIRED: array([[2.064598e-38, 4.176890e-38, 5.938786e-38, 5.744040e-38,
+E                   5.923497e-38],
+E                  [4.250144e-38, 4.578721e-38, 4.919070e-38, 3.593776e-38,...
+
+tests/unit/test_neighbors_compact.py:52: AssertionError
+__ test_compact_adversarial_arithmetic_matches_original_scan[tiny_squared-32] __
+
+features = 32, case = 'tiny_squared'
+
+    @pytest.mark.parametrize("features", [8, 32])
+    @pytest.mark.parametrize("case", [
+        "duplicate", "half_rounding_ties", "half_subnormal", "float_subnormal",
+        "overflow", "half_overflow_edge", "negative_offset", "tiny_squared", "mixed_scale",
+    ])
+    def test_compact_adversarial_arithmetic_matches_original_scan(features, case):
+        rng = np.random.default_rng(120 + features)
+        train = rng.normal(size=(67, features)).astype(np.float32)
+        query = rng.normal(size=(5, features)).astype(np.float32)
+        if case == "duplicate":
+            train[:20] = train[21]
+            query[:3] = train[21]
+        elif case == "half_rounding_ties":
+            train[:] = np.float32(1.00048828125)
+            train[:, 0] += np.arange(len(train), dtype=np.float32) * np.float32(2**-23)
+            query[:] = train[34]
+        elif case == "half_subnormal":
+            train *= np.float32(2**-20)
+            query *= np.float32(2**-20)
+            train[:5, 0] = np.array([2**-24, -(2**-24), 2**-25, 2**-14, -(2**-14)], np.float32)
+        elif case == "float_subnormal":
+            train *= np.float32(2**-140)
+            query *= np.float32(2**-140)
+        elif case == "overflow":
+            train[::2, 0] = np.float32(1e30)
+            query[:, 0] = np.float32(-1e30)
+        elif case == "half_overflow_edge":
+            train[:] = np.float32(65504)
+            train[:, 0] += np.arange(len(train), dtype=np.float32) - 32
+            query[:] = np.float32(65504)
+        elif case == "negative_offset":
+            train -= np.float32(1e6)
+            query -= np.float32(1e6)
+        elif case == "tiny_squared":
+            train *= np.float32(1e-19)
+            query *= np.float32(1e-19)
+        else:
+            train[:, 0] = np.float32(1e20)
+            query[:, 0] = np.float32(1e20)
+            train[5, 1] = np.float32(-1e30)
+        X, Q = mx.array(train), mx.array(query)
+>       check_exact(X, Q, 5)
+
+tests/unit/test_neighbors_compact.py:114: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+train = array([[-9.67941e-20, -4.80402e-21, -7.83383e-20, ..., -7.6401e-20, -9.64878e-20, -1.04985e-19],
+       [-1.91506e-19,...5727e-19],
+       [-1.2006e-19, -1.73525e-19, 1.55321e-22, ..., -3.02214e-20, 1.0084e-19, 2.02019e-19]], dtype=float32)
+queries = array([[6.99533e-21, 9.43994e-20, -1.03147e-19, ..., 4.02855e-21, 3.29871e-20, 8.86162e-20],
+       [1.0326e-19, 7.292....04317e-19],
+       [1.70458e-19, 1.19005e-19, 3.83257e-20, ..., 5.51062e-20, 2.13806e-20, 1.0909e-19]], dtype=float32)
+k = 5, kwargs = {}
+expected = (array([[2.1646e-37, 2.47445e-37, 2.65607e-37, 2.79638e-37, 3.41772e-37],
+       [2.96761e-37, 3.24105e-37, 3.40756e-3..., 32, 10, 0, 25],
+       [22, 12, 24, 48, 23],
+       [65, 63, 36, 50, 13],
+       [25, 47, 24, 60, 30]], dtype=int32))
+actual = (array([[2.1646e-37, 2.47445e-37, 2.65607e-37, 2.79638e-37, 3.41772e-37],
+       [2.96761e-37, 3.24105e-37, 3.40756e-3..., 32, 10, 0, 25],
+       [22, 12, 24, 40, 48],
+       [65, 63, 50, 13, 47],
+       [47, 25, 60, 30, 24]], dtype=int32))
+@py_assert1 = None, @py_assert2 = None, @py_assert4 = None, @py_assert8 = None
+@py_assert6 = None
+
+    def check_exact(train, queries, k, **kwargs):
+        expected = original_neighbors(train, queries, k, **kwargs)
+        actual = compact_neighbors(train, queries, k, prepare_compact(train), **kwargs)
+        assert actual[0].dtype == mx.float32 and actual[1].dtype == mx.int32
+        assert actual[0].shape == actual[1].shape == (queries.shape[0], k)
+        for value, reference in zip(actual, expected, strict=True):
+>           np.testing.assert_array_equal(value, reference)
+E           AssertionError: 
+E           Arrays are not equal
+E           
+E           Mismatched elements: 10 / 25 (40%)
+E           First 5 mismatches are at indices:
+E            [2, 3]: 4.631315190615475e-37 (ACTUAL), 4.448124002893678e-37 (DESIRED)
+E            [2, 4]: 4.448124002893678e-37 (ACTUAL), 4.451934637885624e-37 (DESIRED)
+E            [3, 2]: 4.813227048891283e-37 (ACTUAL), 4.711986485856252e-37 (DESIRED)
+E            [3, 3]: 4.814083970928187e-37 (ACTUAL), 4.813227048891283e-37 (DESIRED)
+E            [3, 4]: 5.057742196320495e-37 (ACTUAL), 4.814083970928187e-37 (DESIRED)
+E           Max absolute difference among violations: 2.4365823e-38
+E           Max relative difference among violations: 0.05061362
+E            ACTUAL: array([[2.164604e-37, 2.474452e-37, 2.656074e-37, 2.796377e-37,
+E                   3.417715e-37],
+E                  [2.967613e-37, 3.241047e-37, 3.407564e-37, 3.506969e-37,...
+E            DESIRED: array([[2.164604e-37, 2.474452e-37, 2.656074e-37, 2.796377e-37,
+E                   3.417715e-37],
+E                  [2.967613e-37, 3.241047e-37, 3.407564e-37, 3.506969e-37,...
+
+tests/unit/test_neighbors_compact.py:52: AssertionError
+________ test_integer_adversarial_distances_match_original[subnormal-1] ________
+
+supported = None, case = 'subnormal', k = 1
+
+    @pytest.mark.parametrize("k", [1, 5, 8])
+    @pytest.mark.parametrize("case", [
+        "normal", "duplicate", "zero", "quantization_ties", "small_scale_edge",
+        "large_scale_edge", "subnormal", "overflow", "mixed_scale", "small_terms",
+    ])
+    def test_integer_adversarial_distances_match_original(supported, case, k):
+        rng = np.random.default_rng(629)
+        # Each of 64 partitions contains at least one complete 64-reference tile.
+        train = rng.normal(size=(4099, 32)).astype(np.float32)
+        query = rng.normal(size=(9, 32)).astype(np.float32)
+        if case == "duplicate":
+            train[:30] = train[31]
+            query[:5] = train[31]
+        elif case == "zero":
+            train[:] = 0
+            query[:] = 0
+        elif case == "quantization_ties":
+            train[:] = 1
+            train[:, 0] = (np.arange(len(train), dtype=np.float32) - 2049) / np.float32(127)
+            query[:] = train[2047]
+        elif case == "small_scale_edge":
+            train *= np.float32(127 * 2**-32)
+            query *= np.float32(127 * 2**-32)
+        elif case == "large_scale_edge":
+            train *= np.float32(127 * 2**32)
+            query *= np.float32(127 * 2**32)
+        elif case == "subnormal":
+            train *= np.float32(2**-140)
+            query *= np.float32(2**-140)
+        elif case == "overflow":
+            train[:] = np.float32(1e30)
+            query[:] = np.float32(-1e30)
+        elif case == "mixed_scale":
+            train[:, 0] = np.float32(1e20)
+            query[:, 0] = np.float32(1e20)
+            train[5, 1] = np.float32(-1e30)
+        elif case == "small_terms":
+            train[:] = 30000
+            train[0] = [10000] + [1] * 31
+            train[1] = [10000, 4] + [0] * 30
+            query[:] = 0
+        X, Q = mx.array(train), mx.array(query)
+        prepared = integer.prepare_integer(X)
+        actual = integer.integer_neighbors(X, Q, k, prepared)
+>       assert_exact(actual, original_neighbors(X, Q, k))
+
+tests/unit/test_neighbors_integer.py:97: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+actual = (array([[0],
+       [0],
+       [0],
+       ...,
+       [0],
+       [0],
+       [0]], dtype=float32), array([[3960],
+       [2604],
+       [3359],
+       ...,
+       [3864],
+       [2419],
+       [2689]], dtype=int32))
+expected = (array([[0],
+       [0],
+       [0],
+       ...,
+       [0],
+       [0],
+       [0]], dtype=float32), array([[179],
+       [118],
+       [472],
+       ...,
+       [32],
+       [3],
+       [124]], dtype=int32))
+
+    def assert_exact(actual, expected):
+        mx.eval(*actual, *expected)
+        for value, reference in zip(actual[:2], expected, strict=True):
+>           np.testing.assert_array_equal(value, reference)
+E           AssertionError: 
+E           Arrays are not equal
+E           
+E           Mismatched elements: 8 / 9 (88.9%)
+E           First 5 mismatches are at indices:
+E            [0, 0]: 3960 (ACTUAL), 179 (DESIRED)
+E            [1, 0]: 2604 (ACTUAL), 118 (DESIRED)
+E            [2, 0]: 3359 (ACTUAL), 472 (DESIRED)
+E            [3, 0]: 3417 (ACTUAL), 488 (DESIRED)
+E            [4, 0]: 1374 (ACTUAL), 397 (DESIRED)
+E           Max absolute difference among violations: 3832
+E           Max relative difference among violations: 805.33333333
+E            ACTUAL: array([[3960],
+E                  [2604],
+E                  [3359],...
+E            DESIRED: array([[179],
+E                  [118],
+E                  [472],...
+
+tests/unit/test_neighbors_integer.py:50: AssertionError
+________ test_integer_adversarial_distances_match_original[subnormal-5] ________
+
+supported = None, case = 'subnormal', k = 5
+
+    @pytest.mark.parametrize("k", [1, 5, 8])
+    @pytest.mark.parametrize("case", [
+        "normal", "duplicate", "zero", "quantization_ties", "small_scale_edge",
+        "large_scale_edge", "subnormal", "overflow", "mixed_scale", "small_terms",
+    ])
+    def test_integer_adversarial_distances_match_original(supported, case, k):
+        rng = np.random.default_rng(629)
+        # Each of 64 partitions contains at least one complete 64-reference tile.
+        train = rng.normal(size=(4099, 32)).astype(np.float32)
+        query = rng.normal(size=(9, 32)).astype(np.float32)
+        if case == "duplicate":
+            train[:30] = train[31]
+            query[:5] = train[31]
+        elif case == "zero":
+            train[:] = 0
+            query[:] = 0
+        elif case == "quantization_ties":
+            train[:] = 1
+            train[:, 0] = (np.arange(len(train), dtype=np.float32) - 2049) / np.float32(127)
+            query[:] = train[2047]
+        elif case == "small_scale_edge":
+            train *= np.float32(127 * 2**-32)
+            query *= np.float32(127 * 2**-32)
+        elif case == "large_scale_edge":
+            train *= np.float32(127 * 2**32)
+            query *= np.float32(127 * 2**32)
+        elif case == "subnormal":
+            train *= np.float32(2**-140)
+            query *= np.float32(2**-140)
+        elif case == "overflow":
+            train[:] = np.float32(1e30)
+            query[:] = np.float32(-1e30)
+        elif case == "mixed_scale":
+            train[:, 0] = np.float32(1e20)
+            query[:, 0] = np.float32(1e20)
+            train[5, 1] = np.float32(-1e30)
+        elif case == "small_terms":
+            train[:] = 30000
+            train[0] = [10000] + [1] * 31
+            train[1] = [10000, 4] + [0] * 30
+            query[:] = 0
+        X, Q = mx.array(train), mx.array(query)
+        prepared = integer.prepare_integer(X)
+        actual = integer.integer_neighbors(X, Q, k, prepared)
+>       assert_exact(actual, original_neighbors(X, Q, k))
+
+tests/unit/test_neighbors_integer.py:97: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+actual = (array([[0, 0, 0, 0, 0],
+       [0, 0, 0, 0, 0],
+       [0, 0, 0, 0, 0],
+       ...,
+       [0, 0, 0, 0, 0],
+       [0...     [3864, 977, 32, 397, 3177],
+       [2419, 3, 972, 2864, 1868],
+       [2689, 3963, 922, 3661, 124]], dtype=int32))
+expected = (array([[0, 0, 0, 0, 0],
+       [0, 0, 0, 0, 0],
+       [0, 0, 0, 0, 0],
+       ...,
+       [0, 0, 0, 0, 0],
+       [0... ...,
+       [32, 397, 580, 512, 276],
+       [3, 438, 397, 464, 155],
+       [124, 201, 351, 190, 426]], dtype=int32))
+
+    def assert_exact(actual, expected):
+        mx.eval(*actual, *expected)
+        for value, reference in zip(actual[:2], expected, strict=True):
+>           np.testing.assert_array_equal(value, reference)
+E           AssertionError: 
+E           Arrays are not equal
+E           
+E           Mismatched elements: 44 / 45 (97.8%)
+E           First 5 mismatches are at indices:
+E            [0, 0]: 3960 (ACTUAL), 179 (DESIRED)
+E            [0, 1]: 3493 (ACTUAL), 406 (DESIRED)
+E            [0, 2]: 1867 (ACTUAL), 144 (DESIRED)
+E            [0, 3]: 1686 (ACTUAL), 218 (DESIRED)
+E            [0, 4]: 1522 (ACTUAL), 315 (DESIRED)
+E           Max absolute difference among violations: 3832
+E           Max relative difference among violations: 805.33333333
+E            ACTUAL: array([[3960, 3493, 1867, 1686, 1522],
+E                  [2604, 2250,  118,  207,  911],
+E                  [3359,  950, 1790,  472, 3904],...
+E            DESIRED: array([[179, 406, 144, 218, 315],
+E                  [118, 207,  70, 424,  16],
+E                  [472, 564,   3, 544, 438],...
+
+tests/unit/test_neighbors_integer.py:50: AssertionError
+________ test_integer_adversarial_distances_match_original[subnormal-8] ________
+
+supported = None, case = 'subnormal', k = 8
+
+    @pytest.mark.parametrize("k", [1, 5, 8])
+    @pytest.mark.parametrize("case", [
+        "normal", "duplicate", "zero", "quantization_ties", "small_scale_edge",
+        "large_scale_edge", "subnormal", "overflow", "mixed_scale", "small_terms",
+    ])
+    def test_integer_adversarial_distances_match_original(supported, case, k):
+        rng = np.random.default_rng(629)
+        # Each of 64 partitions contains at least one complete 64-reference tile.
+        train = rng.normal(size=(4099, 32)).astype(np.float32)
+        query = rng.normal(size=(9, 32)).astype(np.float32)
+        if case == "duplicate":
+            train[:30] = train[31]
+            query[:5] = train[31]
+        elif case == "zero":
+            train[:] = 0
+            query[:] = 0
+        elif case == "quantization_ties":
+            train[:] = 1
+            train[:, 0] = (np.arange(len(train), dtype=np.float32) - 2049) / np.float32(127)
+            query[:] = train[2047]
+        elif case == "small_scale_edge":
+            train *= np.float32(127 * 2**-32)
+            query *= np.float32(127 * 2**-32)
+        elif case == "large_scale_edge":
+            train *= np.float32(127 * 2**32)
+            query *= np.float32(127 * 2**32)
+        elif case == "subnormal":
+            train *= np.float32(2**-140)
+            query *= np.float32(2**-140)
+        elif case == "overflow":
+            train[:] = np.float32(1e30)
+            query[:] = np.float32(-1e30)
+        elif case == "mixed_scale":
+            train[:, 0] = np.float32(1e20)
+            query[:, 0] = np.float32(1e20)
+            train[5, 1] = np.float32(-1e30)
+        elif case == "small_terms":
+            train[:] = 30000
+            train[0] = [10000] + [1] * 31
+            train[1] = [10000, 4] + [0] * 30
+            query[:] = 0
+        X, Q = mx.array(train), mx.array(query)
+        prepared = integer.prepare_integer(X)
+        actual = integer.integer_neighbors(X, Q, k, prepared)
+>       assert_exact(actual, original_neighbors(X, Q, k))
+
+tests/unit/test_neighbors_integer.py:97: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+actual = (array([[0, 0, 0, ..., 0, 0, 0],
+       [0, 0, 0, ..., 0, 0, 0],
+       [0, 0, 0, ..., 0, 0, 0],
+       ...,
+       [0...49, 580],
+       [2419, 3, 972, ..., 3213, 2185, 3779],
+       [2689, 3963, 922, ..., 2970, 1148, 2910]], dtype=int32))
+expected = (array([[0, 0, 0, ..., 0, 0, 0],
+       [0, 0, 0, ..., 0, 0, 0],
+       [0, 0, 0, ..., 0, 0, 0],
+       ...,
+       [0......, 50, 415, 115],
+       [3, 438, 397, ..., 72, 358, 218],
+       [124, 201, 351, ..., 265, 153, 366]], dtype=int32))
+
+    def assert_exact(actual, expected):
+        mx.eval(*actual, *expected)
+        for value, reference in zip(actual[:2], expected, strict=True):
+>           np.testing.assert_array_equal(value, reference)
+E           AssertionError: 
+E           Arrays are not equal
+E           
+E           Mismatched elements: 71 / 72 (98.6%)
+E           First 5 mismatches are at indices:
+E            [0, 0]: 3960 (ACTUAL), 179 (DESIRED)
+E            [0, 1]: 3493 (ACTUAL), 406 (DESIRED)
+E            [0, 2]: 1867 (ACTUAL), 144 (DESIRED)
+E            [0, 3]: 1686 (ACTUAL), 218 (DESIRED)
+E            [0, 4]: 1522 (ACTUAL), 315 (DESIRED)
+E           Max absolute difference among violations: 3832
+E           Max relative difference among violations: 805.33333333
+E            ACTUAL: array([[3960, 3493, 1867, 1686, 1522, 3860, 3722, 2214],
+E                  [2604, 2250,  118,  207,  911, 2080,   70, 2597],
+E                  [3359,  950, 1790,  472, 3904, 3538, 2795, 2917],...
+E            DESIRED: array([[179, 406, 144, 218, 315, 230, 387, 321],
+E                  [118, 207,  70, 424,  16, 168,  20, 160],
+E                  [472, 564,   3, 544, 438, 355, 170, 495],...
+
+tests/unit/test_neighbors_integer.py:50: AssertionError
+=========================== short test summary info ============================
+FAILED tests/unit/test_neighbors_compact.py::test_compact_adversarial_arithmetic_matches_original_scan[float_subnormal-8]
+FAILED tests/unit/test_neighbors_compact.py::test_compact_adversarial_arithmetic_matches_original_scan[float_subnormal-32]
+FAILED tests/unit/test_neighbors_compact.py::test_compact_adversarial_arithmetic_matches_original_scan[overflow-8]
+FAILED tests/unit/test_neighbors_compact.py::test_compact_adversarial_arithmetic_matches_original_scan[overflow-32]
+FAILED tests/unit/test_neighbors_compact.py::test_compact_adversarial_arithmetic_matches_original_scan[tiny_squared-8]
+FAILED tests/unit/test_neighbors_compact.py::test_compact_adversarial_arithmetic_matches_original_scan[tiny_squared-32]
+FAILED tests/unit/test_neighbors_integer.py::test_integer_adversarial_distances_match_original[subnormal-1]
+FAILED tests/unit/test_neighbors_integer.py::test_integer_adversarial_distances_match_original[subnormal-5]
+FAILED tests/unit/test_neighbors_integer.py::test_integer_adversarial_distances_match_original[subnormal-8]
+9 failed, 136 passed in 16.15s

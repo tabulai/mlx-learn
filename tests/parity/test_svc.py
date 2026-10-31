@@ -55,6 +55,34 @@ def _data(n_classes=2, n_samples=2000, n_features=20, seed=0):
     )
 
 
+def _ovo_decision_values(model, X):
+    """Read continuous pair margins through the public API, restoring its mode."""
+    shape = model.decision_function_shape
+    try:
+        model.decision_function_shape = "ovo"
+        return np.asarray(model.decision_function(X))
+    finally:
+        model.decision_function_shape = shape
+
+
+def _ovr_from_pair_margins(pairwise, n_classes):
+    """Independently derive OVR votes and bounded confidence terms."""
+    votes = np.zeros((len(pairwise), n_classes), dtype=np.int64)
+    confidence = np.zeros((len(pairwise), n_classes), dtype=np.float64)
+    pair = 0
+    for i in range(n_classes):
+        for j in range(i + 1, n_classes):
+            margin = pairwise[:, pair]
+            # OVR assigns exact zero to the first class; LIBSVM's predict
+            # uses a different zero convention, checked independently above.
+            votes[:, i] += margin >= 0
+            votes[:, j] += margin < 0
+            confidence[:, i] += margin
+            confidence[:, j] -= margin
+            pair += 1
+    return votes, votes + confidence / (3 * (np.abs(confidence) + 1))
+
+
 def _assert_svc_parity(mlx, ref, X, *, decision_atol=DECISION_ATOL):
     agreement = np.mean(mlx.predict(X) == ref.predict(X))
     assert agreement >= 0.99, f"label agreement {agreement:.4f}"
@@ -62,7 +90,26 @@ def _assert_svc_parity(mlx, ref, X, *, decision_atol=DECISION_ATOL):
     d_mlx = np.asarray(mlx.decision_function(X))
     d_ref = np.asarray(ref.decision_function(X))
     assert d_mlx.shape == d_ref.shape, f"{d_mlx.shape} != {d_ref.shape}"
-    np.testing.assert_allclose(d_mlx, d_ref, atol=decision_atol, rtol=DECISION_RTOL)
+    if len(mlx.classes_) > 2 and mlx.decision_function_shape == "ovr":
+        pair_mlx = _ovo_decision_values(mlx, X)
+        pair_ref = _ovo_decision_values(ref, X)
+        np.testing.assert_allclose(pair_mlx, pair_ref, atol=decision_atol, rtol=DECISION_RTOL)
+        votes_mlx, expected_mlx = _ovr_from_pair_margins(pair_mlx, len(mlx.classes_))
+        votes_ref, expected_ref = _ovr_from_pair_margins(pair_ref, len(ref.classes_))
+        # Check each actual OVR conversion, including its integer votes, before
+        # comparing models. A wrong class layout or unexplained score offset
+        # cannot be hidden by the cross-model adjustment below.
+        np.testing.assert_allclose(d_mlx, expected_mlx, atol=1e-12, rtol=0)
+        np.testing.assert_allclose(d_ref, expected_ref, atol=1e-12, rtol=0)
+        # OVR has unit jumps at a pair margin of zero. Two converged solutions
+        # with margins -0.0002 and +0.0001 legitimately disagree on that vote
+        # at tol=0.001, even when their winning class is unchanged. Remove only
+        # the explicitly recomputed vote difference; retain the original error
+        # budget for every continuous margin and the resulting OVR confidence.
+        adjusted = d_mlx - (votes_mlx - votes_ref)
+        np.testing.assert_allclose(adjusted, d_ref, atol=decision_atol, rtol=DECISION_RTOL)
+    else:
+        np.testing.assert_allclose(d_mlx, d_ref, atol=decision_atol, rtol=DECISION_RTOL)
 
     # Support-vector sets, allowing genuine margin ambiguity.
     only_mlx = set(mlx.support_.tolist()) - set(ref.support_.tolist())
@@ -71,6 +118,46 @@ def _assert_svc_parity(mlx, ref, X, *, decision_atol=DECISION_ATOL):
     assert (len(only_mlx) + len(only_ref)) / total <= 0.05, (
         f"support sets differ by more than 5%: {len(only_mlx)} extra, {len(only_ref)} missing"
     )
+
+
+class _OVRBoundaryFixture:
+    """Class 2 wins both its pairs; only the losing classes' pair is uncertain."""
+
+    def __init__(self, first_margin, *, score_error=0):
+        self.classes_ = np.arange(3)
+        self.support_ = np.arange(3)
+        self.decision_function_shape = "ovr"
+        self.pairwise = np.array([[first_margin, -2.0, -2.0]])
+        votes = np.array([[first_margin >= 0, first_margin < 0, 2]], dtype=np.float64)
+        confidence = np.array([[first_margin - 2, -first_margin - 2, 4]])
+        self.ovr = votes + confidence / (3 * (np.abs(confidence) + 1))
+        self.ovr[0, 0] += score_error
+
+    def predict(self, X):
+        return np.full(len(X), 2)
+
+    def decision_function(self, X):
+        return self.pairwise if self.decision_function_shape == "ovo" else self.ovr
+
+
+def test_ovr_parity_accepts_only_explained_near_zero_vote_jumps():
+    candidate = _OVRBoundaryFixture(0.0001)
+    reference = _OVRBoundaryFixture(-0.0002)
+    assert abs(candidate.ovr[0, 0] - reference.ovr[0, 0]) > 0.99
+    _assert_svc_parity(candidate, reference, np.zeros((1, 2)))
+    assert candidate.decision_function_shape == reference.decision_function_shape == "ovr"
+
+
+@pytest.mark.parametrize("failure", ["large_margin_error", "unexplained_ovr_offset"])
+def test_ovr_vote_adjustment_does_not_hide_numerical_or_mapping_errors(failure):
+    candidate = _OVRBoundaryFixture(
+        0.25 if failure == "large_margin_error" else 0.0001,
+        score_error=1 if failure == "unexplained_ovr_offset" else 0,
+    )
+    reference = _OVRBoundaryFixture(-0.0002)
+    with pytest.raises(AssertionError):
+        _assert_svc_parity(candidate, reference, np.zeros((1, 2)))
+    assert candidate.decision_function_shape == reference.decision_function_shape == "ovr"
 
 
 @pytest.mark.parametrize("kernel", KERNELS)

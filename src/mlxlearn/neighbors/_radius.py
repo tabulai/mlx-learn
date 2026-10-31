@@ -5,8 +5,7 @@ from __future__ import annotations
 import warnings
 
 import numpy as np
-from sklearn.neighbors import RadiusNeighborsClassifier as _SkRadiusNeighborsClassifier
-from sklearn.neighbors import RadiusNeighborsRegressor as _SkRadiusNeighborsRegressor
+from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin
 
 from .._common.arrays import INDEX_DTYPE
 from .._common.validation import check_is_fitted
@@ -15,7 +14,7 @@ from ._base import MLXNeighborsMixin, MLXRadiusMixin
 __all__ = ["RadiusNeighborsClassifier", "RadiusNeighborsRegressor"]
 
 
-class RadiusNeighborsClassifier(MLXRadiusMixin, MLXNeighborsMixin, _SkRadiusNeighborsClassifier):
+class RadiusNeighborsClassifier(MLXRadiusMixin, MLXNeighborsMixin, ClassifierMixin, BaseEstimator):
     """Radius-neighbors classifier, accelerated with MLX.
 
     A drop-in replacement for :class:`sklearn.neighbors.RadiusNeighborsClassifier`
@@ -65,6 +64,22 @@ class RadiusNeighborsClassifier(MLXRadiusMixin, MLXNeighborsMixin, _SkRadiusNeig
     array([0])
     """
 
+    _sklearn_class_name = "RadiusNeighborsClassifier"
+    # Radius estimators have no k; the shared parameter check still reads it.
+    n_neighbors = None
+
+    def __init__(self, radius=1.0, *, weights="uniform", algorithm="auto", leaf_size=30,
+                 p=2, metric="minkowski", outlier_label=None, metric_params=None, n_jobs=None):
+        self.radius = radius
+        self.weights = weights
+        self.algorithm = algorithm
+        self.leaf_size = leaf_size
+        self.p = p
+        self.metric = metric
+        self.outlier_label = outlier_label
+        self.metric_params = metric_params
+        self.n_jobs = n_jobs
+
     def fit(self, X, y):
         """Fit the classifier.
 
@@ -78,13 +93,12 @@ class RadiusNeighborsClassifier(MLXRadiusMixin, MLXNeighborsMixin, _SkRadiusNeig
         self : RadiusNeighborsClassifier
         """
         if self._fit_neighbors(X, y, target="classification") == "sklearn":
-            super().fit(X, y)
-            self._set_backend("sklearn")
-            return self
+            return self._fit_sklearn(X, y)
 
         y = self._y_checked_
         self.classes_, encoded = np.unique(y, return_inverse=True)
         self._y = encoded.astype(np.intp, copy=False)
+        del self._y_checked_
         self.outputs_2d_ = False
         self.outlier_label_ = _resolve_outlier_label(
             self.outlier_label, self.classes_, self._y
@@ -106,7 +120,8 @@ class RadiusNeighborsClassifier(MLXRadiusMixin, MLXNeighborsMixin, _SkRadiusNeig
         check_is_fitted(self)
         if self._fitted_backend("predict") == "sklearn":
             self._note_inference("predict")
-            return super().predict(X)
+            self._set_query_backend("sklearn")
+            return self._sklearn_delegate().predict(X)
 
         proba = self.predict_proba(X)
         labels = self.classes_.take(proba.argmax(axis=1))
@@ -133,7 +148,8 @@ class RadiusNeighborsClassifier(MLXRadiusMixin, MLXNeighborsMixin, _SkRadiusNeig
         check_is_fitted(self)
         if self._fitted_backend("predict_proba") == "sklearn":
             self._note_inference("predict_proba")
-            return super().predict_proba(X)
+            self._set_query_backend("sklearn")
+            return self._sklearn_delegate().predict_proba(X)
 
         dist, idx = self.radius_neighbors(X, return_distance=True)
         n_queries = len(idx)
@@ -181,7 +197,7 @@ class RadiusNeighborsClassifier(MLXRadiusMixin, MLXNeighborsMixin, _SkRadiusNeig
         return proba
 
 
-class RadiusNeighborsRegressor(MLXRadiusMixin, MLXNeighborsMixin, _SkRadiusNeighborsRegressor):
+class RadiusNeighborsRegressor(MLXRadiusMixin, MLXNeighborsMixin, RegressorMixin, BaseEstimator):
     """Radius-neighbors regressor, accelerated with MLX.
 
     A drop-in replacement for :class:`sklearn.neighbors.RadiusNeighborsRegressor`
@@ -220,6 +236,21 @@ class RadiusNeighborsRegressor(MLXRadiusMixin, MLXNeighborsMixin, _SkRadiusNeigh
     array([1.5])
     """
 
+    _sklearn_class_name = "RadiusNeighborsRegressor"
+    # Radius estimators have no k; the shared parameter check still reads it.
+    n_neighbors = None
+
+    def __init__(self, radius=1.0, *, weights="uniform", algorithm="auto", leaf_size=30,
+                 p=2, metric="minkowski", metric_params=None, n_jobs=None):
+        self.radius = radius
+        self.weights = weights
+        self.algorithm = algorithm
+        self.leaf_size = leaf_size
+        self.p = p
+        self.metric = metric
+        self.metric_params = metric_params
+        self.n_jobs = n_jobs
+
     def fit(self, X, y):
         """Fit the regressor.
 
@@ -233,11 +264,10 @@ class RadiusNeighborsRegressor(MLXRadiusMixin, MLXNeighborsMixin, _SkRadiusNeigh
         self : RadiusNeighborsRegressor
         """
         if self._fit_neighbors(X, y, target="regression") == "sklearn":
-            super().fit(X, y)
-            self._set_backend("sklearn")
-            return self
+            return self._fit_sklearn(X, y)
 
-        self._y = np.asarray(self._y_checked_, dtype=np.float64)
+        self._y = np.array(self._y_checked_, dtype=np.float64, copy=True)
+        del self._y_checked_
         return self
 
     def predict(self, X):
@@ -255,7 +285,8 @@ class RadiusNeighborsRegressor(MLXRadiusMixin, MLXNeighborsMixin, _SkRadiusNeigh
         check_is_fitted(self)
         if self._fitted_backend("predict") == "sklearn":
             self._note_inference("predict")
-            return super().predict(X)
+            self._set_query_backend("sklearn")
+            return self._sklearn_delegate().predict(X)
 
         dist, idx = self.radius_neighbors(X, return_distance=True)
         n_queries = len(idx)

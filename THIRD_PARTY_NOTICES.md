@@ -162,6 +162,19 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ---
 
-## 5. Review status
+## 5. Algorithmic references
+
+The October 31, 2026 SVC optimization study inspected scikit-learn-intelex
+commit `f50ab692e6296b573efaaa3d05304a8eb3fbcf8d` and oneDAL tag `2026.2.0`.
+Their native working-set decomposition and persistent-model patterns informed
+independently written mlxlearn implementations; no upstream source code was
+incorporated and neither project is a runtime dependency. Algorithmic credit
+also belongs to Wen, Shi, Li, He and Chen, *ThunderSVM: A Fast SVM Library on
+GPUs and CPUs*, JMLR 19(21), 2018. See the
+[source study and precise references](docs/provenance.md).
+
+---
+
+## 6. Review status
 
 This file has **not** yet been reviewed by a lawyer.
