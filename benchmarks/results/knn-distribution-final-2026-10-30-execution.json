@@ -1,0 +1,56 @@
+{
+  "protocol": "All GPU workloads serial; all outputs audited; no production, timed-harness, oracle or input mutation during runs. Every failed record retained.",
+  "source_archive": {
+    "path": "benchmarks/reference/knn-distribution-final-2026-10-30.zip",
+    "sha256": "ce743a3a69c57c6b87701e0b929b9e2c91030aeabf90b7f439ad01232c08fa37"
+  },
+  "harness_archive": {
+    "path": "benchmarks/reference/knn-distribution-final-2026-10-30-harnesses.zip",
+    "sha256": "b5bd8b2e57800b56d04af455f1571c21eee540b39cba2ba0274e21d3bb74ec5c"
+  },
+  "tests": {
+    "command": "python3 -m pytest -q tests/unit/test_*neighbors*.py tests/unit/test_validation_range.py tests/unit/test_knn_acceleration_benchmark.py tests/unit/test_knn_warmed_benchmark.py tests/parity/test_neighbors.py tests/parity/test_neighbors_fp32.py tests/patching tests/test_sklearn_compliance.py -k 'not LogisticRegression and not SVC'",
+    "passed": 677,
+    "deselected": 5,
+    "exit_code": 0,
+    "log": "benchmarks/results/knn-distribution-full-tests-2026-10-30.log"
+  },
+  "runs": [
+    {
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3",
+        "-m",
+        "benchmarks.knn_distribution_control",
+        "--source-manifest",
+        "/Users/tunguz/Programming/mlxlearn/benchmarks/reference/knn-distribution-final-2026-10-30.manifest.json",
+        "--output",
+        "/Users/tunguz/Programming/mlxlearn/benchmarks/results/knn-distribution-final-2026-10-30-control.json"
+      ],
+      "started_at": "2026-10-30T16:36:01.999128+00:00",
+      "log": "benchmarks/results/knn-distribution-final-2026-10-30-control.log",
+      "elapsed_seconds": 173.28058916702867,
+      "exit_code": 0
+    },
+    {
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3",
+        "-m",
+        "benchmarks.knn_broad",
+        "--source-manifest",
+        "/Users/tunguz/Programming/mlxlearn/benchmarks/reference/knn-distribution-final-2026-10-30.manifest.json",
+        "--output",
+        "/Users/tunguz/Programming/mlxlearn/benchmarks/results/knn-distribution-final-2026-10-30-broad.json",
+        "--repeats",
+        "15",
+        "--warmup",
+        "5"
+      ],
+      "started_at": "2026-10-30T16:38:55.296265+00:00",
+      "log": "benchmarks/results/knn-distribution-final-2026-10-30-broad.log",
+      "elapsed_seconds": 312.8143169999821,
+      "exit_code": 0
+    }
+  ],
+  "source_integrity_pass": true,
+  "harness_integrity_pass": true
+}

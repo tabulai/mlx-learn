@@ -24,7 +24,7 @@ a naive cross product would schedule combinations that cannot resolve.
 | 3.13 | 1.9.x | ✅ | development pair |
 
 `pyproject.toml` declares `scikit-learn>=1.7,<1.10`. The upper bound is deliberate: mlxlearn
-subclasses scikit-learn estimators, so a major change to their constructor signatures or
+uses scikit-learn's estimator contracts, so a major change to constructor signatures or
 fitted-attribute contracts is a compatibility event that needs a test run, not an
 optimistic `>=`.
 
@@ -66,9 +66,26 @@ Development is on MLX 0.31.2.
 | `linear_model.LogisticRegression` | 0.1.0 | L-BFGS, L2 / unpenalized | `l1`/`elasticnet`, non-`lbfgs` solvers, `dual=True`, sparse, `warm_start` |
 | `svm.SVC` | 0.1.0 | exact SMO, linear/poly/rbf/sigmoid | `kernel="precomputed"`, callable kernels, `probability=True`, sparse |
 
-`radius_neighbors` and `radius_neighbors_graph` are inherited from scikit-learn and run
+`radius_neighbors` and `radius_neighbors_graph` delegate lazily to scikit-learn and run
 unaccelerated on the CPU in float32. Correct, but not fast — stated here rather than left
 for a profiler to reveal.
+
+Direct KNN classes use public sklearn estimator mixins without inheriting stock
+`sklearn.neighbors` classes. They preserve the estimator API, but an `isinstance`
+check against a stock neighbor class captured before patching is false. This
+startup-focused compatibility change avoids loading sklearn's neighbor stack
+for owned Euclidean search; radius operations and permitted fallback still load
+it when needed.
+
+This also affects APIs that identify a fitted neighbor object by concrete class:
+use `model.kneighbors_graph(...)` or `model.radius_neighbors_graph(...)` on a
+direct estimator. Passing that estimator as the data argument to sklearn's
+standalone graph helper functions is not supported. Passing ordinary data to
+those sklearn functions is unchanged.
+
+The patched KNN variants retain stock inheritance, since patching already loads
+the stock classes. Captured-stock `isinstance` checks and sklearn's fitted-model
+graph helper inputs continue to work for those variants.
 
 ### Not shipped, and why
 

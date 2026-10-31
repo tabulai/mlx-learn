@@ -1,0 +1,65 @@
+{
+  "protocol": "All GPU workloads serial. Production, tests, timed harnesses, fixtures and oracles frozen throughout final runs. No result caching or runtime estimator hooks. Every failed record retained.",
+  "source_archive": {
+    "path": "benchmarks/reference/knn-small-final-2026-10-30.zip",
+    "sha256": "7583c2d37412294d9e1c94c8bf405c91bb76affece769b3d83879540e5e44759"
+  },
+  "harness_archive": {
+    "path": "benchmarks/reference/knn-small-final-2026-10-30-harnesses.zip",
+    "sha256": "c631449bcfbaafaeb559a8790ae4a58e43c655bdb095cc28e6afaae824128c6b"
+  },
+  "tests": {
+    "passed": 775,
+    "full_suite_passed": 754,
+    "full_command": "python3 -m pytest -q tests/unit/test_*neighbors*.py tests/unit/test_validation_range.py tests/unit/test_knn_acceleration_benchmark.py tests/unit/test_knn_warmed_benchmark.py tests/parity/test_neighbors.py tests/parity/test_neighbors_fp32.py tests/patching tests/test_sklearn_compliance.py -k 'not LogisticRegression and not SVC'",
+    "full_log": "benchmarks/results/knn-small-full-tests-2026-10-30.log",
+    "additional_passed": 21,
+    "additional_command": "python3 -m pytest -q tests/unit/test_neighbors_small_dispatch.py::test_equal_shaped_small_fits_keep_independent_compiled_inputs tests/unit/test_neighbors_small_routing.py",
+    "additional_log": "benchmarks/results/knn-small-additional-tests-2026-10-30.log",
+    "deselected": 5,
+    "exit_codes": [
+      0,
+      0
+    ],
+    "ruff_pass": true,
+    "git_diff_check_pass": true
+  },
+  "runs": [
+    {
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3",
+        "-m",
+        "benchmarks.knn_small_control",
+        "--source-manifest",
+        "/Users/tunguz/Programming/mlxlearn/benchmarks/reference/knn-small-final-2026-10-30.manifest.json",
+        "--output",
+        "/Users/tunguz/Programming/mlxlearn/benchmarks/results/knn-small-final-2026-10-30-control.json"
+      ],
+      "started_at": "2026-10-30T17:38:29.739706+00:00",
+      "log": "benchmarks/results/knn-small-final-2026-10-30-control.log",
+      "elapsed_seconds": 977.2730522080092,
+      "exit_code": 0
+    },
+    {
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3",
+        "-m",
+        "benchmarks.knn_broad",
+        "--source-manifest",
+        "/Users/tunguz/Programming/mlxlearn/benchmarks/reference/knn-small-final-2026-10-30.manifest.json",
+        "--output",
+        "/Users/tunguz/Programming/mlxlearn/benchmarks/results/knn-small-final-2026-10-30-broad.json",
+        "--repeats",
+        "15",
+        "--warmup",
+        "5"
+      ],
+      "started_at": "2026-10-30T17:54:47.021926+00:00",
+      "log": "benchmarks/results/knn-small-final-2026-10-30-broad.log",
+      "elapsed_seconds": 319.9530041249236,
+      "exit_code": 0
+    }
+  ],
+  "source_integrity_pass": true,
+  "harness_integrity_pass": true
+}

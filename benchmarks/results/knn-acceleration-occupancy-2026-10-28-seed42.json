@@ -1,0 +1,4620 @@
+{
+  "schema_version": 1,
+  "seed": 42,
+  "profile": "full",
+  "repeats": 9,
+  "warmup": 3,
+  "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "timing_policy": "Persistent isolated processes; alternating variant order per sample; synchronized calls; every call audited outside timing; no output caching.",
+  "cold_policy": "First fit and query for each case in that worker, after imports. Earlier cases may populate Metal compilation caches; process startup and input construction excluded.",
+  "fit_policy": "fit measures eager work only; fit_query measures a fresh fit plus its first query, including any deferred training preparation. Report fit_query when comparing complete initial-use costs.",
+  "query_tolerances": {
+    "atol": 1e-06,
+    "rtol": 1e-06,
+    "indices": "exact equality"
+  },
+  "accuracy_reference": "sklearn brute float64 on serialized float32 inputs; selected distances recomputed by direct float64 subtraction; uniform and distance predictions from these neighbors.",
+  "resident_boundary": "MLX inputs uploaded before timing; fit owns its data; returned arrays are evaluated before timer stops. Other variants include NumPy input/output boundaries.",
+  "cases": [
+    {
+      "case": {
+        "name": "batch_50000_32_k5",
+        "n_train": 50000,
+        "n_query": 256,
+        "n_features": 32,
+        "k": 5
+      },
+      "variants": {
+        "current": {
+          "cold": {
+            "fit_ms": 9.682958945631981,
+            "query_ms": 6.361249950714409,
+            "audit": {
+              "pass": true,
+              "indices_match": true,
+              "distance_max_abs": 2.4066646009401893e-07
+            },
+            "backend": "mlx"
+          },
+          "fit": {
+            "median_ms": 0.9134999709203839,
+            "min_ms": 0.7793750846758485,
+            "max_ms": 1.1807080591097474,
+            "samples": [
+              {
+                "ms": 1.1807080591097474,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 0.992415938526392,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 0.8688330417498946,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 0.9134999709203839,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 0.8322079665958881,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 0.7793750846758485,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 1.0102500673383474,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 1.0048330295830965,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 0.8175830589607358,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              }
+            ],
+            "quality_pass": true,
+            "warmup_audits": [
+              {
+                "pass": true,
+                "indices_match": true,
+                "distance_max_abs": 2.4066646009401893e-07
+              },
+              {
+                "pass": true,
+                "indices_match": true,
+                "distance_max_abs": 2.4066646009401893e-07
+              },
+              {
+                "pass": true,
+                "indices_match": true,
+                "distance_max_abs": 2.4066646009401893e-07
+              }
+            ]
+          },
+          "fit_query": {
+            "median_ms": 4.812916973605752,
+            "min_ms": 4.448124906048179,
+            "max_ms": 5.160292028449476,
+            "samples": [
+              {
+                "ms": 4.978250013664365,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 4.622917040251195,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 4.995625000447035,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 4.743666970171034,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 4.448124906048179,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 4.812916973605752,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 4.735999973490834,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 5.160292028449476,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 4.849667078815401,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              }
+            ],
+            "quality_pass": true,
+            "warmup_audits": [
+              {
+                "pass": true,
+                "indices_match": true,
+                "distance_max_abs": 2.4066646009401893e-07
+              },
+              {
+                "pass": true,
+                "indices_match": true,
+                "distance_max_abs": 2.4066646009401893e-07
+              },
+              {
+                "pass": true,
+                "indices_match": true,
+                "distance_max_abs": 2.4066646009401893e-07
+              }
+            ]
+          },
+          "kneighbors": {
+            "median_ms": 2.5040829787030816,
+            "min_ms": 1.5178750036284328,
+            "max_ms": 4.055458004586399,
+            "samples": [
+              {
+                "ms": 1.5805420698598027,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 1.5178750036284328,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 2.136375056579709,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 2.5935829617083073,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 2.5040829787030816,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 2.475416986271739,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 3.9848749293014407,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 3.631875035353005,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 4.055458004586399,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              }
+            ],
+            "quality_pass": true,
+            "warmup_audits": [
+              {
+                "pass": true,
+                "indices_match": true,
+                "distance_max_abs": 2.4066646009401893e-07
+              },
+              {
+                "pass": true,
+                "indices_match": true,
+                "distance_max_abs": 2.4066646009401893e-07
+              },
+              {
+                "pass": true,
+                "indices_match": true,
+                "distance_max_abs": 2.4066646009401893e-07
+              }
+            ]
+          },
+          "indices": {
+            "median_ms": 2.2577920462936163,
+            "min_ms": 1.5468749916180968,
+            "max_ms": 4.01937507558614,
+            "samples": [
+              {
+                "ms": 2.0402499940246344,
+                "audit": {
+                  "pass": true
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 1.5468749916180968,
+                "audit": {
+                  "pass": true
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 2.2783749736845493,
+                "audit": {
+                  "pass": true
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 2.2016250295564532,
+                "audit": {
+                  "pass": true
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 2.2577920462936163,
+                "audit": {
+                  "pass": true
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 3.9384160190820694,
+                "audit": {
+                  "pass": true
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 4.01937507558614,
+                "audit": {
+                  "pass": true
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 3.671332960948348,
+                "audit": {
+                  "pass": true
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 1.6156670171767473,
+                "audit": {
+                  "pass": true
+                },
+                "backend": "mlx"
+              }
+            ],
+            "quality_pass": true,
+            "warmup_audits": [
+              {
+                "pass": true
+              },
+              {
+                "pass": true
+              },
+              {
+                "pass": true
+              }
+            ]
+          },
+          "predict_uniform": {
+            "median_ms": 2.5629170704632998,
+            "min_ms": 1.5112500404939055,
+            "max_ms": 3.873958019539714,
+            "samples": [
+              {
+                "ms": 2.5642079999670386,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 3.873958019539714,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 3.7297499366104603,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 3.37199994828552,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 2.046625013463199,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 1.5112500404939055,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 2.1456669783219695,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 1.763500040397048,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 2.5629170704632998,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              }
+            ],
+            "quality_pass": true,
+            "warmup_audits": [
+              {
+                "pass": true,
+                "max_abs": 0.0
+              },
+              {
+                "pass": true,
+                "max_abs": 0.0
+              },
+              {
+                "pass": true,
+                "max_abs": 0.0
+              }
+            ]
+          },
+          "proba_uniform": {
+            "median_ms": 3.9964159950613976,
+            "min_ms": 3.9161660242825747,
+            "max_ms": 4.077124991454184,
+            "samples": [
+              {
+                "ms": 3.9964159950613976,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 2.384185793236071e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 3.9161660242825747,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 2.384185793236071e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 4.04062494635582,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 2.384185793236071e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 3.921500057913363,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 2.384185793236071e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 4.002291010692716,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 2.384185793236071e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 3.95016698166728,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 2.384185793236071e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 4.077124991454184,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 2.384185793236071e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 3.962333081290126,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 2.384185793236071e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 4.056125064380467,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 2.384185793236071e-08
+                },
+                "backend": "mlx"
+              }
+            ],
+            "quality_pass": true,
+            "warmup_audits": [
+              {
+                "pass": true,
+                "max_abs": 2.384185793236071e-08
+              },
+              {
+                "pass": true,
+                "max_abs": 2.384185793236071e-08
+              },
+              {
+                "pass": true,
+                "max_abs": 2.384185793236071e-08
+              }
+            ]
+          },
+          "regress_uniform": {
+            "median_ms": 2.4116660933941603,
+            "min_ms": 1.8403329886496067,
+            "max_ms": 4.0082919877022505,
+            "samples": [
+              {
+                "ms": 3.9642920019105077,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 3.923000069335103,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 1.8892079824581742,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 2.2181669482961297,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 1.8403329886496067,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 2.0885830745100975,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 2.4992499966174364,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 2.4116660933941603,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 4.0082919877022505,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              }
+            ],
+            "quality_pass": true,
+            "warmup_audits": [
+              {
+                "pass": true,
+                "max_abs": 0.0
+              },
+              {
+                "pass": true,
+                "max_abs": 0.0
+              },
+              {
+                "pass": true,
+                "max_abs": 0.0
+              }
+            ]
+          },
+          "predict_distance": {
+            "median_ms": 2.5406249333173037,
+            "min_ms": 1.7337079625576735,
+            "max_ms": 4.230916034430265,
+            "samples": [
+              {
+                "ms": 1.7705840291455388,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 2.110417000949383,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 1.8184579676017165,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 1.7337079625576735,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 2.5406249333173037,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 3.6488750483840704,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 4.034000099636614,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 3.8805000949651003,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 4.230916034430265,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              }
+            ],
+            "quality_pass": true,
+            "warmup_audits": [
+              {
+                "pass": true,
+                "max_abs": 0.0
+              },
+              {
+                "pass": true,
+                "max_abs": 0.0
+              },
+              {
+                "pass": true,
+                "max_abs": 0.0
+              }
+            ]
+          },
+          "proba_distance": {
+            "median_ms": 2.0048751030117273,
+            "min_ms": 1.564083038829267,
+            "max_ms": 4.199041984975338,
+            "samples": [
+              {
+                "ms": 4.199041984975338,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 3.276326354662018e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 4.148042062297463,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 3.276326354662018e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 2.772624953649938,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 3.276326354662018e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 1.837249961681664,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 3.276326354662018e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 1.6165830893442035,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 3.276326354662018e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 1.564083038829267,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 3.276326354662018e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 1.8643339863047004,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 3.276326354662018e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 2.0048751030117273,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 3.276326354662018e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 3.805584041401744,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 3.276326354662018e-08
+                },
+                "backend": "mlx"
+              }
+            ],
+            "quality_pass": true,
+            "warmup_audits": [
+              {
+                "pass": true,
+                "max_abs": 3.276326354662018e-08
+              },
+              {
+                "pass": true,
+                "max_abs": 3.276326354662018e-08
+              },
+              {
+                "pass": true,
+                "max_abs": 3.276326354662018e-08
+              }
+            ]
+          },
+          "regress_distance": {
+            "median_ms": 3.996624960564077,
+            "min_ms": 3.889958024956286,
+            "max_ms": 4.04795806389302,
+            "samples": [
+              {
+                "ms": 4.042791901156306,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 3.138760595877699e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 3.938583075068891,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 3.138760595877699e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 4.04795806389302,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 3.138760595877699e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 4.017915925942361,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 3.138760595877699e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 4.042916931211948,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 3.138760595877699e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 3.889958024956286,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 3.138760595877699e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 3.9687909884378314,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 3.138760595877699e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 3.9588329382240772,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 3.138760595877699e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 3.996624960564077,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 3.138760595877699e-08
+                },
+                "backend": "mlx"
+              }
+            ],
+            "quality_pass": true,
+            "warmup_audits": [
+              {
+                "pass": true,
+                "max_abs": 3.138760595877699e-08
+              },
+              {
+                "pass": true,
+                "max_abs": 3.138760595877699e-08
+              },
+              {
+                "pass": true,
+                "max_abs": 3.138760595877699e-08
+              }
+            ]
+          }
+        },
+        "reference": {
+          "cold": {
+            "fit_ms": 10.274832951836288,
+            "query_ms": 9.58079204428941,
+            "audit": {
+              "pass": true,
+              "indices_match": true,
+              "distance_max_abs": 2.4066646009401893e-07
+            },
+            "backend": "mlx"
+          },
+          "fit": {
+            "median_ms": 1.2030410580337048,
+            "min_ms": 1.0028750402852893,
+            "max_ms": 1.3423330383375287,
+            "samples": [
+              {
+                "ms": 1.2030410580337048,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 1.1912910267710686,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 1.2192080030217767,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 1.142375054769218,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 1.2580830371007323,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 1.0028750402852893,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 1.3423330383375287,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 1.2804160360246897,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 1.0955419857054949,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              }
+            ],
+            "quality_pass": true,
+            "warmup_audits": [
+              {
+                "pass": true,
+                "indices_match": true,
+                "distance_max_abs": 2.4066646009401893e-07
+              },
+              {
+                "pass": true,
+                "indices_match": true,
+                "distance_max_abs": 2.4066646009401893e-07
+              },
+              {
+                "pass": true,
+                "indices_match": true,
+                "distance_max_abs": 2.4066646009401893e-07
+              }
+            ]
+          },
+          "fit_query": {
+            "median_ms": 7.394499960355461,
+            "min_ms": 6.900790962390602,
+            "max_ms": 7.59008398745209,
+            "samples": [
+              {
+                "ms": 7.211458054371178,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 6.95658300537616,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 7.272207993082702,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 6.900790962390602,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 7.532833958975971,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 7.4770000064745545,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 7.59008398745209,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 7.4231670005247,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 7.394499960355461,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              }
+            ],
+            "quality_pass": true,
+            "warmup_audits": [
+              {
+                "pass": true,
+                "indices_match": true,
+                "distance_max_abs": 2.4066646009401893e-07
+              },
+              {
+                "pass": true,
+                "indices_match": true,
+                "distance_max_abs": 2.4066646009401893e-07
+              },
+              {
+                "pass": true,
+                "indices_match": true,
+                "distance_max_abs": 2.4066646009401893e-07
+              }
+            ]
+          },
+          "kneighbors": {
+            "median_ms": 4.549582954496145,
+            "min_ms": 3.02791700232774,
+            "max_ms": 6.761167082004249,
+            "samples": [
+              {
+                "ms": 3.3391659380868077,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 3.02791700232774,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 3.5366660449653864,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 3.93649993930012,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 4.549582954496145,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 6.454874994233251,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 6.761167082004249,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 6.709708948619664,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 6.612833007238805,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 2.4066646009401893e-07
+                },
+                "backend": "mlx"
+              }
+            ],
+            "quality_pass": true,
+            "warmup_audits": [
+              {
+                "pass": true,
+                "indices_match": true,
+                "distance_max_abs": 2.4066646009401893e-07
+              },
+              {
+                "pass": true,
+                "indices_match": true,
+                "distance_max_abs": 2.4066646009401893e-07
+              },
+              {
+                "pass": true,
+                "indices_match": true,
+                "distance_max_abs": 2.4066646009401893e-07
+              }
+            ]
+          },
+          "indices": {
+            "median_ms": 3.9024169091135263,
+            "min_ms": 3.0916250543668866,
+            "max_ms": 6.827290984801948,
+            "samples": [
+              {
+                "ms": 3.3462500432506204,
+                "audit": {
+                  "pass": true
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 3.0916250543668866,
+                "audit": {
+                  "pass": true
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 3.9024169091135263,
+                "audit": {
+                  "pass": true
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 3.3933750819414854,
+                "audit": {
+                  "pass": true
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 4.26404201425612,
+                "audit": {
+                  "pass": true
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 6.305666989646852,
+                "audit": {
+                  "pass": true
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 6.827290984801948,
+                "audit": {
+                  "pass": true
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 4.718292038887739,
+                "audit": {
+                  "pass": true
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 3.4281249390915036,
+                "audit": {
+                  "pass": true
+                },
+                "backend": "mlx"
+              }
+            ],
+            "quality_pass": true,
+            "warmup_audits": [
+              {
+                "pass": true
+              },
+              {
+                "pass": true
+              },
+              {
+                "pass": true
+              }
+            ]
+          },
+          "predict_uniform": {
+            "median_ms": 3.8943339604884386,
+            "min_ms": 2.745750010944903,
+            "max_ms": 6.888333009555936,
+            "samples": [
+              {
+                "ms": 4.572917008772492,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 5.544917075894773,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 6.888333009555936,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 2.935374970547855,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 3.231082926504314,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 2.745750010944903,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 3.8943339604884386,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 3.351332969032228,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 4.330791998654604,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              }
+            ],
+            "quality_pass": true,
+            "warmup_audits": [
+              {
+                "pass": true,
+                "max_abs": 0.0
+              },
+              {
+                "pass": true,
+                "max_abs": 0.0
+              },
+              {
+                "pass": true,
+                "max_abs": 0.0
+              }
+            ]
+          },
+          "proba_uniform": {
+            "median_ms": 6.697457982227206,
+            "min_ms": 6.512625026516616,
+            "max_ms": 7.098292000591755,
+            "samples": [
+              {
+                "ms": 7.098292000591755,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 2.384185793236071e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 6.512625026516616,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 2.384185793236071e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 6.8446670193225145,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 2.384185793236071e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 6.661416031420231,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 2.384185793236071e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 6.884082918986678,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 2.384185793236071e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 6.557082990184426,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 2.384185793236071e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 6.891333032399416,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 2.384185793236071e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 6.697457982227206,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 2.384185793236071e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 6.652957992628217,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 2.384185793236071e-08
+                },
+                "backend": "mlx"
+              }
+            ],
+            "quality_pass": true,
+            "warmup_audits": [
+              {
+                "pass": true,
+                "max_abs": 2.384185793236071e-08
+              },
+              {
+                "pass": true,
+                "max_abs": 2.384185793236071e-08
+              },
+              {
+                "pass": true,
+                "max_abs": 2.384185793236071e-08
+              }
+            ]
+          },
+          "regress_uniform": {
+            "median_ms": 4.242707975208759,
+            "min_ms": 3.023874945938587,
+            "max_ms": 6.855332991108298,
+            "samples": [
+              {
+                "ms": 6.840792018920183,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 6.219375063665211,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 3.2314170384779572,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 3.023874945938587,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 4.1502079693600535,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 3.3629590179771185,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 4.242707975208759,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 6.320583983324468,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 6.855332991108298,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              }
+            ],
+            "quality_pass": true,
+            "warmup_audits": [
+              {
+                "pass": true,
+                "max_abs": 0.0
+              },
+              {
+                "pass": true,
+                "max_abs": 0.0
+              },
+              {
+                "pass": true,
+                "max_abs": 0.0
+              }
+            ]
+          },
+          "predict_distance": {
+            "median_ms": 4.30258410051465,
+            "min_ms": 2.9957499355077744,
+            "max_ms": 6.936958059668541,
+            "samples": [
+              {
+                "ms": 3.2602499704807997,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 2.9957499355077744,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 4.071249975822866,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 3.0933329835534096,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 4.30258410051465,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 6.618541898205876,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 6.923708016984165,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 6.7625000374391675,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 6.936958059668541,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                },
+                "backend": "mlx"
+              }
+            ],
+            "quality_pass": true,
+            "warmup_audits": [
+              {
+                "pass": true,
+                "max_abs": 0.0
+              },
+              {
+                "pass": true,
+                "max_abs": 0.0
+              },
+              {
+                "pass": true,
+                "max_abs": 0.0
+              }
+            ]
+          },
+          "proba_distance": {
+            "median_ms": 3.7215830525383353,
+            "min_ms": 2.8585409745573997,
+            "max_ms": 7.0374999195337296,
+            "samples": [
+              {
+                "ms": 7.0374999195337296,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 3.276326354662018e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 6.6805839305743575,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 3.276326354662018e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 6.930875009857118,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 3.276326354662018e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 3.2472499879077077,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 3.276326354662018e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 3.5057500936090946,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 3.276326354662018e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 2.8585409745573997,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 3.276326354662018e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 3.3427500165998936,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 3.276326354662018e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 3.7215830525383353,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 3.276326354662018e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 6.899124942719936,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 3.276326354662018e-08
+                },
+                "backend": "mlx"
+              }
+            ],
+            "quality_pass": true,
+            "warmup_audits": [
+              {
+                "pass": true,
+                "max_abs": 3.276326354662018e-08
+              },
+              {
+                "pass": true,
+                "max_abs": 3.276326354662018e-08
+              },
+              {
+                "pass": true,
+                "max_abs": 3.276326354662018e-08
+              }
+            ]
+          },
+          "regress_distance": {
+            "median_ms": 6.847667042165995,
+            "min_ms": 6.2560830265283585,
+            "max_ms": 6.914541940204799,
+            "samples": [
+              {
+                "ms": 6.855792016722262,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 3.138760595877699e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 6.719624972902238,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 3.138760595877699e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 6.914541940204799,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 3.138760595877699e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 6.649249931797385,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 3.138760595877699e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 6.887292023748159,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 3.138760595877699e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 6.463749916292727,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 3.138760595877699e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 6.847667042165995,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 3.138760595877699e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 6.2560830265283585,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 3.138760595877699e-08
+                },
+                "backend": "mlx"
+              },
+              {
+                "ms": 6.865416886284947,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 3.138760595877699e-08
+                },
+                "backend": "mlx"
+              }
+            ],
+            "quality_pass": true,
+            "warmup_audits": [
+              {
+                "pass": true,
+                "max_abs": 3.138760595877699e-08
+              },
+              {
+                "pass": true,
+                "max_abs": 3.138760595877699e-08
+              },
+              {
+                "pass": true,
+                "max_abs": 3.138760595877699e-08
+              }
+            ]
+          }
+        },
+        "sklearn_1": {
+          "cold": {
+            "fit_ms": 0.5415419582277536,
+            "query_ms": 31.901750015094876,
+            "audit": {
+              "pass": true,
+              "indices_match": true,
+              "distance_max_abs": 3.406899375946182e-07
+            }
+          },
+          "fit": {
+            "median_ms": 0.41791703552007675,
+            "min_ms": 0.3815420204773545,
+            "max_ms": 1.2017919216305017,
+            "samples": [
+              {
+                "ms": 0.40612497832626104,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 0.44654100202023983,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 0.42466598097234964,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 0.4182090051472187,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 0.41791703552007675,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 0.3993749851360917,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 0.3815420204773545,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 1.2017919216305017,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 0.39720803033560514,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              }
+            ],
+            "quality_pass": true,
+            "warmup_audits": [
+              {
+                "pass": true,
+                "indices_match": true,
+                "distance_max_abs": 3.406899375946182e-07
+              },
+              {
+                "pass": true,
+                "indices_match": true,
+                "distance_max_abs": 3.406899375946182e-07
+              },
+              {
+                "pass": true,
+                "indices_match": true,
+                "distance_max_abs": 3.406899375946182e-07
+              }
+            ]
+          },
+          "fit_query": {
+            "median_ms": 26.144917006604373,
+            "min_ms": 26.049667038023472,
+            "max_ms": 26.662499993108213,
+            "samples": [
+              {
+                "ms": 26.199833024293184,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 26.252667070366442,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 26.049667038023472,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 26.08412504196167,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 26.124165975488722,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 26.144917006604373,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 26.662499993108213,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 26.187125011347234,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 26.07445791363716,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              }
+            ],
+            "quality_pass": true,
+            "warmup_audits": [
+              {
+                "pass": true,
+                "indices_match": true,
+                "distance_max_abs": 3.406899375946182e-07
+              },
+              {
+                "pass": true,
+                "indices_match": true,
+                "distance_max_abs": 3.406899375946182e-07
+              },
+              {
+                "pass": true,
+                "indices_match": true,
+                "distance_max_abs": 3.406899375946182e-07
+              }
+            ]
+          },
+          "kneighbors": {
+            "median_ms": 25.845709023997188,
+            "min_ms": 25.757416035048664,
+            "max_ms": 26.25666605308652,
+            "samples": [
+              {
+                "ms": 25.845709023997188,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 25.794917019084096,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 25.854249950498343,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 25.89283394627273,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 25.757416035048664,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 25.81925003323704,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 25.80841607414186,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 26.107707992196083,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 26.25666605308652,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              }
+            ],
+            "quality_pass": true,
+            "warmup_audits": [
+              {
+                "pass": true,
+                "indices_match": true,
+                "distance_max_abs": 3.406899375946182e-07
+              },
+              {
+                "pass": true,
+                "indices_match": true,
+                "distance_max_abs": 3.406899375946182e-07
+              },
+              {
+                "pass": true,
+                "indices_match": true,
+                "distance_max_abs": 3.406899375946182e-07
+              }
+            ]
+          },
+          "indices": {
+            "median_ms": 25.992166018113494,
+            "min_ms": 25.84358397871256,
+            "max_ms": 26.339499978348613,
+            "samples": [
+              {
+                "ms": 26.03962493594736,
+                "audit": {
+                  "pass": true
+                }
+              },
+              {
+                "ms": 26.08429198153317,
+                "audit": {
+                  "pass": true
+                }
+              },
+              {
+                "ms": 26.20641700923443,
+                "audit": {
+                  "pass": true
+                }
+              },
+              {
+                "ms": 25.99045797251165,
+                "audit": {
+                  "pass": true
+                }
+              },
+              {
+                "ms": 25.992166018113494,
+                "audit": {
+                  "pass": true
+                }
+              },
+              {
+                "ms": 25.895209051668644,
+                "audit": {
+                  "pass": true
+                }
+              },
+              {
+                "ms": 26.339499978348613,
+                "audit": {
+                  "pass": true
+                }
+              },
+              {
+                "ms": 25.84358397871256,
+                "audit": {
+                  "pass": true
+                }
+              },
+              {
+                "ms": 25.8915830636397,
+                "audit": {
+                  "pass": true
+                }
+              }
+            ],
+            "quality_pass": true,
+            "warmup_audits": [
+              {
+                "pass": true
+              },
+              {
+                "pass": true
+              },
+              {
+                "pass": true
+              }
+            ]
+          },
+          "predict_uniform": {
+            "median_ms": 25.86062508635223,
+            "min_ms": 25.795749970711768,
+            "max_ms": 26.449166936799884,
+            "samples": [
+              {
+                "ms": 25.828542071394622,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 26.09029202722013,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 26.02466708049178,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 25.97924997098744,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 25.79800004605204,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 26.449166936799884,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 25.86062508635223,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 25.8024160284549,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 25.795749970711768,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              }
+            ],
+            "quality_pass": true,
+            "warmup_audits": [
+              {
+                "pass": true,
+                "max_abs": 0.0
+              },
+              {
+                "pass": true,
+                "max_abs": 0.0
+              },
+              {
+                "pass": true,
+                "max_abs": 0.0
+              }
+            ]
+          },
+          "proba_uniform": {
+            "median_ms": 25.943667045794427,
+            "min_ms": 25.735375005751848,
+            "max_ms": 26.561874896287918,
+            "samples": [
+              {
+                "ms": 25.735375005751848,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 25.83812503144145,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 26.058082934468985,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 25.86545899976045,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 25.976874982006848,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 25.962166022509336,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 26.561874896287918,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 25.90841706842184,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 25.943667045794427,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              }
+            ],
+            "quality_pass": true,
+            "warmup_audits": [
+              {
+                "pass": true,
+                "max_abs": 0.0
+              },
+              {
+                "pass": true,
+                "max_abs": 0.0
+              },
+              {
+                "pass": true,
+                "max_abs": 0.0
+              }
+            ]
+          },
+          "regress_uniform": {
+            "median_ms": 25.96320805605501,
+            "min_ms": 25.895792059600353,
+            "max_ms": 26.21104207355529,
+            "samples": [
+              {
+                "ms": 26.21104207355529,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 25.9883749531582,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 25.904832989908755,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 25.96320805605501,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 25.978291989304125,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 25.97237506415695,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 25.950832990929484,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 25.936124962754548,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 25.895792059600353,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              }
+            ],
+            "quality_pass": true,
+            "warmup_audits": [
+              {
+                "pass": true,
+                "max_abs": 0.0
+              },
+              {
+                "pass": true,
+                "max_abs": 0.0
+              },
+              {
+                "pass": true,
+                "max_abs": 0.0
+              }
+            ]
+          },
+          "predict_distance": {
+            "median_ms": 26.042165933176875,
+            "min_ms": 25.94225003849715,
+            "max_ms": 26.29983297083527,
+            "samples": [
+              {
+                "ms": 25.94225003849715,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 26.29983297083527,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 26.05045901145786,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 26.039083022624254,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 26.005624909885228,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 26.042165933176875,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 26.060499949380755,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 25.95954097341746,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 26.094416971318424,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              }
+            ],
+            "quality_pass": true,
+            "warmup_audits": [
+              {
+                "pass": true,
+                "max_abs": 0.0
+              },
+              {
+                "pass": true,
+                "max_abs": 0.0
+              },
+              {
+                "pass": true,
+                "max_abs": 0.0
+              }
+            ]
+          },
+          "proba_distance": {
+            "median_ms": 26.09237504657358,
+            "min_ms": 25.935209007002413,
+            "max_ms": 26.562875020317733,
+            "samples": [
+              {
+                "ms": 26.295832940377295,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 5.035946171979348e-08
+                }
+              },
+              {
+                "ms": 26.252000010572374,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 5.035946171979348e-08
+                }
+              },
+              {
+                "ms": 26.030040928162634,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 5.035946171979348e-08
+                }
+              },
+              {
+                "ms": 26.090208091773093,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 5.035946171979348e-08
+                }
+              },
+              {
+                "ms": 25.98087501246482,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 5.035946171979348e-08
+                }
+              },
+              {
+                "ms": 25.935209007002413,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 5.035946171979348e-08
+                }
+              },
+              {
+                "ms": 26.562875020317733,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 5.035946171979348e-08
+                }
+              },
+              {
+                "ms": 26.413916959427297,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 5.035946171979348e-08
+                }
+              },
+              {
+                "ms": 26.09237504657358,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 5.035946171979348e-08
+                }
+              }
+            ],
+            "quality_pass": true,
+            "warmup_audits": [
+              {
+                "pass": true,
+                "max_abs": 5.035946171979348e-08
+              },
+              {
+                "pass": true,
+                "max_abs": 5.035946171979348e-08
+              },
+              {
+                "pass": true,
+                "max_abs": 5.035946171979348e-08
+              }
+            ]
+          },
+          "regress_distance": {
+            "median_ms": 25.8569159777835,
+            "min_ms": 25.71633306797594,
+            "max_ms": 26.014833012595773,
+            "samples": [
+              {
+                "ms": 25.823375093750656,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 4.408050091608828e-08
+                }
+              },
+              {
+                "ms": 25.8569159777835,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 4.408050091608828e-08
+                }
+              },
+              {
+                "ms": 26.014833012595773,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 4.408050091608828e-08
+                }
+              },
+              {
+                "ms": 25.899750064127147,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 4.408050091608828e-08
+                }
+              },
+              {
+                "ms": 25.93729190994054,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 4.408050091608828e-08
+                }
+              },
+              {
+                "ms": 25.837125023826957,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 4.408050091608828e-08
+                }
+              },
+              {
+                "ms": 25.93320794403553,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 4.408050091608828e-08
+                }
+              },
+              {
+                "ms": 25.755290989764035,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 4.408050091608828e-08
+                }
+              },
+              {
+                "ms": 25.71633306797594,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 4.408050091608828e-08
+                }
+              }
+            ],
+            "quality_pass": true,
+            "warmup_audits": [
+              {
+                "pass": true,
+                "max_abs": 4.408050091608828e-08
+              },
+              {
+                "pass": true,
+                "max_abs": 4.408050091608828e-08
+              },
+              {
+                "pass": true,
+                "max_abs": 4.408050091608828e-08
+              }
+            ]
+          }
+        },
+        "sklearn_default": {
+          "cold": {
+            "fit_ms": 0.4817500011995435,
+            "query_ms": 12.010958977043629,
+            "audit": {
+              "pass": true,
+              "indices_match": true,
+              "distance_max_abs": 3.406899375946182e-07
+            }
+          },
+          "fit": {
+            "median_ms": 0.3971660044044256,
+            "min_ms": 0.3690420417115092,
+            "max_ms": 1.1832501040771604,
+            "samples": [
+              {
+                "ms": 0.40612497832626104,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 0.4778329748660326,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 0.3967090742662549,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 0.4202499985694885,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 0.38587499875575304,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 0.3971660044044256,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 0.37404196336865425,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 1.1832501040771604,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 0.3690420417115092,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              }
+            ],
+            "quality_pass": true,
+            "warmup_audits": [
+              {
+                "pass": true,
+                "indices_match": true,
+                "distance_max_abs": 3.406899375946182e-07
+              },
+              {
+                "pass": true,
+                "indices_match": true,
+                "distance_max_abs": 3.406899375946182e-07
+              },
+              {
+                "pass": true,
+                "indices_match": true,
+                "distance_max_abs": 3.406899375946182e-07
+              }
+            ]
+          },
+          "fit_query": {
+            "median_ms": 5.062374984845519,
+            "min_ms": 4.455875023268163,
+            "max_ms": 5.501874955371022,
+            "samples": [
+              {
+                "ms": 5.090792081318796,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 4.455875023268163,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 4.981916979886591,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 5.274583934806287,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 5.046542035415769,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 5.501874955371022,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 5.007999949157238,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 5.0735840341076255,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 5.062374984845519,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              }
+            ],
+            "quality_pass": true,
+            "warmup_audits": [
+              {
+                "pass": true,
+                "indices_match": true,
+                "distance_max_abs": 3.406899375946182e-07
+              },
+              {
+                "pass": true,
+                "indices_match": true,
+                "distance_max_abs": 3.406899375946182e-07
+              },
+              {
+                "pass": true,
+                "indices_match": true,
+                "distance_max_abs": 3.406899375946182e-07
+              }
+            ]
+          },
+          "kneighbors": {
+            "median_ms": 4.690082976594567,
+            "min_ms": 4.059624974615872,
+            "max_ms": 6.064583896659315,
+            "samples": [
+              {
+                "ms": 4.534624982625246,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 4.8810000298544765,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 4.28641599137336,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 5.091791972517967,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 4.059624974615872,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 4.690082976594567,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 4.430250031873584,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 5.309749976731837,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              },
+              {
+                "ms": 6.064583896659315,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.406899375946182e-07
+                }
+              }
+            ],
+            "quality_pass": true,
+            "warmup_audits": [
+              {
+                "pass": true,
+                "indices_match": true,
+                "distance_max_abs": 3.406899375946182e-07
+              },
+              {
+                "pass": true,
+                "indices_match": true,
+                "distance_max_abs": 3.406899375946182e-07
+              },
+              {
+                "pass": true,
+                "indices_match": true,
+                "distance_max_abs": 3.406899375946182e-07
+              }
+            ]
+          },
+          "indices": {
+            "median_ms": 4.518583067692816,
+            "min_ms": 3.7275829818099737,
+            "max_ms": 4.995791940018535,
+            "samples": [
+              {
+                "ms": 4.980292054824531,
+                "audit": {
+                  "pass": true
+                }
+              },
+              {
+                "ms": 4.040291998535395,
+                "audit": {
+                  "pass": true
+                }
+              },
+              {
+                "ms": 4.913834040053189,
+                "audit": {
+                  "pass": true
+                }
+              },
+              {
+                "ms": 4.995791940018535,
+                "audit": {
+                  "pass": true
+                }
+              },
+              {
+                "ms": 3.7275829818099737,
+                "audit": {
+                  "pass": true
+                }
+              },
+              {
+                "ms": 4.639542079530656,
+                "audit": {
+                  "pass": true
+                }
+              },
+              {
+                "ms": 4.518583067692816,
+                "audit": {
+                  "pass": true
+                }
+              },
+              {
+                "ms": 4.042875021696091,
+                "audit": {
+                  "pass": true
+                }
+              },
+              {
+                "ms": 3.8839579792693257,
+                "audit": {
+                  "pass": true
+                }
+              }
+            ],
+            "quality_pass": true,
+            "warmup_audits": [
+              {
+                "pass": true
+              },
+              {
+                "pass": true
+              },
+              {
+                "pass": true
+              }
+            ]
+          },
+          "predict_uniform": {
+            "median_ms": 4.213084001094103,
+            "min_ms": 3.7499170284718275,
+            "max_ms": 4.957042052410543,
+            "samples": [
+              {
+                "ms": 4.213084001094103,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 3.9477499667555094,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 4.24062495585531,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 4.1303340112790465,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 4.957042052410543,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 4.404624924063683,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 3.8434999296441674,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 4.281707922928035,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 3.7499170284718275,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              }
+            ],
+            "quality_pass": true,
+            "warmup_audits": [
+              {
+                "pass": true,
+                "max_abs": 0.0
+              },
+              {
+                "pass": true,
+                "max_abs": 0.0
+              },
+              {
+                "pass": true,
+                "max_abs": 0.0
+              }
+            ]
+          },
+          "proba_uniform": {
+            "median_ms": 4.26549999974668,
+            "min_ms": 3.88120801653713,
+            "max_ms": 5.36275003105402,
+            "samples": [
+              {
+                "ms": 4.248166922479868,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 4.3209579307585955,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 4.197042086161673,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 4.683458944782615,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 4.26549999974668,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 4.365417058579624,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 3.88120801653713,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 5.36275003105402,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 4.232082981616259,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              }
+            ],
+            "quality_pass": true,
+            "warmup_audits": [
+              {
+                "pass": true,
+                "max_abs": 0.0
+              },
+              {
+                "pass": true,
+                "max_abs": 0.0
+              },
+              {
+                "pass": true,
+                "max_abs": 0.0
+              }
+            ]
+          },
+          "regress_uniform": {
+            "median_ms": 3.9855000795796514,
+            "min_ms": 3.756833029910922,
+            "max_ms": 5.3338330471888185,
+            "samples": [
+              {
+                "ms": 5.3338330471888185,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 3.9855000795796514,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 3.965624957345426,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 4.950957954861224,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 4.528208053670824,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 3.985250019468367,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 3.756833029910922,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 4.047250025905669,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 3.96137498319149,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              }
+            ],
+            "quality_pass": true,
+            "warmup_audits": [
+              {
+                "pass": true,
+                "max_abs": 0.0
+              },
+              {
+                "pass": true,
+                "max_abs": 0.0
+              },
+              {
+                "pass": true,
+                "max_abs": 0.0
+              }
+            ]
+          },
+          "predict_distance": {
+            "median_ms": 4.661499988287687,
+            "min_ms": 3.918917034752667,
+            "max_ms": 5.611000000499189,
+            "samples": [
+              {
+                "ms": 4.184167017228901,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 5.611000000499189,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 5.3079999051988125,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 4.559791996143758,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 4.832374979741871,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 4.661499988287687,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 4.633500007912517,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 4.98141604475677,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              },
+              {
+                "ms": 3.918917034752667,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 0.0
+                }
+              }
+            ],
+            "quality_pass": true,
+            "warmup_audits": [
+              {
+                "pass": true,
+                "max_abs": 0.0
+              },
+              {
+                "pass": true,
+                "max_abs": 0.0
+              },
+              {
+                "pass": true,
+                "max_abs": 0.0
+              }
+            ]
+          },
+          "proba_distance": {
+            "median_ms": 4.43149998318404,
+            "min_ms": 4.033042001537979,
+            "max_ms": 5.77712501399219,
+            "samples": [
+              {
+                "ms": 4.194832989014685,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 5.035946171979348e-08
+                }
+              },
+              {
+                "ms": 4.033042001537979,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 5.035946171979348e-08
+                }
+              },
+              {
+                "ms": 4.43149998318404,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 5.035946171979348e-08
+                }
+              },
+              {
+                "ms": 4.431999986991286,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 5.035946171979348e-08
+                }
+              },
+              {
+                "ms": 4.187250044196844,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 5.035946171979348e-08
+                }
+              },
+              {
+                "ms": 4.7723749885335565,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 5.035946171979348e-08
+                }
+              },
+              {
+                "ms": 4.130291985347867,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 5.035946171979348e-08
+                }
+              },
+              {
+                "ms": 5.6790829403325915,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 5.035946171979348e-08
+                }
+              },
+              {
+                "ms": 5.77712501399219,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 5.035946171979348e-08
+                }
+              }
+            ],
+            "quality_pass": true,
+            "warmup_audits": [
+              {
+                "pass": true,
+                "max_abs": 5.035946171979348e-08
+              },
+              {
+                "pass": true,
+                "max_abs": 5.035946171979348e-08
+              },
+              {
+                "pass": true,
+                "max_abs": 5.035946171979348e-08
+              }
+            ]
+          },
+          "regress_distance": {
+            "median_ms": 4.456207971088588,
+            "min_ms": 3.8844579830765724,
+            "max_ms": 5.805582972243428,
+            "samples": [
+              {
+                "ms": 3.934166976250708,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 4.408050091608828e-08
+                }
+              },
+              {
+                "ms": 4.726291983388364,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 4.408050091608828e-08
+                }
+              },
+              {
+                "ms": 4.8665410140529275,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 4.408050091608828e-08
+                }
+              },
+              {
+                "ms": 5.082749994471669,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 4.408050091608828e-08
+                }
+              },
+              {
+                "ms": 5.805582972243428,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 4.408050091608828e-08
+                }
+              },
+              {
+                "ms": 4.456207971088588,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 4.408050091608828e-08
+                }
+              },
+              {
+                "ms": 3.8844579830765724,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 4.408050091608828e-08
+                }
+              },
+              {
+                "ms": 4.455416928976774,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 4.408050091608828e-08
+                }
+              },
+              {
+                "ms": 4.072542069479823,
+                "audit": {
+                  "pass": true,
+                  "max_abs": 4.408050091608828e-08
+                }
+              }
+            ],
+            "quality_pass": true,
+            "warmup_audits": [
+              {
+                "pass": true,
+                "max_abs": 4.408050091608828e-08
+              },
+              {
+                "pass": true,
+                "max_abs": 4.408050091608828e-08
+              },
+              {
+                "pass": true,
+                "max_abs": 4.408050091608828e-08
+              }
+            ]
+          }
+        },
+        "resident": {
+          "cold": {
+            "fit_ms": 6.7604160867631435,
+            "query_ms": 6.062250002287328,
+            "audit": {
+              "pass": true,
+              "indices_match": true,
+              "distance_max_abs": 3.9773859050740157e-07
+            }
+          },
+          "fit": {
+            "median_ms": 0.47924998216331005,
+            "min_ms": 0.4114579642191529,
+            "max_ms": 0.8206659695133567,
+            "samples": [
+              {
+                "ms": 0.4273749655112624,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.9773859050740157e-07
+                }
+              },
+              {
+                "ms": 0.5441249813884497,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.9773859050740157e-07
+                }
+              },
+              {
+                "ms": 0.47924998216331005,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.9773859050740157e-07
+                }
+              },
+              {
+                "ms": 0.5080000264570117,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.9773859050740157e-07
+                }
+              },
+              {
+                "ms": 0.42304093949496746,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.9773859050740157e-07
+                }
+              },
+              {
+                "ms": 0.7732500089332461,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.9773859050740157e-07
+                }
+              },
+              {
+                "ms": 0.4114579642191529,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.9773859050740157e-07
+                }
+              },
+              {
+                "ms": 0.8206659695133567,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.9773859050740157e-07
+                }
+              },
+              {
+                "ms": 0.4449170082807541,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.9773859050740157e-07
+                }
+              }
+            ],
+            "quality_pass": true,
+            "warmup_audits": [
+              {
+                "pass": true,
+                "indices_match": true,
+                "distance_max_abs": 3.9773859050740157e-07
+              },
+              {
+                "pass": true,
+                "indices_match": true,
+                "distance_max_abs": 3.9773859050740157e-07
+              },
+              {
+                "pass": true,
+                "indices_match": true,
+                "distance_max_abs": 3.9773859050740157e-07
+              }
+            ]
+          },
+          "fit_query": {
+            "median_ms": 4.611167008988559,
+            "min_ms": 4.303083987906575,
+            "max_ms": 5.059041897766292,
+            "samples": [
+              {
+                "ms": 4.303083987906575,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.9773859050740157e-07
+                }
+              },
+              {
+                "ms": 4.694459028542042,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.9773859050740157e-07
+                }
+              },
+              {
+                "ms": 4.611167008988559,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.9773859050740157e-07
+                }
+              },
+              {
+                "ms": 5.059041897766292,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.9773859050740157e-07
+                }
+              },
+              {
+                "ms": 4.577582934871316,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.9773859050740157e-07
+                }
+              },
+              {
+                "ms": 4.530833102762699,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.9773859050740157e-07
+                }
+              },
+              {
+                "ms": 4.616207908838987,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.9773859050740157e-07
+                }
+              },
+              {
+                "ms": 4.503707983531058,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.9773859050740157e-07
+                }
+              },
+              {
+                "ms": 4.68812498729676,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.9773859050740157e-07
+                }
+              }
+            ],
+            "quality_pass": true,
+            "warmup_audits": [
+              {
+                "pass": true,
+                "indices_match": true,
+                "distance_max_abs": 3.9773859050740157e-07
+              },
+              {
+                "pass": true,
+                "indices_match": true,
+                "distance_max_abs": 3.9773859050740157e-07
+              },
+              {
+                "pass": true,
+                "indices_match": true,
+                "distance_max_abs": 3.9773859050740157e-07
+              }
+            ]
+          },
+          "kneighbors": {
+            "median_ms": 2.9907500138506293,
+            "min_ms": 2.2722079884260893,
+            "max_ms": 4.403791972436011,
+            "samples": [
+              {
+                "ms": 2.3368330439552665,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.9773859050740157e-07
+                }
+              },
+              {
+                "ms": 2.5424170307815075,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.9773859050740157e-07
+                }
+              },
+              {
+                "ms": 2.2722079884260893,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.9773859050740157e-07
+                }
+              },
+              {
+                "ms": 2.9907500138506293,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.9773859050740157e-07
+                }
+              },
+              {
+                "ms": 2.526499913074076,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.9773859050740157e-07
+                }
+              },
+              {
+                "ms": 4.165792022831738,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.9773859050740157e-07
+                }
+              },
+              {
+                "ms": 3.7394999526441097,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.9773859050740157e-07
+                }
+              },
+              {
+                "ms": 4.403791972436011,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.9773859050740157e-07
+                }
+              },
+              {
+                "ms": 4.047499969601631,
+                "audit": {
+                  "pass": true,
+                  "indices_match": true,
+                  "distance_max_abs": 3.9773859050740157e-07
+                }
+              }
+            ],
+            "quality_pass": true,
+            "warmup_audits": [
+              {
+                "pass": true,
+                "indices_match": true,
+                "distance_max_abs": 3.9773859050740157e-07
+              },
+              {
+                "pass": true,
+                "indices_match": true,
+                "distance_max_abs": 3.9773859050740157e-07
+              },
+              {
+                "pass": true,
+                "indices_match": true,
+                "distance_max_abs": 3.9773859050740157e-07
+              }
+            ]
+          },
+          "indices": {
+            "median_ms": 2.28749995585531,
+            "min_ms": 1.6324580647051334,
+            "max_ms": 4.411667003296316,
+            "samples": [
+              {
+                "ms": 1.6324580647051334,
+                "audit": {
+                  "pass": true
+                }
+              },
+              {
+                "ms": 2.3867080453783274,
+                "audit": {
+                  "pass": true
+                }
+              },
+              {
+                "ms": 2.280500018969178,
+                "audit": {
+                  "pass": true
+                }
+              },
+              {
+                "ms": 2.593750017695129,
+                "audit": {
+                  "pass": true
+                }
+              },
+              {
+                "ms": 2.208207966759801,
+                "audit": {
+                  "pass": true
+                }
+              },
+              {
+                "ms": 4.411667003296316,
+                "audit": {
+                  "pass": true
+                }
+              },
+              {
+                "ms": 4.038040991872549,
+                "audit": {
+                  "pass": true
+                }
+              },
+              {
+                "ms": 2.28749995585531,
+                "audit": {
+                  "pass": true
+                }
+              },
+              {
+                "ms": 1.9334580283612013,
+                "audit": {
+                  "pass": true
+                }
+              }
+            ],
+            "quality_pass": true,
+            "warmup_audits": [
+              {
+                "pass": true
+              },
+              {
+                "pass": true
+              },
+              {
+                "pass": true
+              }
+            ]
+          }
+        }
+      },
+      "query_speedup_vs_reference": 1.8168658919012628
+    }
+  ],
+  "reference": {
+    "revision": "5615cb004c065b2b754a247764fd89aa60230b6d",
+    "source_state": "working-tree snapshot; includes initial uncommitted KNN improvements",
+    "purpose": "Immutable complete package-source snapshot after initial KNN improvements, before the requested >=2x-default-sklearn acceleration. No data, fitted state or binaries.",
+    "boundary": "Complete sklearn-compatible and native MLX KNN search, input preparation, selection, refinement and prediction implementations.",
+    "verified_against": "benchmarks/results/knn-pipeline-50000x32-2026-10-28.json workers.current.source_hashes",
+    "files": {
+      "mlxlearn/__init__.py": "a382f5fb1a7022d68d4d0bd6f775b10348132d1cc98f5a1a8ec6a2676895d441",
+      "mlxlearn/_common/__init__.py": "736aa2ce3d7d1f74557c76a9b5e5356d15a05e1f02a86204f2508ea6c4767646",
+      "mlxlearn/_common/arrays.py": "981cc12835e2855a75c5331e54f1aabefa2ef92e7525078d789acf6488da46fc",
+      "mlxlearn/_common/base.py": "2054a836fda7dfd1a8a13cff59b219a6cf05998275ab8620327233b4a66f3c54",
+      "mlxlearn/_common/config.py": "84a361101374c28d12cf461d6029a438aa385327211c81381f34b8f9f1da3973",
+      "mlxlearn/_common/device.py": "f8a3e2eac9ffe64d99bded696ffe7e42d14059964fc0c19104c7675e04e2ce74",
+      "mlxlearn/_common/diagnostics.py": "0e6676eef716be71d94c6b1e71ac8d00dee12ff4aac85ff76341cefaee5fe3d9",
+      "mlxlearn/_common/preparation.py": "1dc679dec3d693165a76230f5327fe9341872fec1acfb7552bb11db8e280958f",
+      "mlxlearn/_common/rng.py": "5a4bba4f2a03108c31467692310986107a1178928bd5bab20d258037ff10afef",
+      "mlxlearn/_common/validation.py": "997df987a2b857b2bc5b72c12f5dcd62dc3569e80a90bdf3ae263dfac042ea3a",
+      "mlxlearn/_kernels/__init__.py": "0a2227680a6afb7d09a596f0aaab4ef6671fe9e58169739d1cc3a9e32c3b062e",
+      "mlxlearn/_kernels/distance.py": "6f944b84ed40cb6403a1cb497f23786ee1fff14f2f9fc510c5f3ca83e10b0b81",
+      "mlxlearn/_kernels/kernels.py": "e9fb262c8de3b1c596537c153f5233ca24813648b67a96fb7b61bcd0b16b05d9",
+      "mlxlearn/_kernels/logistic_input.py": "5f0180ba62076f9899fafca359f67e04f50c796febd2111ea3b3610e6f758efb",
+      "mlxlearn/_solvers/__init__.py": "974fa44cf7975d4fa63d6a9d304219dde43bd86ebcb1c151c7630b0a1c4fdacb",
+      "mlxlearn/_solvers/_metal_cg.h": "b1c6724e7f53643b2160a27662ff5d9f9ab73acffadb65bad8047c670cd088af",
+      "mlxlearn/_solvers/_metal_loop.mm": "ed5b75b074d9f0151033d7ff9fb502aebac2a35ab5e339405fdfcd525a86302e",
+      "mlxlearn/_solvers/fused_lbfgs.py": "1b898ad08028015c3380e8024922abfa424ba4da049be3743067f9c1bf0d85dd",
+      "mlxlearn/_solvers/lbfgs.py": "ba0904bb4edf69197025a4b69d813d021a62547d019e38d6f93842c2cc0f60a8",
+      "mlxlearn/_solvers/logistic.py": "e7d3ce359934e2d1885cbbd72813de2135bd2b3a1db5fddd4ac72b39c404ce94",
+      "mlxlearn/_solvers/native_command.py": "2ccfc1be7555747e08472bf739a7ad08bef02ff1efed103e144ef92dc8848515",
+      "mlxlearn/_solvers/native_geometry.py": "8ac947730be7a72e250816d5203259919a227ffcdb211bf16793f027161b3578",
+      "mlxlearn/_solvers/native_logistic.py": "a9e1db2b7950e862b5ad3db9537ffb99757d48d37e740027c1ae45cb45f50230",
+      "mlxlearn/_solvers/native_logistic_fused.py": "4b1642ed93acded47d8ba4e42cc3f4349ac635abce9f1123d8e21ff8a1408016",
+      "mlxlearn/_solvers/smo.py": "455bc5786ef533ffc080f0e75144d6148ecc0dd6a22a5b08dd3bb25a7eaca19e",
+      "mlxlearn/exceptions.py": "5b9b4efd548f90156d3d10d406aec74d1d6ed4ebaa4859d88d6589f1ba241e2a",
+      "mlxlearn/linear_model/__init__.py": "ea1456645a4d5962e1616a0234a012e2e331dd3750365644fa6cd4d21aaa1293",
+      "mlxlearn/linear_model/_logistic.py": "61159851bb7497e3d90de5aec036ff6c8b76991defbdfeb2ca376418cc126774",
+      "mlxlearn/neighbors/__init__.py": "2f18f3864ba4ea0229a4c2317e0612da2fa458daef7d28a7a88f3e382fb951b4",
+      "mlxlearn/neighbors/_base.py": "34bd4f6c429972e9a78a732205bea78f3c2214de71bb03a3831860ba7a01e7cf",
+      "mlxlearn/neighbors/_classification.py": "3dc44373d2d3e49bf4c51357ac068a881ed0bb72b089154039c8974a53cf71b9",
+      "mlxlearn/neighbors/_regression.py": "3d4a41aebffae757365c0ee32b9f17df685bfb23d2500a8b9c33a4ca05e21f83",
+      "mlxlearn/neighbors/_unsupervised.py": "bc9a0342514befce11cc75992dae5967d8889ff773899989269845bdda1c0795",
+      "mlxlearn/patching/__init__.py": "46daa0d9c3d8a26b400907e3421a55de239c7032ef7537fd1b955af85f00d551",
+      "mlxlearn/patching/_estimators.py": "1761e73488caaef926b591a0b57cba9045273a043d0383934b46036121c9db04",
+      "mlxlearn/patching/_patch.py": "03331f0b103cdb84944f36a1284ecddb064722032a6b7371b0bce3862115242a",
+      "mlxlearn/patching/_registry.py": "bd02f5436f8b62d28f3a0eca1aca7bc9e99eed31e9156eec844805695dde5e16",
+      "mlxlearn/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "mlxlearn/svm/__init__.py": "3fec63550675c0482c6b9da28e0dcc5fbe7b9c92662bce1e37f2edca4f5ebd66",
+      "mlxlearn/svm/_classes.py": "c8ac08f2dc3cd0da9296fa326340515870ea1ee30e56eec9999fa421fad2c79e",
+      "mlxlearn_device/__init__.py": "a61b0e97913febf3d100b02ae26658a8ff5cee44844ae936970a91e728feb0ef",
+      "mlxlearn_device/_compensated.py": "f3494b103de3bf9e8549412d3b18a43287fa5c03c08502138e18b4537ad5d15d",
+      "mlxlearn_device/_duality.py": "1694aad68fe565d695f6c3795362c9e3bd02c22d8b6a08c18c6c8231786aa04e",
+      "mlxlearn_device/_hessian_vector.py": "75daa73c833a26d6722b1335e03aa2c7eec7cce9e7dfff8657c0df4c4fceeadf",
+      "mlxlearn_device/_logistic.py": "3c5e0f9ec2aa14fafa774ea72aaf27ae2909958981431ee913a08d99de304f08",
+      "mlxlearn_device/_native.py": "a49425c647dab43cc31ea3d29590ee791cfa6b2138d155c2c15b924b4e67869d",
+      "mlxlearn_device/_native_cg.py": "3a3b1aabb9c4684e20f65e3fe9b1c1b9c4a493b064d102ed8fef3445483af0e6",
+      "mlxlearn_device/_neighbors.py": "5075955f713048cb614f467a260fb2840cf123c75a95e054c1ab5ef6d3702db3",
+      "mlxlearn_device/_neighbors_fused.py": "5599b7e3e7b82cca6d1d2fd381c3767bd2dc8817ee8c0d32843c57cb7c352d3d",
+      "mlxlearn_device/_neighbors_votes.py": "e34b08e5d772d39c260f26daa31399b6d88f9d13f4a31ef531a40cc76e99c59f",
+      "mlxlearn_device/_newton.py": "1e79738d7ea4a3711e62a113d1dd14197f127cca1541f75f1ed33e457212fad6",
+      "mlxlearn_device/hessian_sketch.py": "576f6bb49aa4520bbf318ee248cd3f32aca873e799c6e216a098155d8b2ed6b0"
+    },
+    "archive": {
+      "sha256": "277acede487b809a4b37356585c57d86d48645647aef88955dca500ca2e00fa2",
+      "bytes": 183607,
+      "filename": "knn-pre-acceleration-2026-10-28.zip",
+      "format": "zip"
+    }
+  },
+  "fixtures": [
+    {
+      "case": {
+        "name": "batch_50000_32_k5",
+        "n_train": 50000,
+        "n_query": 256,
+        "n_features": 32,
+        "k": 5
+      },
+      "sha256": "09fee738ef4c798a650f01e98c0ee554a4226eff5c3b89e5ba268dfeb347ab0f"
+    }
+  ],
+  "workers": {
+    "current": {
+      "variant": "current",
+      "python": "3.13.3 (v3.13.3:6280bb54784, Apr  8 2025, 10:47:54) [Clang 15.0.0 (clang-1500.3.9.4)]",
+      "mlx": "0.32.2",
+      "numpy": "2.5.2",
+      "sklearn": "1.9.0",
+      "threadpools": [
+        {
+          "user_api": "openmp",
+          "internal_api": "openmp",
+          "num_threads": 16,
+          "prefix": "libomp",
+          "filepath": "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/sklearn/.dylibs/libomp.dylib",
+          "version": null
+        }
+      ],
+      "hardware": {
+        "device_name": "Apple M4 Max",
+        "max_recommended_working_set_size": 115448725504,
+        "memory_size": 137438953472,
+        "architecture": "applegpu_g16s",
+        "max_buffer_length": 86586540032,
+        "resource_limit": 499000
+      },
+      "source_root": "/Users/tunguz/Programming/mlxlearn/src",
+      "source_hashes": {
+        "mlxlearn/__init__.py": "a382f5fb1a7022d68d4d0bd6f775b10348132d1cc98f5a1a8ec6a2676895d441",
+        "mlxlearn/_common/__init__.py": "736aa2ce3d7d1f74557c76a9b5e5356d15a05e1f02a86204f2508ea6c4767646",
+        "mlxlearn/_common/arrays.py": "981cc12835e2855a75c5331e54f1aabefa2ef92e7525078d789acf6488da46fc",
+        "mlxlearn/_common/base.py": "2054a836fda7dfd1a8a13cff59b219a6cf05998275ab8620327233b4a66f3c54",
+        "mlxlearn/_common/config.py": "84a361101374c28d12cf461d6029a438aa385327211c81381f34b8f9f1da3973",
+        "mlxlearn/_common/device.py": "f8a3e2eac9ffe64d99bded696ffe7e42d14059964fc0c19104c7675e04e2ce74",
+        "mlxlearn/_common/diagnostics.py": "0e6676eef716be71d94c6b1e71ac8d00dee12ff4aac85ff76341cefaee5fe3d9",
+        "mlxlearn/_common/preparation.py": "1dc679dec3d693165a76230f5327fe9341872fec1acfb7552bb11db8e280958f",
+        "mlxlearn/_common/rng.py": "5a4bba4f2a03108c31467692310986107a1178928bd5bab20d258037ff10afef",
+        "mlxlearn/_common/validation.py": "997df987a2b857b2bc5b72c12f5dcd62dc3569e80a90bdf3ae263dfac042ea3a",
+        "mlxlearn/_kernels/__init__.py": "0a2227680a6afb7d09a596f0aaab4ef6671fe9e58169739d1cc3a9e32c3b062e",
+        "mlxlearn/_kernels/distance.py": "6f944b84ed40cb6403a1cb497f23786ee1fff14f2f9fc510c5f3ca83e10b0b81",
+        "mlxlearn/_kernels/kernels.py": "e9fb262c8de3b1c596537c153f5233ca24813648b67a96fb7b61bcd0b16b05d9",
+        "mlxlearn/_kernels/logistic_input.py": "5f0180ba62076f9899fafca359f67e04f50c796febd2111ea3b3610e6f758efb",
+        "mlxlearn/_solvers/__init__.py": "974fa44cf7975d4fa63d6a9d304219dde43bd86ebcb1c151c7630b0a1c4fdacb",
+        "mlxlearn/_solvers/_metal_cg.h": "b1c6724e7f53643b2160a27662ff5d9f9ab73acffadb65bad8047c670cd088af",
+        "mlxlearn/_solvers/_metal_loop.mm": "ed5b75b074d9f0151033d7ff9fb502aebac2a35ab5e339405fdfcd525a86302e",
+        "mlxlearn/_solvers/fused_lbfgs.py": "1b898ad08028015c3380e8024922abfa424ba4da049be3743067f9c1bf0d85dd",
+        "mlxlearn/_solvers/lbfgs.py": "ba0904bb4edf69197025a4b69d813d021a62547d019e38d6f93842c2cc0f60a8",
+        "mlxlearn/_solvers/logistic.py": "e7d3ce359934e2d1885cbbd72813de2135bd2b3a1db5fddd4ac72b39c404ce94",
+        "mlxlearn/_solvers/native_command.py": "2ccfc1be7555747e08472bf739a7ad08bef02ff1efed103e144ef92dc8848515",
+        "mlxlearn/_solvers/native_geometry.py": "8ac947730be7a72e250816d5203259919a227ffcdb211bf16793f027161b3578",
+        "mlxlearn/_solvers/native_logistic.py": "a9e1db2b7950e862b5ad3db9537ffb99757d48d37e740027c1ae45cb45f50230",
+        "mlxlearn/_solvers/native_logistic_fused.py": "4b1642ed93acded47d8ba4e42cc3f4349ac635abce9f1123d8e21ff8a1408016",
+        "mlxlearn/_solvers/smo.py": "455bc5786ef533ffc080f0e75144d6148ecc0dd6a22a5b08dd3bb25a7eaca19e",
+        "mlxlearn/exceptions.py": "5b9b4efd548f90156d3d10d406aec74d1d6ed4ebaa4859d88d6589f1ba241e2a",
+        "mlxlearn/linear_model/__init__.py": "ea1456645a4d5962e1616a0234a012e2e331dd3750365644fa6cd4d21aaa1293",
+        "mlxlearn/linear_model/_logistic.py": "61159851bb7497e3d90de5aec036ff6c8b76991defbdfeb2ca376418cc126774",
+        "mlxlearn/neighbors/__init__.py": "2f18f3864ba4ea0229a4c2317e0612da2fa458daef7d28a7a88f3e382fb951b4",
+        "mlxlearn/neighbors/_base.py": "34bd4f6c429972e9a78a732205bea78f3c2214de71bb03a3831860ba7a01e7cf",
+        "mlxlearn/neighbors/_classification.py": "3dc44373d2d3e49bf4c51357ac068a881ed0bb72b089154039c8974a53cf71b9",
+        "mlxlearn/neighbors/_regression.py": "3d4a41aebffae757365c0ee32b9f17df685bfb23d2500a8b9c33a4ca05e21f83",
+        "mlxlearn/neighbors/_unsupervised.py": "bc9a0342514befce11cc75992dae5967d8889ff773899989269845bdda1c0795",
+        "mlxlearn/patching/__init__.py": "46daa0d9c3d8a26b400907e3421a55de239c7032ef7537fd1b955af85f00d551",
+        "mlxlearn/patching/_estimators.py": "1761e73488caaef926b591a0b57cba9045273a043d0383934b46036121c9db04",
+        "mlxlearn/patching/_patch.py": "03331f0b103cdb84944f36a1284ecddb064722032a6b7371b0bce3862115242a",
+        "mlxlearn/patching/_registry.py": "bd02f5436f8b62d28f3a0eca1aca7bc9e99eed31e9156eec844805695dde5e16",
+        "mlxlearn/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "mlxlearn/svm/__init__.py": "3fec63550675c0482c6b9da28e0dcc5fbe7b9c92662bce1e37f2edca4f5ebd66",
+        "mlxlearn/svm/_classes.py": "c8ac08f2dc3cd0da9296fa326340515870ea1ee30e56eec9999fa421fad2c79e",
+        "mlxlearn_device/__init__.py": "a61b0e97913febf3d100b02ae26658a8ff5cee44844ae936970a91e728feb0ef",
+        "mlxlearn_device/_compensated.py": "f3494b103de3bf9e8549412d3b18a43287fa5c03c08502138e18b4537ad5d15d",
+        "mlxlearn_device/_duality.py": "1694aad68fe565d695f6c3795362c9e3bd02c22d8b6a08c18c6c8231786aa04e",
+        "mlxlearn_device/_hessian_vector.py": "75daa73c833a26d6722b1335e03aa2c7eec7cce9e7dfff8657c0df4c4fceeadf",
+        "mlxlearn_device/_logistic.py": "3c5e0f9ec2aa14fafa774ea72aaf27ae2909958981431ee913a08d99de304f08",
+        "mlxlearn_device/_native.py": "a49425c647dab43cc31ea3d29590ee791cfa6b2138d155c2c15b924b4e67869d",
+        "mlxlearn_device/_native_cg.py": "3a3b1aabb9c4684e20f65e3fe9b1c1b9c4a493b064d102ed8fef3445483af0e6",
+        "mlxlearn_device/_neighbors.py": "5075955f713048cb614f467a260fb2840cf123c75a95e054c1ab5ef6d3702db3",
+        "mlxlearn_device/_neighbors_fused.py": "9c5e551576320729b009d07445b68bef6fb6a3faec0f8a12bb449163acf0ff0b",
+        "mlxlearn_device/_neighbors_votes.py": "e34b08e5d772d39c260f26daa31399b6d88f9d13f4a31ef531a40cc76e99c59f",
+        "mlxlearn_device/_newton.py": "1e79738d7ea4a3711e62a113d1dd14197f127cca1541f75f1ed33e457212fad6",
+        "mlxlearn_device/hessian_sketch.py": "576f6bb49aa4520bbf318ee248cd3f32aca873e799c6e216a098155d8b2ed6b0"
+      }
+    },
+    "reference": {
+      "variant": "reference",
+      "python": "3.13.3 (v3.13.3:6280bb54784, Apr  8 2025, 10:47:54) [Clang 15.0.0 (clang-1500.3.9.4)]",
+      "mlx": "0.32.2",
+      "numpy": "2.5.2",
+      "sklearn": "1.9.0",
+      "threadpools": [
+        {
+          "user_api": "openmp",
+          "internal_api": "openmp",
+          "num_threads": 16,
+          "prefix": "libomp",
+          "filepath": "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/sklearn/.dylibs/libomp.dylib",
+          "version": null
+        }
+      ],
+      "hardware": {
+        "device_name": "Apple M4 Max",
+        "max_recommended_working_set_size": 115448725504,
+        "memory_size": 137438953472,
+        "architecture": "applegpu_g16s",
+        "max_buffer_length": 86586540032,
+        "resource_limit": 499000
+      },
+      "source_root": "/private/var/folders/rj/2r_78zvx5r1265qkzhz8xwzc0000gn/T/mlxlearn-knn-bench-68iyp4ev/reference",
+      "source_hashes": {
+        "mlxlearn/__init__.py": "a382f5fb1a7022d68d4d0bd6f775b10348132d1cc98f5a1a8ec6a2676895d441",
+        "mlxlearn/_common/__init__.py": "736aa2ce3d7d1f74557c76a9b5e5356d15a05e1f02a86204f2508ea6c4767646",
+        "mlxlearn/_common/arrays.py": "981cc12835e2855a75c5331e54f1aabefa2ef92e7525078d789acf6488da46fc",
+        "mlxlearn/_common/base.py": "2054a836fda7dfd1a8a13cff59b219a6cf05998275ab8620327233b4a66f3c54",
+        "mlxlearn/_common/config.py": "84a361101374c28d12cf461d6029a438aa385327211c81381f34b8f9f1da3973",
+        "mlxlearn/_common/device.py": "f8a3e2eac9ffe64d99bded696ffe7e42d14059964fc0c19104c7675e04e2ce74",
+        "mlxlearn/_common/diagnostics.py": "0e6676eef716be71d94c6b1e71ac8d00dee12ff4aac85ff76341cefaee5fe3d9",
+        "mlxlearn/_common/preparation.py": "1dc679dec3d693165a76230f5327fe9341872fec1acfb7552bb11db8e280958f",
+        "mlxlearn/_common/rng.py": "5a4bba4f2a03108c31467692310986107a1178928bd5bab20d258037ff10afef",
+        "mlxlearn/_common/validation.py": "997df987a2b857b2bc5b72c12f5dcd62dc3569e80a90bdf3ae263dfac042ea3a",
+        "mlxlearn/_kernels/__init__.py": "0a2227680a6afb7d09a596f0aaab4ef6671fe9e58169739d1cc3a9e32c3b062e",
+        "mlxlearn/_kernels/distance.py": "6f944b84ed40cb6403a1cb497f23786ee1fff14f2f9fc510c5f3ca83e10b0b81",
+        "mlxlearn/_kernels/kernels.py": "e9fb262c8de3b1c596537c153f5233ca24813648b67a96fb7b61bcd0b16b05d9",
+        "mlxlearn/_kernels/logistic_input.py": "5f0180ba62076f9899fafca359f67e04f50c796febd2111ea3b3610e6f758efb",
+        "mlxlearn/_solvers/__init__.py": "974fa44cf7975d4fa63d6a9d304219dde43bd86ebcb1c151c7630b0a1c4fdacb",
+        "mlxlearn/_solvers/_metal_cg.h": "b1c6724e7f53643b2160a27662ff5d9f9ab73acffadb65bad8047c670cd088af",
+        "mlxlearn/_solvers/_metal_loop.mm": "ed5b75b074d9f0151033d7ff9fb502aebac2a35ab5e339405fdfcd525a86302e",
+        "mlxlearn/_solvers/fused_lbfgs.py": "1b898ad08028015c3380e8024922abfa424ba4da049be3743067f9c1bf0d85dd",
+        "mlxlearn/_solvers/lbfgs.py": "ba0904bb4edf69197025a4b69d813d021a62547d019e38d6f93842c2cc0f60a8",
+        "mlxlearn/_solvers/logistic.py": "e7d3ce359934e2d1885cbbd72813de2135bd2b3a1db5fddd4ac72b39c404ce94",
+        "mlxlearn/_solvers/native_command.py": "2ccfc1be7555747e08472bf739a7ad08bef02ff1efed103e144ef92dc8848515",
+        "mlxlearn/_solvers/native_geometry.py": "8ac947730be7a72e250816d5203259919a227ffcdb211bf16793f027161b3578",
+        "mlxlearn/_solvers/native_logistic.py": "a9e1db2b7950e862b5ad3db9537ffb99757d48d37e740027c1ae45cb45f50230",
+        "mlxlearn/_solvers/native_logistic_fused.py": "4b1642ed93acded47d8ba4e42cc3f4349ac635abce9f1123d8e21ff8a1408016",
+        "mlxlearn/_solvers/smo.py": "455bc5786ef533ffc080f0e75144d6148ecc0dd6a22a5b08dd3bb25a7eaca19e",
+        "mlxlearn/exceptions.py": "5b9b4efd548f90156d3d10d406aec74d1d6ed4ebaa4859d88d6589f1ba241e2a",
+        "mlxlearn/linear_model/__init__.py": "ea1456645a4d5962e1616a0234a012e2e331dd3750365644fa6cd4d21aaa1293",
+        "mlxlearn/linear_model/_logistic.py": "61159851bb7497e3d90de5aec036ff6c8b76991defbdfeb2ca376418cc126774",
+        "mlxlearn/neighbors/__init__.py": "2f18f3864ba4ea0229a4c2317e0612da2fa458daef7d28a7a88f3e382fb951b4",
+        "mlxlearn/neighbors/_base.py": "34bd4f6c429972e9a78a732205bea78f3c2214de71bb03a3831860ba7a01e7cf",
+        "mlxlearn/neighbors/_classification.py": "3dc44373d2d3e49bf4c51357ac068a881ed0bb72b089154039c8974a53cf71b9",
+        "mlxlearn/neighbors/_regression.py": "3d4a41aebffae757365c0ee32b9f17df685bfb23d2500a8b9c33a4ca05e21f83",
+        "mlxlearn/neighbors/_unsupervised.py": "bc9a0342514befce11cc75992dae5967d8889ff773899989269845bdda1c0795",
+        "mlxlearn/patching/__init__.py": "46daa0d9c3d8a26b400907e3421a55de239c7032ef7537fd1b955af85f00d551",
+        "mlxlearn/patching/_estimators.py": "1761e73488caaef926b591a0b57cba9045273a043d0383934b46036121c9db04",
+        "mlxlearn/patching/_patch.py": "03331f0b103cdb84944f36a1284ecddb064722032a6b7371b0bce3862115242a",
+        "mlxlearn/patching/_registry.py": "bd02f5436f8b62d28f3a0eca1aca7bc9e99eed31e9156eec844805695dde5e16",
+        "mlxlearn/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "mlxlearn/svm/__init__.py": "3fec63550675c0482c6b9da28e0dcc5fbe7b9c92662bce1e37f2edca4f5ebd66",
+        "mlxlearn/svm/_classes.py": "c8ac08f2dc3cd0da9296fa326340515870ea1ee30e56eec9999fa421fad2c79e",
+        "mlxlearn_device/__init__.py": "a61b0e97913febf3d100b02ae26658a8ff5cee44844ae936970a91e728feb0ef",
+        "mlxlearn_device/_compensated.py": "f3494b103de3bf9e8549412d3b18a43287fa5c03c08502138e18b4537ad5d15d",
+        "mlxlearn_device/_duality.py": "1694aad68fe565d695f6c3795362c9e3bd02c22d8b6a08c18c6c8231786aa04e",
+        "mlxlearn_device/_hessian_vector.py": "75daa73c833a26d6722b1335e03aa2c7eec7cce9e7dfff8657c0df4c4fceeadf",
+        "mlxlearn_device/_logistic.py": "3c5e0f9ec2aa14fafa774ea72aaf27ae2909958981431ee913a08d99de304f08",
+        "mlxlearn_device/_native.py": "a49425c647dab43cc31ea3d29590ee791cfa6b2138d155c2c15b924b4e67869d",
+        "mlxlearn_device/_native_cg.py": "3a3b1aabb9c4684e20f65e3fe9b1c1b9c4a493b064d102ed8fef3445483af0e6",
+        "mlxlearn_device/_neighbors.py": "5075955f713048cb614f467a260fb2840cf123c75a95e054c1ab5ef6d3702db3",
+        "mlxlearn_device/_neighbors_fused.py": "5599b7e3e7b82cca6d1d2fd381c3767bd2dc8817ee8c0d32843c57cb7c352d3d",
+        "mlxlearn_device/_neighbors_votes.py": "e34b08e5d772d39c260f26daa31399b6d88f9d13f4a31ef531a40cc76e99c59f",
+        "mlxlearn_device/_newton.py": "1e79738d7ea4a3711e62a113d1dd14197f127cca1541f75f1ed33e457212fad6",
+        "mlxlearn_device/hessian_sketch.py": "576f6bb49aa4520bbf318ee248cd3f32aca873e799c6e216a098155d8b2ed6b0"
+      }
+    },
+    "sklearn_1": {
+      "variant": "sklearn_1",
+      "python": "3.13.3 (v3.13.3:6280bb54784, Apr  8 2025, 10:47:54) [Clang 15.0.0 (clang-1500.3.9.4)]",
+      "mlx": "0.32.2",
+      "numpy": "2.5.2",
+      "sklearn": "1.9.0",
+      "threadpools": [
+        {
+          "user_api": "openmp",
+          "internal_api": "openmp",
+          "num_threads": 1,
+          "prefix": "libomp",
+          "filepath": "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/sklearn/.dylibs/libomp.dylib",
+          "version": null
+        }
+      ],
+      "hardware": {
+        "device_name": "Apple M4 Max",
+        "max_recommended_working_set_size": 115448725504,
+        "memory_size": 137438953472,
+        "architecture": "applegpu_g16s",
+        "max_buffer_length": 86586540032,
+        "resource_limit": 499000
+      },
+      "source_root": "/Users/tunguz/Programming/mlxlearn/src",
+      "source_hashes": {
+        "mlxlearn/__init__.py": "a382f5fb1a7022d68d4d0bd6f775b10348132d1cc98f5a1a8ec6a2676895d441",
+        "mlxlearn/_common/__init__.py": "736aa2ce3d7d1f74557c76a9b5e5356d15a05e1f02a86204f2508ea6c4767646",
+        "mlxlearn/_common/arrays.py": "981cc12835e2855a75c5331e54f1aabefa2ef92e7525078d789acf6488da46fc",
+        "mlxlearn/_common/base.py": "2054a836fda7dfd1a8a13cff59b219a6cf05998275ab8620327233b4a66f3c54",
+        "mlxlearn/_common/config.py": "84a361101374c28d12cf461d6029a438aa385327211c81381f34b8f9f1da3973",
+        "mlxlearn/_common/device.py": "f8a3e2eac9ffe64d99bded696ffe7e42d14059964fc0c19104c7675e04e2ce74",
+        "mlxlearn/_common/diagnostics.py": "0e6676eef716be71d94c6b1e71ac8d00dee12ff4aac85ff76341cefaee5fe3d9",
+        "mlxlearn/_common/preparation.py": "1dc679dec3d693165a76230f5327fe9341872fec1acfb7552bb11db8e280958f",
+        "mlxlearn/_common/rng.py": "5a4bba4f2a03108c31467692310986107a1178928bd5bab20d258037ff10afef",
+        "mlxlearn/_common/validation.py": "997df987a2b857b2bc5b72c12f5dcd62dc3569e80a90bdf3ae263dfac042ea3a",
+        "mlxlearn/_kernels/__init__.py": "0a2227680a6afb7d09a596f0aaab4ef6671fe9e58169739d1cc3a9e32c3b062e",
+        "mlxlearn/_kernels/distance.py": "6f944b84ed40cb6403a1cb497f23786ee1fff14f2f9fc510c5f3ca83e10b0b81",
+        "mlxlearn/_kernels/kernels.py": "e9fb262c8de3b1c596537c153f5233ca24813648b67a96fb7b61bcd0b16b05d9",
+        "mlxlearn/_kernels/logistic_input.py": "5f0180ba62076f9899fafca359f67e04f50c796febd2111ea3b3610e6f758efb",
+        "mlxlearn/_solvers/__init__.py": "974fa44cf7975d4fa63d6a9d304219dde43bd86ebcb1c151c7630b0a1c4fdacb",
+        "mlxlearn/_solvers/_metal_cg.h": "b1c6724e7f53643b2160a27662ff5d9f9ab73acffadb65bad8047c670cd088af",
+        "mlxlearn/_solvers/_metal_loop.mm": "ed5b75b074d9f0151033d7ff9fb502aebac2a35ab5e339405fdfcd525a86302e",
+        "mlxlearn/_solvers/fused_lbfgs.py": "1b898ad08028015c3380e8024922abfa424ba4da049be3743067f9c1bf0d85dd",
+        "mlxlearn/_solvers/lbfgs.py": "ba0904bb4edf69197025a4b69d813d021a62547d019e38d6f93842c2cc0f60a8",
+        "mlxlearn/_solvers/logistic.py": "e7d3ce359934e2d1885cbbd72813de2135bd2b3a1db5fddd4ac72b39c404ce94",
+        "mlxlearn/_solvers/native_command.py": "2ccfc1be7555747e08472bf739a7ad08bef02ff1efed103e144ef92dc8848515",
+        "mlxlearn/_solvers/native_geometry.py": "8ac947730be7a72e250816d5203259919a227ffcdb211bf16793f027161b3578",
+        "mlxlearn/_solvers/native_logistic.py": "a9e1db2b7950e862b5ad3db9537ffb99757d48d37e740027c1ae45cb45f50230",
+        "mlxlearn/_solvers/native_logistic_fused.py": "4b1642ed93acded47d8ba4e42cc3f4349ac635abce9f1123d8e21ff8a1408016",
+        "mlxlearn/_solvers/smo.py": "455bc5786ef533ffc080f0e75144d6148ecc0dd6a22a5b08dd3bb25a7eaca19e",
+        "mlxlearn/exceptions.py": "5b9b4efd548f90156d3d10d406aec74d1d6ed4ebaa4859d88d6589f1ba241e2a",
+        "mlxlearn/linear_model/__init__.py": "ea1456645a4d5962e1616a0234a012e2e331dd3750365644fa6cd4d21aaa1293",
+        "mlxlearn/linear_model/_logistic.py": "61159851bb7497e3d90de5aec036ff6c8b76991defbdfeb2ca376418cc126774",
+        "mlxlearn/neighbors/__init__.py": "2f18f3864ba4ea0229a4c2317e0612da2fa458daef7d28a7a88f3e382fb951b4",
+        "mlxlearn/neighbors/_base.py": "34bd4f6c429972e9a78a732205bea78f3c2214de71bb03a3831860ba7a01e7cf",
+        "mlxlearn/neighbors/_classification.py": "3dc44373d2d3e49bf4c51357ac068a881ed0bb72b089154039c8974a53cf71b9",
+        "mlxlearn/neighbors/_regression.py": "3d4a41aebffae757365c0ee32b9f17df685bfb23d2500a8b9c33a4ca05e21f83",
+        "mlxlearn/neighbors/_unsupervised.py": "bc9a0342514befce11cc75992dae5967d8889ff773899989269845bdda1c0795",
+        "mlxlearn/patching/__init__.py": "46daa0d9c3d8a26b400907e3421a55de239c7032ef7537fd1b955af85f00d551",
+        "mlxlearn/patching/_estimators.py": "1761e73488caaef926b591a0b57cba9045273a043d0383934b46036121c9db04",
+        "mlxlearn/patching/_patch.py": "03331f0b103cdb84944f36a1284ecddb064722032a6b7371b0bce3862115242a",
+        "mlxlearn/patching/_registry.py": "bd02f5436f8b62d28f3a0eca1aca7bc9e99eed31e9156eec844805695dde5e16",
+        "mlxlearn/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "mlxlearn/svm/__init__.py": "3fec63550675c0482c6b9da28e0dcc5fbe7b9c92662bce1e37f2edca4f5ebd66",
+        "mlxlearn/svm/_classes.py": "c8ac08f2dc3cd0da9296fa326340515870ea1ee30e56eec9999fa421fad2c79e",
+        "mlxlearn_device/__init__.py": "a61b0e97913febf3d100b02ae26658a8ff5cee44844ae936970a91e728feb0ef",
+        "mlxlearn_device/_compensated.py": "f3494b103de3bf9e8549412d3b18a43287fa5c03c08502138e18b4537ad5d15d",
+        "mlxlearn_device/_duality.py": "1694aad68fe565d695f6c3795362c9e3bd02c22d8b6a08c18c6c8231786aa04e",
+        "mlxlearn_device/_hessian_vector.py": "75daa73c833a26d6722b1335e03aa2c7eec7cce9e7dfff8657c0df4c4fceeadf",
+        "mlxlearn_device/_logistic.py": "3c5e0f9ec2aa14fafa774ea72aaf27ae2909958981431ee913a08d99de304f08",
+        "mlxlearn_device/_native.py": "a49425c647dab43cc31ea3d29590ee791cfa6b2138d155c2c15b924b4e67869d",
+        "mlxlearn_device/_native_cg.py": "3a3b1aabb9c4684e20f65e3fe9b1c1b9c4a493b064d102ed8fef3445483af0e6",
+        "mlxlearn_device/_neighbors.py": "5075955f713048cb614f467a260fb2840cf123c75a95e054c1ab5ef6d3702db3",
+        "mlxlearn_device/_neighbors_fused.py": "9c5e551576320729b009d07445b68bef6fb6a3faec0f8a12bb449163acf0ff0b",
+        "mlxlearn_device/_neighbors_votes.py": "e34b08e5d772d39c260f26daa31399b6d88f9d13f4a31ef531a40cc76e99c59f",
+        "mlxlearn_device/_newton.py": "1e79738d7ea4a3711e62a113d1dd14197f127cca1541f75f1ed33e457212fad6",
+        "mlxlearn_device/hessian_sketch.py": "576f6bb49aa4520bbf318ee248cd3f32aca873e799c6e216a098155d8b2ed6b0"
+      }
+    },
+    "sklearn_default": {
+      "variant": "sklearn_default",
+      "python": "3.13.3 (v3.13.3:6280bb54784, Apr  8 2025, 10:47:54) [Clang 15.0.0 (clang-1500.3.9.4)]",
+      "mlx": "0.32.2",
+      "numpy": "2.5.2",
+      "sklearn": "1.9.0",
+      "threadpools": [
+        {
+          "user_api": "openmp",
+          "internal_api": "openmp",
+          "num_threads": 16,
+          "prefix": "libomp",
+          "filepath": "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/sklearn/.dylibs/libomp.dylib",
+          "version": null
+        }
+      ],
+      "hardware": {
+        "device_name": "Apple M4 Max",
+        "max_recommended_working_set_size": 115448725504,
+        "memory_size": 137438953472,
+        "architecture": "applegpu_g16s",
+        "max_buffer_length": 86586540032,
+        "resource_limit": 499000
+      },
+      "source_root": "/Users/tunguz/Programming/mlxlearn/src",
+      "source_hashes": {
+        "mlxlearn/__init__.py": "a382f5fb1a7022d68d4d0bd6f775b10348132d1cc98f5a1a8ec6a2676895d441",
+        "mlxlearn/_common/__init__.py": "736aa2ce3d7d1f74557c76a9b5e5356d15a05e1f02a86204f2508ea6c4767646",
+        "mlxlearn/_common/arrays.py": "981cc12835e2855a75c5331e54f1aabefa2ef92e7525078d789acf6488da46fc",
+        "mlxlearn/_common/base.py": "2054a836fda7dfd1a8a13cff59b219a6cf05998275ab8620327233b4a66f3c54",
+        "mlxlearn/_common/config.py": "84a361101374c28d12cf461d6029a438aa385327211c81381f34b8f9f1da3973",
+        "mlxlearn/_common/device.py": "f8a3e2eac9ffe64d99bded696ffe7e42d14059964fc0c19104c7675e04e2ce74",
+        "mlxlearn/_common/diagnostics.py": "0e6676eef716be71d94c6b1e71ac8d00dee12ff4aac85ff76341cefaee5fe3d9",
+        "mlxlearn/_common/preparation.py": "1dc679dec3d693165a76230f5327fe9341872fec1acfb7552bb11db8e280958f",
+        "mlxlearn/_common/rng.py": "5a4bba4f2a03108c31467692310986107a1178928bd5bab20d258037ff10afef",
+        "mlxlearn/_common/validation.py": "997df987a2b857b2bc5b72c12f5dcd62dc3569e80a90bdf3ae263dfac042ea3a",
+        "mlxlearn/_kernels/__init__.py": "0a2227680a6afb7d09a596f0aaab4ef6671fe9e58169739d1cc3a9e32c3b062e",
+        "mlxlearn/_kernels/distance.py": "6f944b84ed40cb6403a1cb497f23786ee1fff14f2f9fc510c5f3ca83e10b0b81",
+        "mlxlearn/_kernels/kernels.py": "e9fb262c8de3b1c596537c153f5233ca24813648b67a96fb7b61bcd0b16b05d9",
+        "mlxlearn/_kernels/logistic_input.py": "5f0180ba62076f9899fafca359f67e04f50c796febd2111ea3b3610e6f758efb",
+        "mlxlearn/_solvers/__init__.py": "974fa44cf7975d4fa63d6a9d304219dde43bd86ebcb1c151c7630b0a1c4fdacb",
+        "mlxlearn/_solvers/_metal_cg.h": "b1c6724e7f53643b2160a27662ff5d9f9ab73acffadb65bad8047c670cd088af",
+        "mlxlearn/_solvers/_metal_loop.mm": "ed5b75b074d9f0151033d7ff9fb502aebac2a35ab5e339405fdfcd525a86302e",
+        "mlxlearn/_solvers/fused_lbfgs.py": "1b898ad08028015c3380e8024922abfa424ba4da049be3743067f9c1bf0d85dd",
+        "mlxlearn/_solvers/lbfgs.py": "ba0904bb4edf69197025a4b69d813d021a62547d019e38d6f93842c2cc0f60a8",
+        "mlxlearn/_solvers/logistic.py": "e7d3ce359934e2d1885cbbd72813de2135bd2b3a1db5fddd4ac72b39c404ce94",
+        "mlxlearn/_solvers/native_command.py": "2ccfc1be7555747e08472bf739a7ad08bef02ff1efed103e144ef92dc8848515",
+        "mlxlearn/_solvers/native_geometry.py": "8ac947730be7a72e250816d5203259919a227ffcdb211bf16793f027161b3578",
+        "mlxlearn/_solvers/native_logistic.py": "a9e1db2b7950e862b5ad3db9537ffb99757d48d37e740027c1ae45cb45f50230",
+        "mlxlearn/_solvers/native_logistic_fused.py": "4b1642ed93acded47d8ba4e42cc3f4349ac635abce9f1123d8e21ff8a1408016",
+        "mlxlearn/_solvers/smo.py": "455bc5786ef533ffc080f0e75144d6148ecc0dd6a22a5b08dd3bb25a7eaca19e",
+        "mlxlearn/exceptions.py": "5b9b4efd548f90156d3d10d406aec74d1d6ed4ebaa4859d88d6589f1ba241e2a",
+        "mlxlearn/linear_model/__init__.py": "ea1456645a4d5962e1616a0234a012e2e331dd3750365644fa6cd4d21aaa1293",
+        "mlxlearn/linear_model/_logistic.py": "61159851bb7497e3d90de5aec036ff6c8b76991defbdfeb2ca376418cc126774",
+        "mlxlearn/neighbors/__init__.py": "2f18f3864ba4ea0229a4c2317e0612da2fa458daef7d28a7a88f3e382fb951b4",
+        "mlxlearn/neighbors/_base.py": "34bd4f6c429972e9a78a732205bea78f3c2214de71bb03a3831860ba7a01e7cf",
+        "mlxlearn/neighbors/_classification.py": "3dc44373d2d3e49bf4c51357ac068a881ed0bb72b089154039c8974a53cf71b9",
+        "mlxlearn/neighbors/_regression.py": "3d4a41aebffae757365c0ee32b9f17df685bfb23d2500a8b9c33a4ca05e21f83",
+        "mlxlearn/neighbors/_unsupervised.py": "bc9a0342514befce11cc75992dae5967d8889ff773899989269845bdda1c0795",
+        "mlxlearn/patching/__init__.py": "46daa0d9c3d8a26b400907e3421a55de239c7032ef7537fd1b955af85f00d551",
+        "mlxlearn/patching/_estimators.py": "1761e73488caaef926b591a0b57cba9045273a043d0383934b46036121c9db04",
+        "mlxlearn/patching/_patch.py": "03331f0b103cdb84944f36a1284ecddb064722032a6b7371b0bce3862115242a",
+        "mlxlearn/patching/_registry.py": "bd02f5436f8b62d28f3a0eca1aca7bc9e99eed31e9156eec844805695dde5e16",
+        "mlxlearn/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "mlxlearn/svm/__init__.py": "3fec63550675c0482c6b9da28e0dcc5fbe7b9c92662bce1e37f2edca4f5ebd66",
+        "mlxlearn/svm/_classes.py": "c8ac08f2dc3cd0da9296fa326340515870ea1ee30e56eec9999fa421fad2c79e",
+        "mlxlearn_device/__init__.py": "a61b0e97913febf3d100b02ae26658a8ff5cee44844ae936970a91e728feb0ef",
+        "mlxlearn_device/_compensated.py": "f3494b103de3bf9e8549412d3b18a43287fa5c03c08502138e18b4537ad5d15d",
+        "mlxlearn_device/_duality.py": "1694aad68fe565d695f6c3795362c9e3bd02c22d8b6a08c18c6c8231786aa04e",
+        "mlxlearn_device/_hessian_vector.py": "75daa73c833a26d6722b1335e03aa2c7eec7cce9e7dfff8657c0df4c4fceeadf",
+        "mlxlearn_device/_logistic.py": "3c5e0f9ec2aa14fafa774ea72aaf27ae2909958981431ee913a08d99de304f08",
+        "mlxlearn_device/_native.py": "a49425c647dab43cc31ea3d29590ee791cfa6b2138d155c2c15b924b4e67869d",
+        "mlxlearn_device/_native_cg.py": "3a3b1aabb9c4684e20f65e3fe9b1c1b9c4a493b064d102ed8fef3445483af0e6",
+        "mlxlearn_device/_neighbors.py": "5075955f713048cb614f467a260fb2840cf123c75a95e054c1ab5ef6d3702db3",
+        "mlxlearn_device/_neighbors_fused.py": "9c5e551576320729b009d07445b68bef6fb6a3faec0f8a12bb449163acf0ff0b",
+        "mlxlearn_device/_neighbors_votes.py": "e34b08e5d772d39c260f26daa31399b6d88f9d13f4a31ef531a40cc76e99c59f",
+        "mlxlearn_device/_newton.py": "1e79738d7ea4a3711e62a113d1dd14197f127cca1541f75f1ed33e457212fad6",
+        "mlxlearn_device/hessian_sketch.py": "576f6bb49aa4520bbf318ee248cd3f32aca873e799c6e216a098155d8b2ed6b0"
+      }
+    },
+    "resident": {
+      "variant": "resident",
+      "python": "3.13.3 (v3.13.3:6280bb54784, Apr  8 2025, 10:47:54) [Clang 15.0.0 (clang-1500.3.9.4)]",
+      "mlx": "0.32.2",
+      "numpy": "2.5.2",
+      "sklearn": "1.9.0",
+      "threadpools": [
+        {
+          "user_api": "openmp",
+          "internal_api": "openmp",
+          "num_threads": 16,
+          "prefix": "libomp",
+          "filepath": "/Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/sklearn/.dylibs/libomp.dylib",
+          "version": null
+        }
+      ],
+      "hardware": {
+        "device_name": "Apple M4 Max",
+        "max_recommended_working_set_size": 115448725504,
+        "memory_size": 137438953472,
+        "architecture": "applegpu_g16s",
+        "max_buffer_length": 86586540032,
+        "resource_limit": 499000
+      },
+      "source_root": "/Users/tunguz/Programming/mlxlearn/src",
+      "source_hashes": {
+        "mlxlearn/__init__.py": "a382f5fb1a7022d68d4d0bd6f775b10348132d1cc98f5a1a8ec6a2676895d441",
+        "mlxlearn/_common/__init__.py": "736aa2ce3d7d1f74557c76a9b5e5356d15a05e1f02a86204f2508ea6c4767646",
+        "mlxlearn/_common/arrays.py": "981cc12835e2855a75c5331e54f1aabefa2ef92e7525078d789acf6488da46fc",
+        "mlxlearn/_common/base.py": "2054a836fda7dfd1a8a13cff59b219a6cf05998275ab8620327233b4a66f3c54",
+        "mlxlearn/_common/config.py": "84a361101374c28d12cf461d6029a438aa385327211c81381f34b8f9f1da3973",
+        "mlxlearn/_common/device.py": "f8a3e2eac9ffe64d99bded696ffe7e42d14059964fc0c19104c7675e04e2ce74",
+        "mlxlearn/_common/diagnostics.py": "0e6676eef716be71d94c6b1e71ac8d00dee12ff4aac85ff76341cefaee5fe3d9",
+        "mlxlearn/_common/preparation.py": "1dc679dec3d693165a76230f5327fe9341872fec1acfb7552bb11db8e280958f",
+        "mlxlearn/_common/rng.py": "5a4bba4f2a03108c31467692310986107a1178928bd5bab20d258037ff10afef",
+        "mlxlearn/_common/validation.py": "997df987a2b857b2bc5b72c12f5dcd62dc3569e80a90bdf3ae263dfac042ea3a",
+        "mlxlearn/_kernels/__init__.py": "0a2227680a6afb7d09a596f0aaab4ef6671fe9e58169739d1cc3a9e32c3b062e",
+        "mlxlearn/_kernels/distance.py": "6f944b84ed40cb6403a1cb497f23786ee1fff14f2f9fc510c5f3ca83e10b0b81",
+        "mlxlearn/_kernels/kernels.py": "e9fb262c8de3b1c596537c153f5233ca24813648b67a96fb7b61bcd0b16b05d9",
+        "mlxlearn/_kernels/logistic_input.py": "5f0180ba62076f9899fafca359f67e04f50c796febd2111ea3b3610e6f758efb",
+        "mlxlearn/_solvers/__init__.py": "974fa44cf7975d4fa63d6a9d304219dde43bd86ebcb1c151c7630b0a1c4fdacb",
+        "mlxlearn/_solvers/_metal_cg.h": "b1c6724e7f53643b2160a27662ff5d9f9ab73acffadb65bad8047c670cd088af",
+        "mlxlearn/_solvers/_metal_loop.mm": "ed5b75b074d9f0151033d7ff9fb502aebac2a35ab5e339405fdfcd525a86302e",
+        "mlxlearn/_solvers/fused_lbfgs.py": "1b898ad08028015c3380e8024922abfa424ba4da049be3743067f9c1bf0d85dd",
+        "mlxlearn/_solvers/lbfgs.py": "ba0904bb4edf69197025a4b69d813d021a62547d019e38d6f93842c2cc0f60a8",
+        "mlxlearn/_solvers/logistic.py": "e7d3ce359934e2d1885cbbd72813de2135bd2b3a1db5fddd4ac72b39c404ce94",
+        "mlxlearn/_solvers/native_command.py": "2ccfc1be7555747e08472bf739a7ad08bef02ff1efed103e144ef92dc8848515",
+        "mlxlearn/_solvers/native_geometry.py": "8ac947730be7a72e250816d5203259919a227ffcdb211bf16793f027161b3578",
+        "mlxlearn/_solvers/native_logistic.py": "a9e1db2b7950e862b5ad3db9537ffb99757d48d37e740027c1ae45cb45f50230",
+        "mlxlearn/_solvers/native_logistic_fused.py": "4b1642ed93acded47d8ba4e42cc3f4349ac635abce9f1123d8e21ff8a1408016",
+        "mlxlearn/_solvers/smo.py": "455bc5786ef533ffc080f0e75144d6148ecc0dd6a22a5b08dd3bb25a7eaca19e",
+        "mlxlearn/exceptions.py": "5b9b4efd548f90156d3d10d406aec74d1d6ed4ebaa4859d88d6589f1ba241e2a",
+        "mlxlearn/linear_model/__init__.py": "ea1456645a4d5962e1616a0234a012e2e331dd3750365644fa6cd4d21aaa1293",
+        "mlxlearn/linear_model/_logistic.py": "61159851bb7497e3d90de5aec036ff6c8b76991defbdfeb2ca376418cc126774",
+        "mlxlearn/neighbors/__init__.py": "2f18f3864ba4ea0229a4c2317e0612da2fa458daef7d28a7a88f3e382fb951b4",
+        "mlxlearn/neighbors/_base.py": "34bd4f6c429972e9a78a732205bea78f3c2214de71bb03a3831860ba7a01e7cf",
+        "mlxlearn/neighbors/_classification.py": "3dc44373d2d3e49bf4c51357ac068a881ed0bb72b089154039c8974a53cf71b9",
+        "mlxlearn/neighbors/_regression.py": "3d4a41aebffae757365c0ee32b9f17df685bfb23d2500a8b9c33a4ca05e21f83",
+        "mlxlearn/neighbors/_unsupervised.py": "bc9a0342514befce11cc75992dae5967d8889ff773899989269845bdda1c0795",
+        "mlxlearn/patching/__init__.py": "46daa0d9c3d8a26b400907e3421a55de239c7032ef7537fd1b955af85f00d551",
+        "mlxlearn/patching/_estimators.py": "1761e73488caaef926b591a0b57cba9045273a043d0383934b46036121c9db04",
+        "mlxlearn/patching/_patch.py": "03331f0b103cdb84944f36a1284ecddb064722032a6b7371b0bce3862115242a",
+        "mlxlearn/patching/_registry.py": "bd02f5436f8b62d28f3a0eca1aca7bc9e99eed31e9156eec844805695dde5e16",
+        "mlxlearn/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "mlxlearn/svm/__init__.py": "3fec63550675c0482c6b9da28e0dcc5fbe7b9c92662bce1e37f2edca4f5ebd66",
+        "mlxlearn/svm/_classes.py": "c8ac08f2dc3cd0da9296fa326340515870ea1ee30e56eec9999fa421fad2c79e",
+        "mlxlearn_device/__init__.py": "a61b0e97913febf3d100b02ae26658a8ff5cee44844ae936970a91e728feb0ef",
+        "mlxlearn_device/_compensated.py": "f3494b103de3bf9e8549412d3b18a43287fa5c03c08502138e18b4537ad5d15d",
+        "mlxlearn_device/_duality.py": "1694aad68fe565d695f6c3795362c9e3bd02c22d8b6a08c18c6c8231786aa04e",
+        "mlxlearn_device/_hessian_vector.py": "75daa73c833a26d6722b1335e03aa2c7eec7cce9e7dfff8657c0df4c4fceeadf",
+        "mlxlearn_device/_logistic.py": "3c5e0f9ec2aa14fafa774ea72aaf27ae2909958981431ee913a08d99de304f08",
+        "mlxlearn_device/_native.py": "a49425c647dab43cc31ea3d29590ee791cfa6b2138d155c2c15b924b4e67869d",
+        "mlxlearn_device/_native_cg.py": "3a3b1aabb9c4684e20f65e3fe9b1c1b9c4a493b064d102ed8fef3445483af0e6",
+        "mlxlearn_device/_neighbors.py": "5075955f713048cb614f467a260fb2840cf123c75a95e054c1ab5ef6d3702db3",
+        "mlxlearn_device/_neighbors_fused.py": "9c5e551576320729b009d07445b68bef6fb6a3faec0f8a12bb449163acf0ff0b",
+        "mlxlearn_device/_neighbors_votes.py": "e34b08e5d772d39c260f26daa31399b6d88f9d13f4a31ef531a40cc76e99c59f",
+        "mlxlearn_device/_newton.py": "1e79738d7ea4a3711e62a113d1dd14197f127cca1541f75f1ed33e457212fad6",
+        "mlxlearn_device/hessian_sketch.py": "576f6bb49aa4520bbf318ee248cd3f32aca873e799c6e216a098155d8b2ed6b0"
+      }
+    }
+  },
+  "source_integrity_pass": true,
+  "quality_by_variant": {
+    "current": true,
+    "reference": true,
+    "sklearn_1": true,
+    "sklearn_default": true,
+    "resident": true
+  },
+  "quality_pass": true,
+  "implementation_quality_pass": true
+}

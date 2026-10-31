@@ -1,0 +1,63 @@
+{
+  "protocol": "All GPU workloads serial; all outputs audited; no production, timed-harness, oracle or input mutation during runs. Every failed record retained.",
+  "source_archive": {
+    "path": "benchmarks/reference/knn-gaussian-fresh-final-2026-10-30.zip",
+    "sha256": "df09cfae53f2eeb979456f4a7a9e35b67319b49affe7d48209a5ab1a13314f81"
+  },
+  "harness_archive": {
+    "path": "benchmarks/reference/knn-gaussian-fresh-final-2026-10-30-harnesses.zip",
+    "sha256": "a2224a9d5852e18f5fc21f194234285124496fccd923b8006ee145b4e7e8d34d"
+  },
+  "tests": {
+    "command": "python3 -m pytest -q tests/unit/test_*neighbors*.py tests/unit/test_validation_range.py tests/unit/test_knn_acceleration_benchmark.py tests/unit/test_knn_warmed_benchmark.py tests/parity/test_neighbors.py tests/parity/test_neighbors_fp32.py tests/patching tests/test_sklearn_compliance.py -k 'not LogisticRegression and not SVC'",
+    "passed": 714,
+    "full_suite_passed": 713,
+    "additional_test": {
+      "command": "python3 -m pytest -q tests/unit/test_neighbors_lazy_preparation.py::test_equal_shaped_fits_keep_independent_deferred_training_preparation",
+      "passed": 1,
+      "exit_code": 0,
+      "log": "benchmarks/results/knn-gaussian-fresh-independent-fit-test-2026-10-30.log"
+    },
+    "deselected": 5,
+    "exit_code": 0,
+    "log": "benchmarks/results/knn-gaussian-fresh-full-tests-2026-10-30.log"
+  },
+  "runs": [
+    {
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3",
+        "-m",
+        "benchmarks.knn_gaussian_fresh_control",
+        "--source-manifest",
+        "/Users/tunguz/Programming/mlxlearn/benchmarks/reference/knn-gaussian-fresh-final-2026-10-30.manifest.json",
+        "--output",
+        "/Users/tunguz/Programming/mlxlearn/benchmarks/results/knn-gaussian-fresh-final-2026-10-30-control.json"
+      ],
+      "started_at": "2026-10-30T17:07:11.066549+00:00",
+      "log": "benchmarks/results/knn-gaussian-fresh-final-2026-10-30-control.log",
+      "elapsed_seconds": 286.55514562502503,
+      "exit_code": 0
+    },
+    {
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3",
+        "-m",
+        "benchmarks.knn_broad",
+        "--source-manifest",
+        "/Users/tunguz/Programming/mlxlearn/benchmarks/reference/knn-gaussian-fresh-final-2026-10-30.manifest.json",
+        "--output",
+        "/Users/tunguz/Programming/mlxlearn/benchmarks/results/knn-gaussian-fresh-final-2026-10-30-broad.json",
+        "--repeats",
+        "15",
+        "--warmup",
+        "5"
+      ],
+      "started_at": "2026-10-30T17:11:57.626513+00:00",
+      "log": "benchmarks/results/knn-gaussian-fresh-final-2026-10-30-broad.log",
+      "elapsed_seconds": 317.1458112500841,
+      "exit_code": 0
+    }
+  ],
+  "source_integrity_pass": true,
+  "harness_integrity_pass": true
+}

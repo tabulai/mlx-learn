@@ -8,6 +8,120 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- Native KNN selection for `k=5` now validates dot products and selects exact
+  integer neighbors in one pass, committing private results only after every
+  row passes. Precision, canonical ties, malformed-input checks and error
+  precedence are preserved. All 432 Digits GPU-control comparisons now win,
+  with a minimum 1.047× speedup; the former weighted-regression miss is
+  1.051× paired / 1.079× ratio-of-medians faster than historical GPU. The full
+  six-panel rerun retains all startup/first-query wins against the three sklearn
+  configurations, all 81 explicit Gaussian-distribution broad wins and all 108
+  clustered/offset broad wins. All 1,474 tests
+  pass on sklearn 1.7, 1.8 and 1.9, plus 65 harness checks and 14,472 broad
+  numerical audits. Repeated Breast Cancer and smaller first-query losses
+  against preceding automatic remain; an exact-native A/B/A probe does not
+  reproduce the large Breast losses. See the [complete results and limitations](docs/knn-digits-fix-2026-10-30.md).
+- Direct KNN estimators now use sklearn's public estimator interfaces without
+  eagerly importing its concrete neighbor classes. Direct instances no longer
+  inherit those stock classes; patched variants retain stock inheritance and
+  graph-helper compatibility. Constructors, validation, metadata, scoring, graphs, radius
+  operations and older saved models remain covered. Native integer selection
+  and concentrated-feature scans are faster without changing precision or GPU
+  kernels. In 450 fresh processes, all 18 fixture medians beat all three sklearn
+  configurations on total startup-to-result, with imports included and 15–18%
+  lower latency. All 1,408 relevant tests pass on sklearn 1.7, 1.8 and 1.9;
+  65 harness checks and 14,472 current broad audits also pass. Some isolated
+  fresh-process first-query subphases and legacy GPU comparisons still regress;
+  initialized fresh-model first-query and combined fit/query medians improve on
+  all 18 fixtures versus both prior automatic and the three sklearn settings; see the
+  [complete startup results and compatibility limits](docs/knn-startup-fix-2026-10-30.md).
+- The earlier KNN latency revision fused certified integer Gram selection in
+  the native CPU extension and computed feature ranges with a bit-preserving
+  native helper. Eligible host fits deferred GPU probing, and CPU classifier
+  predictions avoided GPU voting imports. Native loading moved into API setup;
+  its cost remained included in cold startup measurements. All 27 warmed Digits
+  cells improved 1.82–2.45× over the preceding automatic build, and all 162
+  targeted medians beat the three sklearn
+  configurations in that run. Its 1,191 relevant tests and 14,472 broad accuracy
+  audits passed. Total process startup lost to sklearn auto on 11 of 18
+  fixtures, and some controlled cells regressed against earlier implementations;
+  see the [latency results and limitations](docs/knn-latency-fix-2026-10-30.md).
+- KNN now captures an automatic CPU/GPU policy at fit and routes each query
+  batch by size and certified data properties. The optional compiled CPU scan
+  resolves ambiguous distances and ties exactly; portable CPU search retains
+  the same ordering contract. Explicit device choices remain fixed, and the
+  preceding GPU kernels are unchanged. Its original benchmark run recorded all
+  162 targeted small/single-query medians beating the three sklearn configurations,
+  with 1,025 relevant tests passing; see the
+  [original results and limitations](docs/knn-auto-dispatch-2026-10-30.md).
+- Small KNN GPU workloads now combine direct screening, selection, precision
+  certification and exact fallback in one launch. Conservative fallback pruning
+  preserves boundary ties, and compiled calls retain independent training/query
+  inputs. Canonical finite float32 queries skip repeated generic conversion while
+  retaining sklearn feature checks. The established large-batch routes remain
+  unchanged; see the [small-workload results](docs/knn-small-workload-fix-2026-10-30.md).
+- KNN compiles reusable Gram preparation and evaluates it with the first query,
+  removing a separate GPU submission and synchronization. Shape-only sampling
+  plans reuse indices without caching training values or results. All six
+  controlled 128-feature Gaussian fresh-fit cases beat both preceding builds;
+  clustered/offset gains and precision checks remain intact. The full sklearn
+  rerun passes all 14,472 current audits and 714 relevant tests pass; see the
+  [fresh-fit fix and complete results](docs/knn-gaussian-fresh-fix-2026-10-30.md).
+- KNN routes tight clusters to the existing precise direct scan and uses guarded
+  exact centering for integer screening on large-offset data. Final distances,
+  exact tie ordering and complete fallback retain the original coordinates.
+  Cached distribution and scale decisions share one small owned-training sample;
+  automatic memory plans remain distinct from explicitly requested tiles.
+  All 108 targeted clustered/offset medians beat the three sklearn baselines;
+  see the [full rerun and precision validation](docs/knn-distribution-fix-2026-10-30.md).
+- KNN searches with 33–256 features and k<=8 now fuse shortlist refinement,
+  precise ordering and omission certification, and retain k+2 candidates.
+  The distance bounds, exact comparisons and exhaustive fallback are unchanged.
+  See the [128-feature fix and complete v3 benchmarks](docs/knn-128-feature-fix-2026-10-30.md).
+- KNN now resolves close GPU neighbors using guarded higher-precision comparisons
+  and exact original-coordinate integer ordering when necessary. General GPU
+  screening certifies omitted candidates; CPU search selects from direct float64
+  distance tiles. This fixes rounded cutoff ties and copied-row loss from Gram
+  cancellation. Candidate refinement shares precision work across GPU lanes,
+  large lists verify an initial sort, and native fit preserves subnormal bits.
+  See the [precision fixes and full v3 rerun](docs/knn-precision-fix-2026-10-30.md).
+- Large native float32 KNN inputs now use a vectorized finiteness check while
+  retaining sklearn validation errors and independently owned fit storage.
+  This removes the residual unequal-scale fresh-fit cost without changing
+  the Gaussian search path. See the [fresh-fit comparison against v3](docs/knn-fresh-fit-fix-2026-10-29.md).
+- Guarded integer KNN dispatch with a cached estimate of training feature
+  variation. Unequal-scale data retains the compact filter, avoiding costly
+  integer-certificate fallbacks while preserving the Gaussian fast path.
+  Distance arithmetic and both numerical certificates are unchanged. See the
+  [regression tests and v3 comparisons](docs/knn-scale-regression-fix-2026-10-29.md).
+- Large-batch KNN now uses compact training storage, conservative quantization
+  bounds, packed candidate keys and short local lists, followed by original
+  float32 refinement and exact fallback. GPU fits defer the independent host
+  mirror until radius queries, pickling or private-state access needs it. On
+  50,000 × 32 data, all 54 search/inference operation–dataset medians across two
+  runs exceed default-thread sklearn by 2.10–3.02×, including fresh fit plus
+  query. See the [complete benchmark tables](docs/knn-v3-2026-10-28.md) and
+  [numerical argument](docs/knn-compact-certificate.md).
+- Further optimized paired KNN scans with packed four-feature reads and named
+  scalar candidate state for k=5, preserving compensated arithmetic and input-view
+  support. Wide-float fits reuse their private checked conversion buffer instead
+  of copying it again. A controlled idle/warmup experiment now distinguishes
+  intermittent latency from fully warmed measurements; see the
+  [implementation and complete comparison](docs/knn-v2-2026-10-28.md), including
+  retained speed-target misses and regression results.
+- KNN uses a shared NumPy-free MLX search core, with an experimental
+  `mlxlearn_device.fit_neighbors` API. Small searches fuse compensated Euclidean
+  distances and top-k selection; wider searches retain centered matrix products
+  with bounded candidate selection and fused refinement. Classifier voting stays
+  on-device, uniform weights skip distance output, and float64 input preparation
+  reuses logistic regression's checked conversion. Tie selection, original-coordinate
+  refinement, self-exclusion and target ownership are covered by new regression
+  tests. See the [implementation and benchmark report](docs/knn-pipeline-2026-10-28.md).
+  A subsequent pass increases direct-scan parallelism, shares training loads
+  between query pairs, moves overflow recovery out of the feature loop and
+  removes a redundant fit copy and synchronization. See the
+  [three-dataset follow-up](docs/knn-acceleration-2026-10-28.md) for measured
+  improvements and the remaining gap to consistent 2× default-thread sklearn.
 - The native binary logistic step now runs one fused line-search pass for
   every feature count. The narrow line-search kernel and its unconditional
   backward pass are gone; designs of at most 128 features use two new

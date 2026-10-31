@@ -11,9 +11,10 @@ that "we xfail that one" is a policy and not a reaction to a red test.
 
 | Boundary | dtype |
 |---|---|
-| Input `X`, `y` | anything scikit-learn accepts; float64/int/bool are converted |
-| Internal computation | **float32**, always |
-| Returned distances, probabilities, decision values | **float64**, upcast from the float32 computation |
+| Input features `X` | supported float64/int/bool inputs are converted to **float32** |
+| KNN regression targets `y` | owned **float64** values, including values outside float32 range |
+| Internal computation | primarily **float32**; KNN host search and regression target reductions use **float64** |
+| Returned distances, probabilities, decision values | **float64**; GPU values are generally upcast, automatic CPU KNN distances are computed in float64 |
 | Fitted attributes (`coef_`, `dual_coef_`, `intercept_`, `centroids`) | **float64**, upcast |
 | Returned indices, labels | `int64` / the input label dtype, matching scikit-learn |
 
@@ -23,7 +24,7 @@ for float64, and handing it float32 causes dtype churn far from mlxlearn. The an
 leaked float32 out of `kneighbors` and every downstream tolerance had to absorb it. The
 accuracy actually available is described below, not by the output dtype.
 
-Values that are finite in float64 but overflow float32 (`|x| > ~3.4e38`) are **rejected**
+Feature coordinates that are finite in float64 but overflow float32 (`|x| > ~3.4e38`) are **rejected**
 with `UnsupportedInputError`, not silently converted to infinity.
 
 ## 2. Where float32 actually costs accuracy
@@ -36,26 +37,92 @@ ones, so the absolute error is on the order of `eps · ‖q‖²` ≈ `1.2e-7 ·
 centered far from the origin this swamps the true separation entirely — differences
 collapse to exactly equal, or to negative values that need clamping.
 
-mlxlearn applies three mitigations, in this order:
+GPU searches with at most 32 features and 16 neighbors use direct squared
+differences. Large batches with at most eight neighbors can first scan an
+additional half-storage copy of the training data. Screening arithmetic remains
+float32, and the original float32 training data remains owned by the index.
+Measured quantization errors produce conservative distance lower bounds; packed
+keys and omitted-candidate bounds permit shorter local lists. Retained candidates
+use original-coordinate compensated accumulation. A strict bound comparison
+certifies the selected neighbors; uncertain queries run the full original scan.
+The [compact-search proof](knn-compact-certificate.md) covers rounding, ties,
+underflow, overflow and the omitted-candidate bounds.
 
-1. **Translation.** Distances are translation-invariant, so the training mean is subtracted
-   from both the training and the query matrices at fit time. This is exact mathematics, not
-   an approximation, and it moves ‖·‖² from "distance from the origin squared" down to
-   "variance scale", which is where the identity is well behaved. This alone removes the
-   common failure mode — data with a large constant offset.
-2. **Over-selection.** Each tile contributes `k + margin` candidates rather than exactly `k`,
-   so a candidate mis-ranked by residual Gram noise is still *retained* for the refinement
-   step to rank correctly.
-3. **Refinement.** The surviving candidates' distances are recomputed directly as
-   `Σ(t − q)²`. Subtracting nearby float32 values is exact or nearly so, so the refined
-   values are what get ranked and reported.
+Other small searches scan every reference with compensated arithmetic. GPU
+selection compares conservative rounding intervals first, then uses guarded
+double-single arithmetic and exact integer comparison on original float32
+coordinate bits for unresolved pairs. Native fit preserves these bits with an
+owned integer-view copy, including subnormal coordinates.
+Only truly equal original-coordinate distances use training-index order.
+Reported squared distances remain float32; the public interface takes their
+square roots in float64. Returned values that round equal therefore need not
+appear in index order when their underlying distances differ.
 
-**The residual limitation, stated plainly:** selection still happens on identity-computed
-distances. Two points closer together than the post-centering Gram noise can, in principle,
-be selected in the wrong order beyond the over-selection margin. Refinement fixes ordering
-and reported values; it cannot recover a candidate that was never a candidate. The
-adversarial tests in `tests/parity/test_neighbors_fp32.py` bound this, and the CPU path is
-available for workloads where it matters.
+For other GPU shapes, centered Gram values now serve only as a certified search
+screen. Every reference has a conservative lower bound, including a bound for
+points outside each retained list. Original-coordinate refinement must strictly
+separate the kth winner from every omitted candidate; uncertain rows execute a
+complete direct scan. Self identities are excluded before selection, including
+single-row tile tails. This removes the former unverified `k+4` truncation that
+could discard a copied training row before refinement.
+
+Automatic NumPy KNN uses a separate host search on owned original float32
+coordinates. When built, the optional C++ extension handles narrow CPU workloads
+with at most 32 features, including single-query searches. Its native scan can
+use float32 arithmetic when there are at most 64 features and every coordinate
+is zero or has magnitude in `[2**-32, 2**40]`. These bounds keep nonzero arithmetic
+intermediates normal and prevent overflow. Conservative distance intervals decide
+separated comparisons; a bound on the first eight features can reject a reference
+only when it is already strictly beyond the kth candidate's upper bound.
+Selected distances are recomputed in float64. Other inputs use a direct float64
+scan, with exact conversion of subnormal coordinates. Both scans use Neon on
+arm64 where applicable.
+
+Overlapping intervals trigger exact 640-bit integer keys derived from the
+original float32 bits. Those keys cover squared distances across the entire
+finite float32 range and supported feature count. When a selected candidate has
+an exact key, its squared distance is rounded to float64 from that key before
+the square root; this gives truly equal distances identical output values even
+when separate SIMD reductions would round differently. Only truly equal
+distances use training-index order, including ties at the kth boundary. For
+suitable small batches with unequal feature ranges, an owned cached permutation
+puts the largest-range coordinates first for the partial bound. The same column
+permutation is applied to queries, without scaling or changing coordinate values
+or the metric. The extension is compiled ahead of time, never during fit or query.
+The neighbor estimator API imports this CPU dependency during module setup, so
+native-library loading belongs to import cost rather than the first search.
+Cold-start comparisons must include that setup cost when measuring total startup.
+Automatic fits eligible for host search can leave GPU availability unknown until
+a query actually needs it; those automatic host fits and queries do not initialize MLX.
+
+The portable CPU implementation retains the same ordering contract when the
+extension is unavailable or a workload uses its other certified paths. Direct
+float64 distance tiles avoid float32 Gram cancellation. For suitable batches,
+float64 Gram values propose candidates, with conservative lower bounds covering
+every omitted reference. Candidate distances are recomputed from original
+coordinates, and uncertain rows run a complete direct scan. Overlapping intervals
+use exact integer comparisons. A bounded integer-data path computes the complete
+Gram expression exactly in float32 when every intermediate is provably
+representable; this remains the route for suitable 64-feature integer batches.
+The optional native selector scans those certified Gram values and maintains
+distance/index order directly, avoiding a full candidate sort. Its input checks
+require finite integer coordinates and bounded intermediates; uncertified inputs
+use the other search paths. The portable selector remains available when the
+extension is missing.
+Public host distances use float64 squared sums and square roots; host voting and
+regression reduction also use float64. This improves arithmetic on float32-rounded
+features without recovering precision discarded by input conversion.
+
+The explicit MLX CPU path, including CPU execution through the `mlxlearn_device`
+API, uses bounded direct float64 distance tiles with stable distance/index
+sorting, ranking at float64 precision. Returned `mlxlearn_device` distances keep
+their float32 dtype. Extremely large
+finite coordinates can overflow a reported float32 squared distance even when
+GPU ordering distinguishes the underlying distances. Device classifier voting
+continues to consume squared distances to avoid an extra rounded square root.
+
+See the [ordering and certificate argument](knn-precision-ordering.md) and
+[precision-fix benchmark report](knn-precision-fix-2026-10-30.md).
 
 ### 2.2 Accumulation length
 
@@ -117,8 +184,12 @@ for being better, so those assertions are `j_mlxlearn ≤ j_sklearn · (1 + rtol
 
 ### 3.1 Neighbor ties: mlxlearn is stricter than scikit-learn
 
-mlxlearn orders neighbors by `(distance, training index)` — a *total* order, so the result
-does not depend on block sizes, device, or how many neighbors were requested.
+GPU and automatic NumPy CPU searches order neighbors by original-coordinate
+squared distance and then training index, resolving ambiguous comparisons
+exactly. The explicit MLX CPU path uses direct float64 distance and stable index
+order. Rounded output distances alone do not identify true ties. The independent
+precision tests compare underlying distances, including membership at the kth
+boundary.
 
 scikit-learn's brute-force path partitions and then sorts the candidates with a
 non-stable sort, so it has **no defined order among exactly equal distances**. Measured on
@@ -126,12 +197,17 @@ non-stable sort, so it has **no defined order among exactly equal distances**. M
 every row, distances agreed exactly (`max |Δ| = 0`), and 26 of 1400 cells differed — every
 one of them a swap between two neighbors at an identical distance.
 
-So the parity assertion is: **sets and distances are exact; index order is exact wherever
-distances are strictly separated.** Asserting elementwise index equality would demand that
-mlxlearn reproduce an ordering scikit-learn does not itself guarantee across releases.
+For that measured case, sets and distances agree and differences are confined
+to ordering within ties. More generally, ties crossing the kth boundary can
+also change which points sklearn selects. mlxlearn's precision checks require
+canonical training-index order against an independent exact reference; sklearn
+comparisons separately report valid alternate tie membership and numerical
+failures rather than treating every index mismatch as a search error.
 
-Downstream this is invisible: predictions and probabilities aggregate over the neighbor
-*set*, so they are unaffected, and the parity tests assert them elementwise.
+Reordering the same selected set preserves its mathematical vote. Choosing
+different tied points at the kth boundary can change predictions and
+probabilities when their targets differ; agreement with sklearn is not
+guaranteed in that case.
 
 ### 3.2 SVC: the dual is flat, so compare the primal
 
@@ -249,6 +325,6 @@ is to keep it that way.
   assumed.
 - **Loosen a tolerance to make a test pass.** Tolerances come from this document. A failure
   at these tolerances is a bug in mlxlearn.
-- **Offer a float64 GPU path.** MLX does not have one. Requesting float64 accuracy means
-  requesting scikit-learn, and `patch_sklearn()` users get it by keeping the problem below
-  the crossover or setting `device="cpu"`.
+- **Offer a float64 GPU path.** MLX does not have one. To preserve original float64
+  feature coordinates, use stock scikit-learn. Automatic KNN host search refines
+  float32-rounded features; `device="cpu"` also retains the float32 input contract.

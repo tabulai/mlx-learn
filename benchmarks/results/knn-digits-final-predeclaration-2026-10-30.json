@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "prefix": "knn-digits-final-2026-10-30",
+  "status": "declared_before_candidate_gpu_controls_and_full_panels",
+  "saved_at_utc": "2026-10-31T01:09:25Z",
+  "timing_scope_note": "The acceptance criteria were discussed before candidate GPU-control and final full-panel evidence was read. Baseline stage profiling or native ablation measurements may already have occurred while this file was prepared; this declaration does not claim to precede every candidate measurement.",
+  "objective": "Remove the remaining Digits legacy GPU-control slowdown through a causal implementation improvement, while preserving startup, first-query, Gaussian, clustered, offset, unequal-scale and precision behavior.",
+  "reason": "The preceding final legacy control retained a Digits seed252 distance-weighted regression miss: current 0.420250 ms and identical A/A 0.411708 ms versus historical GPU 0.405208 ms. Historical-GPU/current ratios were 0.96421 by ratio of medians and 0.97936 by median paired ratio; A/A ratios were 0.98421 and 0.99768. A favorable near-parity rerun alone is not evidence of a causal fix.",
+  "baseline_roles": {
+    "previous_auto_source": "benchmarks/reference/knn-startup-final2-2026-10-30.zip",
+    "previous_auto_runtime": "benchmarks/reference/knn-startup-final2-2026-10-30-runtime.zip",
+    "previous_auto_broad": "benchmarks/results/knn-startup-final2-2026-10-30-broad.json",
+    "previous_gpu_source": "benchmarks/reference/knn-small-final-2026-10-30.zip",
+    "previous_gpu_broad": "benchmarks/results/knn-small-final-2026-10-30-broad.json"
+  },
+  "correctness_policy": "Use exactly the existing serialized float32 inputs, canonical exact neighbor ordering, distance and prediction oracles, and tolerances. Every cold, warmup, probe, retained first query and retained second query is audited. Numerical failures never remove valid timing observations or denominators. Current automatic, A/A and forced-GPU workers must pass all strict audits; sklearn differences remain visible under the existing policy.",
+  "digits_acceptance": {
+    "families": ["real_digits_raw_k5"],
+    "seeds": [151, 251, 252],
+    "operations": ["fit_query", "kneighbors", "indices", "predict_uniform", "proba_uniform", "regress_uniform", "predict_distance", "proba_distance", "regress_distance"],
+    "protocols": ["balanced_control", "legacy_control"],
+    "comparators": ["current_gpu", "previous_gpu"],
+    "replicas": ["current", "current_b"],
+    "statistics": ["ratio_of_medians", "median_paired_ratio"],
+    "ratio_definition": "Comparator milliseconds / automatic-replica milliseconds",
+    "minimum_ratio_for_every_cell": 1.0,
+    "required_comparisons": 432,
+    "decision": "All 27 Digits cells must meet the threshold against both GPU controls, in both replicas and both statistics, under both balanced and legacy order. Any miss remains an unresolved cell and triggers further implementation work rather than selection of the better run.",
+    "development_margin": {
+      "operation": "regress_distance",
+      "minimum_ratio_target": 1.1,
+      "required_comparisons": 48,
+      "decision": "Target at least 1.10x on distance-weighted regression for all three seeds under the same controls, replicas, statistics and protocols. Report the achieved margin explicitly; passing near parity does not establish this margin target. Retain causal stage-profile evidence separately from public-API acceptance measurements."
+    }
+  },
+  "preservation_policy": "Run all six unchanged panels. Report every below-1 ratio versus the immediate prior automatic implementation and both GPU controls. A runtime slowdown greater than 5% means comparator/current ratio below 1/1.05; show whether it occurs in both statistics and both replicas. Retain smaller and inconsistent misses too. Preserve all first-query and startup phase timings, including import/setup and process-to-result costs. Never infer universal 2x speed or zero regression from aggregate wins.",
+  "execution_policy": "All timed calls and panels are serial. Freeze current source, native runtime and harnesses before launching. No CPU/GPU profiling, tests, builds or other benchmark panels run concurrently. Run the panels in declared order. Stop on a nonzero exit; do not overwrite, silently retry, trim rounds, choose windows or replace failed evidence. Any necessary rerun uses a new artifact prefix and preserves prior measurements.",
+  "panels": [
+    {"name": "cold", "cases": 18, "repeats": 5, "workers": 5, "launches": 450, "inventory_reference": "benchmarks/results/knn-startup-final2-2026-10-30-cold.json"},
+    {"name": "broad", "cases": 72, "headline_operations": 9, "recorded_operations_including_fit": 10, "repeats": 15, "warmup_requests": 5, "workers": 4, "inventory_reference": "benchmarks/results/knn-startup-final2-2026-10-30-broad.json"},
+    {"name": "control", "cases": 48, "operation_cells": 222, "pairs": 31, "warmup_seconds": 0.25, "workers": 5, "order": "balanced", "inventory_reference": "benchmarks/results/knn-startup-final2-2026-10-30-control.json"},
+    {"name": "legacy-control", "cases": 9, "operation_cells": 60, "pairs": 31, "warmup_seconds": 1.0, "workers": 5, "order": "legacy", "inventory_reference": "benchmarks/results/knn-startup-final2-2026-10-30-legacy-control.json"},
+    {"name": "preservation-repeat", "cases": 9, "operation_cells": 18, "pairs": 31, "warmup_seconds": 1.0, "workers": 5, "order": "legacy", "inventory_reference": "benchmarks/results/knn-startup-final2-2026-10-30-preservation-repeat.json"},
+    {"name": "first-query", "cases": 18, "repeats": 30, "workers": 5, "fresh_models": 2700, "audited_queries": 5400, "order": "balanced", "inventory_reference": "benchmarks/results/knn-startup-final2-2026-10-30-first-query.json"}
+  ],
+  "order": "legacy",
+  "pairs": 31,
+  "warmup_seconds": 1.0,
+  "runs_scope": "The two legacy-order repeat inventories below remain unchanged from the preceding final validation. They are supplemental checks, not replacements for the full balanced control.",
+  "runs": [
+    {
+      "name": "legacy-control",
+      "case_count": 9,
+      "operation_cells": 60,
+      "case_names": [
+        "real_digits_raw_k5_seed151", "real_digits_raw_k5_seed251", "real_digits_raw_k5_seed252",
+        "real_breast_cancer_raw_k5_seed151", "real_breast_cancer_raw_k5_seed251", "real_breast_cancer_raw_k5_seed252",
+        "distribution_offset_1e4_4096x128_k5_seed151", "distribution_offset_1e4_4096x128_k5_seed251", "distribution_offset_1e4_4096x128_k5_seed252"
+      ]
+    },
+    {
+      "name": "preservation-repeat",
+      "case_count": 9,
+      "operation_cells": 18,
+      "case_names": [
+        "distribution_gaussian_4096x128_k5_seed151", "distribution_gaussian_4096x128_k5_seed251", "distribution_gaussian_4096x128_k5_seed252",
+        "distribution_gaussian_4096x128_k5_seed351", "distribution_gaussian_4096x128_k5_seed451", "distribution_gaussian_4096x128_k5_seed552",
+        "distribution_clusters_4096x128_k5_seed151", "distribution_clusters_4096x128_k5_seed251", "distribution_clusters_4096x128_k5_seed252"
+      ]
+    }
+  ]
+}

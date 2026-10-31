@@ -76,6 +76,7 @@ jobs:
           python -m pip install "scikit-learn==${{ matrix.sklearn }}"
           python -m pip install -e ".[test]"
           python -c "from mlxlearn._solvers import _metal_loop; print(_metal_loop.__file__)"
+          python -c "from mlxlearn._kernels import _neighbors_cpu_native; print(_neighbors_cpu_native.__file__)"
       - name: Assert the pinned floor is what we think it is
         run: |
           python - <<'PY'
@@ -111,6 +112,8 @@ jobs:
           tests/unit/test_fused_lbfgs.py
       - name: Test
         run: python -m pytest -q --durations=25
+      - name: Benchmark harness regressions
+        run: python -m pytest -q benchmarks/test_knn_*.py
       - name: Locked two-liner runs verbatim
         run: |
           python - <<'PY'
@@ -129,17 +132,20 @@ jobs:
       - run: python -m pip install --upgrade pip build twine wheel "setuptools>=77"
       - run: python -m build
       - run: python -m twine check --strict dist/*
-      - name: Wheel includes the stable-ABI Metal extension
+      - name: Wheel has the CPython tag and both native extensions
         run: |
           python - <<'PY'
-          import pathlib, zipfile
+          import pathlib, sys, sysconfig, zipfile
           wheels = list(pathlib.Path("dist").glob("*.whl"))
           assert len(wheels) == 1, wheels
           name = wheels[0].name
-          assert "-cp310-abi3-macosx" in name, f"expected an Apple stable-ABI wheel, got {name}"
+          tag = f"cp{sys.version_info.major}{sys.version_info.minor}"
+          assert f"-{tag}-{tag}-macosx" in name, f"expected a {tag} Apple wheel, got {name}"
           assert name.endswith("_arm64.whl"), f"expected an Apple silicon wheel, got {name}"
           with zipfile.ZipFile(wheels[0]) as wheel:
               assert any(n.endswith("/_metal_loop.abi3.so") for n in wheel.namelist())
+              cpu = "mlxlearn/_kernels/_neighbors_cpu_native" + sysconfig.get_config_var("EXT_SUFFIX")
+              assert cpu in wheel.namelist(), cpu
           print(name)
           PY
       - name: Installs clean from the wheel
@@ -149,29 +155,49 @@ jobs:
           /tmp/wheeltest/bin/pip install dist/*.whl
           /tmp/wheeltest/bin/python -c "import mlxlearn; print(mlxlearn.__version__); mlxlearn.patch_sklearn(); mlxlearn.unpatch_sklearn()"
           /tmp/wheeltest/bin/python -c "from mlxlearn._solvers import _metal_loop; print(_metal_loop.__file__)"
+          /tmp/wheeltest/bin/python -c "from mlxlearn._kernels import _neighbors_cpu_native; print(_neighbors_cpu_native.__file__)"
       - name: Rebuild the wheel from the source distribution
         run: |
           python -m pip wheel --no-deps --no-build-isolation --wheel-dir /tmp/sdist-wheel dist/*.tar.gz
           python - <<'PY'
-          import pathlib, tarfile, zipfile
+          import pathlib, sys, sysconfig, tarfile, zipfile
           archives = list(pathlib.Path("dist").glob("*.tar.gz"))
           assert len(archives) == 1, archives
           with tarfile.open(archives[0]) as archive:
               assert any(n.endswith("/src/mlxlearn/_solvers/_metal_loop.mm") for n in archive.getnames())
+              assert any(n.endswith("/src/mlxlearn/_kernels/_neighbors_cpu_native.cpp") for n in archive.getnames())
           wheels = list(pathlib.Path("/tmp/sdist-wheel").glob("*.whl"))
           assert len(wheels) == 1 and wheels[0].name.endswith("_arm64.whl"), wheels
+          tag = f"cp{sys.version_info.major}{sys.version_info.minor}"
+          assert f"-{tag}-{tag}-macosx" in wheels[0].name, wheels[0].name
           with zipfile.ZipFile(wheels[0]) as wheel:
               assert any(n.endswith("/_metal_loop.abi3.so") for n in wheel.namelist())
+              cpu = "mlxlearn/_kernels/_neighbors_cpu_native" + sysconfig.get_config_var("EXT_SUFFIX")
+              assert cpu in wheel.namelist(), cpu
           PY
       - name: Select Python 3.10 for stable ABI check
         uses: actions/setup-python@v5
         with:
           python-version: "3.10"
-      - name: Import the 3.13-built wheel on Python 3.10
+      - name: Import the 3.13-built Metal abi3 extension on Python 3.10
         run: |
           python -m venv /tmp/wheeltest310
-          /tmp/wheeltest310/bin/pip install dist/*.whl
-          /tmp/wheeltest310/bin/python -c "from mlxlearn._solvers import _metal_loop; print(_metal_loop.__file__)"
+          /tmp/wheeltest310/bin/python - <<'PY'
+          import importlib.util, pathlib, tempfile, zipfile
+          # Only Metal has a stable ABI. The wheel also contains a CPython-minor
+          # CPU extension, so installing the complete 3.13 wheel here is invalid.
+          wheels = list(pathlib.Path("dist").glob("*.whl"))
+          assert len(wheels) == 1, wheels
+          with tempfile.TemporaryDirectory() as temporary:
+              with zipfile.ZipFile(wheels[0]) as wheel:
+                  members = [n for n in wheel.namelist() if n.endswith("/_metal_loop.abi3.so")]
+                  assert len(members) == 1, members
+                  extension = pathlib.Path(wheel.extract(members[0], temporary))
+              spec = importlib.util.spec_from_file_location("_metal_loop", extension)
+              module = importlib.util.module_from_spec(spec)
+              spec.loader.exec_module(module)
+              print(module.__file__)
+          PY
       - uses: actions/upload-artifact@v4
         with:
           name: dist
