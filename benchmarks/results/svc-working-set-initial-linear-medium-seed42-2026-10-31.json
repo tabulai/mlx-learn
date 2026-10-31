@@ -1,0 +1,1322 @@
+{
+  "schema_version": 1,
+  "seed": 42,
+  "repeats": 5,
+  "harness_sha256": "152dd3d01f669bce2b35128a70e8f4c1e867098d606c066a0fb34bce4f524028",
+  "baseline_manifest": {
+    "description": "Complete source snapshot of SVC after first native optimization, before working-set, shrinking and persistent inference changes.",
+    "git_commit": "7e2bcf90adaa60a86b4cb6c69c1fc178400b6352",
+    "files": {
+      "LICENSE": "b65f540b94c1ef56c09ce714ee401a1777b026f217c128ea479053fe12a9abd5",
+      "MANIFEST.in": "6165384c31c5f065e5a39394e9e1267f2c1de020d4ea8dd05ce577a1b083ed75",
+      "README.md": "a1d0329efbe7abab5d3ec7ee2dbbe9965bd0aae29637c6d5745c8b7f0e81f4d5",
+      "THIRD_PARTY_NOTICES.md": "b8cd1a3246bfa4489f689df7c728e3aa0e9b02599aba3c4269666a5cf6f1539d",
+      "pyproject.toml": "ac2f048b770b20db4b4824d02b2186568ec8d723126b7a0f0cb678f571e02f4c",
+      "setup.py": "fb8b04dd4af276194f8b6be4d3c094b92a5df1c9de126c021b5d8d3f56919a20",
+      "src/mlxlearn/__init__.py": "a382f5fb1a7022d68d4d0bd6f775b10348132d1cc98f5a1a8ec6a2676895d441",
+      "src/mlxlearn/_common/__init__.py": "736aa2ce3d7d1f74557c76a9b5e5356d15a05e1f02a86204f2508ea6c4767646",
+      "src/mlxlearn/_common/arrays.py": "981cc12835e2855a75c5331e54f1aabefa2ef92e7525078d789acf6488da46fc",
+      "src/mlxlearn/_common/base.py": "199bca892fb71ebda1ec38ad69c7be51724d39ff903ca6eb3c11ca1584a136bb",
+      "src/mlxlearn/_common/config.py": "924ea8f158598a2f4418e64a036a1bf0345caf047e5353364251f66c3a0ec8e7",
+      "src/mlxlearn/_common/device.py": "f8a3e2eac9ffe64d99bded696ffe7e42d14059964fc0c19104c7675e04e2ce74",
+      "src/mlxlearn/_common/diagnostics.py": "0e6676eef716be71d94c6b1e71ac8d00dee12ff4aac85ff76341cefaee5fe3d9",
+      "src/mlxlearn/_common/preparation.py": "1dc679dec3d693165a76230f5327fe9341872fec1acfb7552bb11db8e280958f",
+      "src/mlxlearn/_common/rng.py": "5a4bba4f2a03108c31467692310986107a1178928bd5bab20d258037ff10afef",
+      "src/mlxlearn/_common/validation.py": "997df987a2b857b2bc5b72c12f5dcd62dc3569e80a90bdf3ae263dfac042ea3a",
+      "src/mlxlearn/_kernels/__init__.py": "0a2227680a6afb7d09a596f0aaab4ef6671fe9e58169739d1cc3a9e32c3b062e",
+      "src/mlxlearn/_kernels/_neighbors_cpu_native.cpp": "d3b116cd2c95c8d2ad05aa7de4e3b5a82761693b7577aa6f7afbfe4d0d5b5bce",
+      "src/mlxlearn/_kernels/_svc_cpu_native.cpp": "6e636f125d3acfce4114293d545b0f81fb1f6eae49deafa4ca95c4e8e1e59d3c",
+      "src/mlxlearn/_kernels/distance.py": "2857c9343031e28de213406b6cebac96e3fa13d86a55dc96a272057bd071c4d5",
+      "src/mlxlearn/_kernels/kernels.py": "0815377eae947c3b19a5273d6b0d535670f9dd86312881084b4761e82cada287",
+      "src/mlxlearn/_kernels/logistic_input.py": "5f0180ba62076f9899fafca359f67e04f50c796febd2111ea3b3610e6f758efb",
+      "src/mlxlearn/_kernels/neighbors_cpu.py": "3e4955ebae4ae0c64ee8c81d7fcacd91dea4fd1f60e8dfbf65207a53c3854b27",
+      "src/mlxlearn/_kernels/svc_cpu.py": "1736b4086b680cd3f438138d82a901fadb2564e4dd15ea17bdd06629d2eae044",
+      "src/mlxlearn/_kernels/svc_fused.py": "635c529a2a05bfc399b99b9a70f1b8b37b29ca5fd803f113a6b0944c79640435",
+      "src/mlxlearn/_solvers/__init__.py": "974fa44cf7975d4fa63d6a9d304219dde43bd86ebcb1c151c7630b0a1c4fdacb",
+      "src/mlxlearn/_solvers/_metal_cg.h": "b1c6724e7f53643b2160a27662ff5d9f9ab73acffadb65bad8047c670cd088af",
+      "src/mlxlearn/_solvers/_metal_loop.mm": "ed5b75b074d9f0151033d7ff9fb502aebac2a35ab5e339405fdfcd525a86302e",
+      "src/mlxlearn/_solvers/_smo_native.cpp": "7e23935449724e564c23fe7f2e4870d8cf3c581d3adbc7b700d396c28735fc60",
+      "src/mlxlearn/_solvers/fused_lbfgs.py": "d590d9f7abbca24a69198816575680dff1ed32c5ac6ce7789eb36f5ba3b27c3e",
+      "src/mlxlearn/_solvers/lbfgs.py": "f5ae7d633ce7d714143c3243d070365729dda302aff499a0ff027f6b2e496376",
+      "src/mlxlearn/_solvers/logistic.py": "7924cf917feeca78af93548e5a20d28a00e2a5895ca0446f4da2112cdaa9de0b",
+      "src/mlxlearn/_solvers/native_command.py": "51c7f6336b4f13f027e696eb044502a149cbf3cbae1e52744430ccecf325c23b",
+      "src/mlxlearn/_solvers/native_geometry.py": "8ac947730be7a72e250816d5203259919a227ffcdb211bf16793f027161b3578",
+      "src/mlxlearn/_solvers/native_logistic.py": "16973621730edb6b4bf25311d876a413f64b69e506fe19b5cb56226536ffc577",
+      "src/mlxlearn/_solvers/native_logistic_fused.py": "4b1642ed93acded47d8ba4e42cc3f4349ac635abce9f1123d8e21ff8a1408016",
+      "src/mlxlearn/_solvers/native_smo.py": "1b671babda38c4d1de8e70e18e5f7a469c6abc66e19d681800c3cd40a00271e5",
+      "src/mlxlearn/_solvers/smo.py": "70a9f68a2050c8e03438a28436ada58c039096e204de011da3c47a0b7ff0e236",
+      "src/mlxlearn/exceptions.py": "5b9b4efd548f90156d3d10d406aec74d1d6ed4ebaa4859d88d6589f1ba241e2a",
+      "src/mlxlearn/linear_model/__init__.py": "ea1456645a4d5962e1616a0234a012e2e331dd3750365644fa6cd4d21aaa1293",
+      "src/mlxlearn/linear_model/_logistic.py": "84f00ad847c23899076d6194949511ad85a485797b0547eb18a18f85f4560861",
+      "src/mlxlearn/neighbors/__init__.py": "2f18f3864ba4ea0229a4c2317e0612da2fa458daef7d28a7a88f3e382fb951b4",
+      "src/mlxlearn/neighbors/_base.py": "cb23565992c76e508c6386a517ff27ed64889fa59997c4ddb0cbd531bfbfcce7",
+      "src/mlxlearn/neighbors/_classification.py": "e297b9d39cda405edd072f418bf89ac9540eacda8389df10a59c1093ac6d6176",
+      "src/mlxlearn/neighbors/_regression.py": "7c35872659898a6f44cafe2d8e0e5bdc25da5654adccc77f502a526e4d7dd6eb",
+      "src/mlxlearn/neighbors/_unsupervised.py": "bd89ac3b589561ca4eef521df813d3b4c7ba00c7400f3a1f380d6b7a8abdde60",
+      "src/mlxlearn/patching/__init__.py": "46daa0d9c3d8a26b400907e3421a55de239c7032ef7537fd1b955af85f00d551",
+      "src/mlxlearn/patching/_estimators.py": "f96f417b3cd5f630f84f499fe8a1317a008c4951b241afc3928516e5997dc0a7",
+      "src/mlxlearn/patching/_patch.py": "889eadd8bc80dfdae3017096446b8e766370d200a672e97a067c2652fe245970",
+      "src/mlxlearn/patching/_registry.py": "bd02f5436f8b62d28f3a0eca1aca7bc9e99eed31e9156eec844805695dde5e16",
+      "src/mlxlearn/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "src/mlxlearn/svm/__init__.py": "3fec63550675c0482c6b9da28e0dcc5fbe7b9c92662bce1e37f2edca4f5ebd66",
+      "src/mlxlearn/svm/_classes.py": "aea0a5b9c718720720df5200ed7c6a01f744c4cd6fb06dee2ac8f96152c11482",
+      "src/mlxlearn_device/__init__.py": "a61b0e97913febf3d100b02ae26658a8ff5cee44844ae936970a91e728feb0ef",
+      "src/mlxlearn_device/_compensated.py": "f3494b103de3bf9e8549412d3b18a43287fa5c03c08502138e18b4537ad5d15d",
+      "src/mlxlearn_device/_duality.py": "1694aad68fe565d695f6c3795362c9e3bd02c22d8b6a08c18c6c8231786aa04e",
+      "src/mlxlearn_device/_hessian_vector.py": "75daa73c833a26d6722b1335e03aa2c7eec7cce9e7dfff8657c0df4c4fceeadf",
+      "src/mlxlearn_device/_logistic.py": "3c5e0f9ec2aa14fafa774ea72aaf27ae2909958981431ee913a08d99de304f08",
+      "src/mlxlearn_device/_native.py": "a49425c647dab43cc31ea3d29590ee791cfa6b2138d155c2c15b924b4e67869d",
+      "src/mlxlearn_device/_native_cg.py": "b32fa9508f634c909ec5c3e9a17262466014c74602c10261704adbf7279ada9b",
+      "src/mlxlearn_device/_neighbors.py": "290771cfacb6c9852a635f777fbc1bfe59d20ca46a78691e6db0f90ab54943df",
+      "src/mlxlearn_device/_neighbors_compact.py": "c9428bf5a8c6c398db26553b12a6094b1205677851c39180c09081e95d9be99f",
+      "src/mlxlearn_device/_neighbors_fused.py": "3b88f12ab13ec02419327f32a69c3d3794c0d54787cdbea656501398d49c3d61",
+      "src/mlxlearn_device/_neighbors_general.py": "6b866da270cf99952d44029a33be6e79305566b74b5e85890aa23c01f952726d",
+      "src/mlxlearn_device/_neighbors_integer.py": "2d750d458d673f02c9768aaedfcbb48037facf18d3d9d364639871a072ac357f",
+      "src/mlxlearn_device/_neighbors_paired.py": "927f8470b50ae98eebfe5e533bf215aad385726dc20ac4c6d33329f4f4b9ca56",
+      "src/mlxlearn_device/_neighbors_precision.py": "9656a276177eb249da07382854e5cfa7b972cbb609899190a4b91032d77d7cea",
+      "src/mlxlearn_device/_neighbors_registers.py": "62df395f3b173b8ab4e0da3ac63b8e904c31b04813bb9c1662d30d49d8a3c92e",
+      "src/mlxlearn_device/_neighbors_screen.py": "6c2985c44ce762b581276a2c2c80a457d6af49933b6382f8ef574b5f44eef37a",
+      "src/mlxlearn_device/_neighbors_shortlist.py": "538116f27b10cf4d995027546a15918bf0aa64ffa68b44474fc16192bdb4ca31",
+      "src/mlxlearn_device/_neighbors_small.py": "98298c008669a7da2cb9cbd7da4c223af5c12af44de879f55e4ad2e24e04f182",
+      "src/mlxlearn_device/_neighbors_votes.py": "e34b08e5d772d39c260f26daa31399b6d88f9d13f4a31ef531a40cc76e99c59f",
+      "src/mlxlearn_device/_newton.py": "348cf32bf5beadcdd3c8f56bca5db699f9e2c6afd3aeba02f018effc1371ce7e",
+      "src/mlxlearn_device/hessian_sketch.py": "576f6bb49aa4520bbf318ee248cd3f32aca873e799c6e216a098155d8b2ed6b0"
+    },
+    "archive_sha256": "3e3180825fb0648b1bc74f2b1e7061e59848a72c11e406c347a88d58cfc4b95b"
+  },
+  "baseline_build": {
+    "identity": {
+      "archive_sha256": "3e3180825fb0648b1bc74f2b1e7061e59848a72c11e406c347a88d58cfc4b95b",
+      "python_executable": "/Users/tunguz/Programming/mlxlearn/.venv/bin/python",
+      "python": "3.14.2 (main, Dec  9 2025, 19:29:30) [Clang 21.1.4 ]",
+      "soabi": "cpython-314-darwin",
+      "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+      "compiler_environment": {
+        "CC": null,
+        "CXX": null,
+        "CFLAGS": null,
+        "CXXFLAGS": null,
+        "LDFLAGS": "-L/opt/homebrew/opt/libomp/lib",
+        "ARCHFLAGS": null,
+        "MACOSX_DEPLOYMENT_TARGET": null
+      }
+    },
+    "command": [
+      "/Users/tunguz/Programming/mlxlearn/.venv/bin/python",
+      "setup.py",
+      "build_ext",
+      "--inplace",
+      "--force"
+    ],
+    "extension_sha256": {
+      "src/mlxlearn/_kernels/_neighbors_cpu_native.cpython-314-darwin.so": "a42b2598a200afa562d3e31286abd170a63e728fdf0b7aef17d198e34e62197a",
+      "src/mlxlearn/_kernels/_svc_cpu_native.cpython-314-darwin.so": "6d2b8e47d59a40b3b77e93747304f620e55f1aecff67991b89e4243348a9009a",
+      "src/mlxlearn/_solvers/_metal_loop.abi3.so": "2c4f6aed6639a79cb4d17c2e524ebd01f8ac55350a72f90df4cfe89a8e4de8bf",
+      "src/mlxlearn/_solvers/_smo_native.cpython-314-darwin.so": "25b3e5d6f0a7a79425154d757e6c8d4967e256c6877d327db0e6247344a1e429"
+    },
+    "build_log_sha256": "5ee032f48d7961e729a16d5cadd5f50537ace927eba6aaf1dcae21541950b1a6",
+    "reused": true,
+    "directory": "/private/tmp/mlxlearn-svc-pre-working-set-2026-10-31"
+  },
+  "git_commit": "7e2bcf90adaa60a86b4cb6c69c1fc178400b6352",
+  "current_source_sha256": {
+    "MANIFEST.in": "4ddc9e699b7804fd60d43d248d23cf391c2411f2e967fb4f812d811676dec4ef",
+    "pyproject.toml": "ac2f048b770b20db4b4824d02b2186568ec8d723126b7a0f0cb678f571e02f4c",
+    "setup.py": "440e3b5f4653e1de4d90222f4a4659b3096c94c61563c96aa6fef863e78af4ff",
+    "src/mlxlearn/__init__.py": "a382f5fb1a7022d68d4d0bd6f775b10348132d1cc98f5a1a8ec6a2676895d441",
+    "src/mlxlearn/_common/__init__.py": "736aa2ce3d7d1f74557c76a9b5e5356d15a05e1f02a86204f2508ea6c4767646",
+    "src/mlxlearn/_common/arrays.py": "981cc12835e2855a75c5331e54f1aabefa2ef92e7525078d789acf6488da46fc",
+    "src/mlxlearn/_common/base.py": "199bca892fb71ebda1ec38ad69c7be51724d39ff903ca6eb3c11ca1584a136bb",
+    "src/mlxlearn/_common/config.py": "924ea8f158598a2f4418e64a036a1bf0345caf047e5353364251f66c3a0ec8e7",
+    "src/mlxlearn/_common/device.py": "f8a3e2eac9ffe64d99bded696ffe7e42d14059964fc0c19104c7675e04e2ce74",
+    "src/mlxlearn/_common/diagnostics.py": "0e6676eef716be71d94c6b1e71ac8d00dee12ff4aac85ff76341cefaee5fe3d9",
+    "src/mlxlearn/_common/preparation.py": "1dc679dec3d693165a76230f5327fe9341872fec1acfb7552bb11db8e280958f",
+    "src/mlxlearn/_common/rng.py": "5a4bba4f2a03108c31467692310986107a1178928bd5bab20d258037ff10afef",
+    "src/mlxlearn/_common/validation.py": "997df987a2b857b2bc5b72c12f5dcd62dc3569e80a90bdf3ae263dfac042ea3a",
+    "src/mlxlearn/_kernels/__init__.py": "0a2227680a6afb7d09a596f0aaab4ef6671fe9e58169739d1cc3a9e32c3b062e",
+    "src/mlxlearn/_kernels/_neighbors_cpu_native.cpp": "d3b116cd2c95c8d2ad05aa7de4e3b5a82761693b7577aa6f7afbfe4d0d5b5bce",
+    "src/mlxlearn/_kernels/_svc_cpu_native.cpp": "ad2bfe13d17bce3ee42377d7ab905181a9d9cf564980bfab222fcbfd75bb4493",
+    "src/mlxlearn/_kernels/distance.py": "2857c9343031e28de213406b6cebac96e3fa13d86a55dc96a272057bd071c4d5",
+    "src/mlxlearn/_kernels/kernels.py": "eea5010cb0b160346fa3c75a724a3e23dc82ea3ed2fe29877f49a7a0c68d657b",
+    "src/mlxlearn/_kernels/logistic_input.py": "5f0180ba62076f9899fafca359f67e04f50c796febd2111ea3b3610e6f758efb",
+    "src/mlxlearn/_kernels/neighbors_cpu.py": "3e4955ebae4ae0c64ee8c81d7fcacd91dea4fd1f60e8dfbf65207a53c3854b27",
+    "src/mlxlearn/_kernels/svc_cpu.py": "c7679b03ba486083b35916ba9dc090dacb9f97d140225c4f1d4668d013c44f29",
+    "src/mlxlearn/_kernels/svc_fused.py": "e0ca39fcbd512d227d6009df4cf1a4ebe6dec91bf933b470147d024f6a978ff1",
+    "src/mlxlearn/_kernels/svc_predict.py": "db32cd3981149af94525035afea31a23afeef679ed6ffeec4139aafdb4d31ab7",
+    "src/mlxlearn/_solvers/__init__.py": "974fa44cf7975d4fa63d6a9d304219dde43bd86ebcb1c151c7630b0a1c4fdacb",
+    "src/mlxlearn/_solvers/_metal_cg.h": "b1c6724e7f53643b2160a27662ff5d9f9ab73acffadb65bad8047c670cd088af",
+    "src/mlxlearn/_solvers/_metal_loop.mm": "ed5b75b074d9f0151033d7ff9fb502aebac2a35ab5e339405fdfcd525a86302e",
+    "src/mlxlearn/_solvers/_smo_block_native.cpp": "db7403ece2716620233c4905a150151d00e53d8531fe7b797367b4976b9efa09",
+    "src/mlxlearn/_solvers/_smo_native.cpp": "75560c70ff18ea0393652de583858dfb9251053d56cbaab43f4d6f81388f4596",
+    "src/mlxlearn/_solvers/block_smo.py": "e7880c29f6634ee7af873bc76636d161de59b3ffe1376c6e3d5500b479e526ed",
+    "src/mlxlearn/_solvers/fused_lbfgs.py": "d590d9f7abbca24a69198816575680dff1ed32c5ac6ce7789eb36f5ba3b27c3e",
+    "src/mlxlearn/_solvers/lbfgs.py": "f5ae7d633ce7d714143c3243d070365729dda302aff499a0ff027f6b2e496376",
+    "src/mlxlearn/_solvers/logistic.py": "7924cf917feeca78af93548e5a20d28a00e2a5895ca0446f4da2112cdaa9de0b",
+    "src/mlxlearn/_solvers/native_command.py": "51c7f6336b4f13f027e696eb044502a149cbf3cbae1e52744430ccecf325c23b",
+    "src/mlxlearn/_solvers/native_geometry.py": "8ac947730be7a72e250816d5203259919a227ffcdb211bf16793f027161b3578",
+    "src/mlxlearn/_solvers/native_logistic.py": "16973621730edb6b4bf25311d876a413f64b69e506fe19b5cb56226536ffc577",
+    "src/mlxlearn/_solvers/native_logistic_fused.py": "4b1642ed93acded47d8ba4e42cc3f4349ac635abce9f1123d8e21ff8a1408016",
+    "src/mlxlearn/_solvers/native_smo.py": "9aa909514a8456cc105974b4980cd6835b396581424d035cdebbb76c2c367438",
+    "src/mlxlearn/_solvers/smo.py": "e34751a6ba5ff5eddf68d8efdec4391ebae9392e1dbb15d20196f91572ec14f9",
+    "src/mlxlearn/exceptions.py": "5b9b4efd548f90156d3d10d406aec74d1d6ed4ebaa4859d88d6589f1ba241e2a",
+    "src/mlxlearn/linear_model/__init__.py": "ea1456645a4d5962e1616a0234a012e2e331dd3750365644fa6cd4d21aaa1293",
+    "src/mlxlearn/linear_model/_logistic.py": "84f00ad847c23899076d6194949511ad85a485797b0547eb18a18f85f4560861",
+    "src/mlxlearn/neighbors/__init__.py": "2f18f3864ba4ea0229a4c2317e0612da2fa458daef7d28a7a88f3e382fb951b4",
+    "src/mlxlearn/neighbors/_base.py": "cb23565992c76e508c6386a517ff27ed64889fa59997c4ddb0cbd531bfbfcce7",
+    "src/mlxlearn/neighbors/_classification.py": "e297b9d39cda405edd072f418bf89ac9540eacda8389df10a59c1093ac6d6176",
+    "src/mlxlearn/neighbors/_regression.py": "7c35872659898a6f44cafe2d8e0e5bdc25da5654adccc77f502a526e4d7dd6eb",
+    "src/mlxlearn/neighbors/_unsupervised.py": "bd89ac3b589561ca4eef521df813d3b4c7ba00c7400f3a1f380d6b7a8abdde60",
+    "src/mlxlearn/patching/__init__.py": "46daa0d9c3d8a26b400907e3421a55de239c7032ef7537fd1b955af85f00d551",
+    "src/mlxlearn/patching/_estimators.py": "f96f417b3cd5f630f84f499fe8a1317a008c4951b241afc3928516e5997dc0a7",
+    "src/mlxlearn/patching/_patch.py": "889eadd8bc80dfdae3017096446b8e766370d200a672e97a067c2652fe245970",
+    "src/mlxlearn/patching/_registry.py": "bd02f5436f8b62d28f3a0eca1aca7bc9e99eed31e9156eec844805695dde5e16",
+    "src/mlxlearn/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "src/mlxlearn/svm/__init__.py": "3fec63550675c0482c6b9da28e0dcc5fbe7b9c92662bce1e37f2edca4f5ebd66",
+    "src/mlxlearn/svm/_classes.py": "2a30fa106f592bbf2f7fa03bd88c8fe7de87106aeb70521117a3c23752b7b856",
+    "src/mlxlearn_device/__init__.py": "a61b0e97913febf3d100b02ae26658a8ff5cee44844ae936970a91e728feb0ef",
+    "src/mlxlearn_device/_compensated.py": "f3494b103de3bf9e8549412d3b18a43287fa5c03c08502138e18b4537ad5d15d",
+    "src/mlxlearn_device/_duality.py": "1694aad68fe565d695f6c3795362c9e3bd02c22d8b6a08c18c6c8231786aa04e",
+    "src/mlxlearn_device/_hessian_vector.py": "75daa73c833a26d6722b1335e03aa2c7eec7cce9e7dfff8657c0df4c4fceeadf",
+    "src/mlxlearn_device/_logistic.py": "3c5e0f9ec2aa14fafa774ea72aaf27ae2909958981431ee913a08d99de304f08",
+    "src/mlxlearn_device/_native.py": "a49425c647dab43cc31ea3d29590ee791cfa6b2138d155c2c15b924b4e67869d",
+    "src/mlxlearn_device/_native_cg.py": "b32fa9508f634c909ec5c3e9a17262466014c74602c10261704adbf7279ada9b",
+    "src/mlxlearn_device/_neighbors.py": "290771cfacb6c9852a635f777fbc1bfe59d20ca46a78691e6db0f90ab54943df",
+    "src/mlxlearn_device/_neighbors_compact.py": "c9428bf5a8c6c398db26553b12a6094b1205677851c39180c09081e95d9be99f",
+    "src/mlxlearn_device/_neighbors_fused.py": "3b88f12ab13ec02419327f32a69c3d3794c0d54787cdbea656501398d49c3d61",
+    "src/mlxlearn_device/_neighbors_general.py": "6b866da270cf99952d44029a33be6e79305566b74b5e85890aa23c01f952726d",
+    "src/mlxlearn_device/_neighbors_integer.py": "2d750d458d673f02c9768aaedfcbb48037facf18d3d9d364639871a072ac357f",
+    "src/mlxlearn_device/_neighbors_paired.py": "927f8470b50ae98eebfe5e533bf215aad385726dc20ac4c6d33329f4f4b9ca56",
+    "src/mlxlearn_device/_neighbors_precision.py": "9656a276177eb249da07382854e5cfa7b972cbb609899190a4b91032d77d7cea",
+    "src/mlxlearn_device/_neighbors_registers.py": "62df395f3b173b8ab4e0da3ac63b8e904c31b04813bb9c1662d30d49d8a3c92e",
+    "src/mlxlearn_device/_neighbors_screen.py": "6c2985c44ce762b581276a2c2c80a457d6af49933b6382f8ef574b5f44eef37a",
+    "src/mlxlearn_device/_neighbors_shortlist.py": "538116f27b10cf4d995027546a15918bf0aa64ffa68b44474fc16192bdb4ca31",
+    "src/mlxlearn_device/_neighbors_small.py": "98298c008669a7da2cb9cbd7da4c223af5c12af44de879f55e4ad2e24e04f182",
+    "src/mlxlearn_device/_neighbors_votes.py": "e34b08e5d772d39c260f26daa31399b6d88f9d13f4a31ef531a40cc76e99c59f",
+    "src/mlxlearn_device/_newton.py": "348cf32bf5beadcdd3c8f56bca5db699f9e2c6afd3aeba02f018effc1371ce7e",
+    "src/mlxlearn_device/hessian_sketch.py": "576f6bb49aa4520bbf318ee248cd3f32aca873e799c6e216a098155d8b2ed6b0"
+  },
+  "current_extension_sha256": {
+    "src/mlxlearn/_kernels/_neighbors_cpu_native.cpython-313-darwin.so": "5cb92f7ce3d70e8e1803f9d0b81c9753ec8e611f5c02d375c382fccb094d833a",
+    "src/mlxlearn/_kernels/_neighbors_cpu_native.cpython-314-darwin.so": "939f18cf0352627b0a0b810adc37d30638141e7fed2b4db02833f2a00c0662f6",
+    "src/mlxlearn/_kernels/_svc_cpu_native.cpython-314-darwin.so": "ea9cac44f619d1b110617bf96ff9f1bb7f2a826ef463a22847075394293fc822",
+    "src/mlxlearn/_solvers/_metal_loop.abi3.so": "ccc49c990d8dab8772729bfb6e35b3e61228c83f6b7b0e7e3ccac4966126ddfb",
+    "src/mlxlearn/_solvers/_smo_block_native.cpython-314-darwin.so": "a3350231fe0ec31a2c1edd1ae3009b72f0544b07bb8b4a50c013aeaa7543b743",
+    "src/mlxlearn/_solvers/_smo_native.cpython-314-darwin.so": "736af163197e89756503bced2dd1917408edccb18f8a84e6f69f4ad2bef68df1"
+  },
+  "timing_scope": "Separate process per case/variant; imports and fixture generation excluded; startup fresh fit/first predict/repeat predict outside medians; subsequent complete fresh fits with first and repeat 257-row predictions; synchronized MLX; one CPU thread",
+  "cases": [
+    {
+      "name": "linear_medium",
+      "kernel": "linear",
+      "shape": [
+        2500,
+        32
+      ],
+      "classes": 2,
+      "backend": "cpu",
+      "cache_size_mb": 200.0,
+      "query_rows": 257,
+      "decision_function_shape": "ovo",
+      "seed": 42,
+      "fixture_sha256": "3d5ab1d2f7a52863937cb4066fb8a8f667dc8d623262509850099d7861da1626",
+      "first_call": {
+        "current": {
+          "fit_s": 0.14780699997209013,
+          "first_predict_s": 0.0005934169748798013,
+          "repeat_predict_s": 0.00025699997786432505
+        },
+        "previous": {
+          "fit_s": 3.7239635420264676,
+          "first_predict_s": 0.0006213330198079348,
+          "repeat_predict_s": 0.0002858750522136688
+        },
+        "sklearn": {
+          "fit_s": 0.3560537500306964,
+          "first_predict_s": 0.0029212080407887697,
+          "repeat_predict_s": 0.0027745000552386045
+        }
+      },
+      "fit": {
+        "current": {
+          "median_ms": 140.9178749890998,
+          "samples_s": [
+            0.1415532089304179,
+            0.14709058299195021,
+            0.13901654200162739,
+            0.1409178749890998,
+            0.1401488749543205
+          ]
+        },
+        "previous": {
+          "median_ms": 3721.3807919761166,
+          "samples_s": [
+            3.7213807919761166,
+            3.7401004580315202,
+            3.739704416017048,
+            3.700048250029795,
+            3.713370666024275
+          ]
+        },
+        "sklearn": {
+          "median_ms": 352.5225829798728,
+          "samples_s": [
+            0.3544389579910785,
+            0.35439416707959026,
+            0.3525225829798728,
+            0.35082233301363885,
+            0.3515518750064075
+          ]
+        }
+      },
+      "first_predict": {
+        "current": {
+          "median_ms": 0.37637504283338785,
+          "samples_s": [
+            0.00040070805698633194,
+            0.0004428329411894083,
+            0.0003657090710476041,
+            0.00033412501215934753,
+            0.00037637504283338785
+          ]
+        },
+        "previous": {
+          "median_ms": 0.4320000298321247,
+          "samples_s": [
+            0.00041345797944813967,
+            0.0004133750917389989,
+            0.00043629202991724014,
+            0.0004504160024225712,
+            0.0004320000298321247
+          ]
+        },
+        "sklearn": {
+          "median_ms": 2.725500031374395,
+          "samples_s": [
+            0.002763916039839387,
+            0.002725500031374395,
+            0.0026849580463021994,
+            0.0028087920509278774,
+            0.0026533330092206597
+          ]
+        }
+      },
+      "repeat_predict": {
+        "current": {
+          "median_ms": 0.25283300783485174,
+          "samples_s": [
+            0.00027120800223201513,
+            0.00024404202122241259,
+            0.00027537497226148844,
+            0.00025283300783485174,
+            0.00023074995260685682
+          ]
+        },
+        "previous": {
+          "median_ms": 0.28012506663799286,
+          "samples_s": [
+            0.00028012506663799286,
+            0.0002930000191554427,
+            0.0002800410147756338,
+            0.00028008304070681334,
+            0.0002917080419138074
+          ]
+        },
+        "sklearn": {
+          "median_ms": 2.7019999688491225,
+          "samples_s": [
+            0.002749042003415525,
+            0.0027019999688491225,
+            0.0025380420265719295,
+            0.0027199169853702188,
+            0.00260583299677819
+          ]
+        }
+      },
+      "quality": {
+        "current": {
+          "fit_status": 0,
+          "n_iter": [
+            545492
+          ],
+          "n_support": [
+            665,
+            665
+          ],
+          "support_count": 1330,
+          "backend": "cpu",
+          "pair_solver": [
+            "native_working_set"
+          ],
+          "pair_kkt_violation": [
+            0.0009591116118627951
+          ],
+          "accuracy": 0.7354085603112841,
+          "first_repeat_predictions_equal": true,
+          "all_margins_finite": true,
+          "agreement_with_previous": 1.0,
+          "agreement_with_sklearn": 1.0,
+          "max_margin_difference_from_previous": 0.0036011418790595218,
+          "max_margin_difference_from_sklearn": 0.0035405877456298196,
+          "margins_close_to_previous": true,
+          "margins_close_to_sklearn": true
+        },
+        "previous": {
+          "fit_status": 0,
+          "n_iter": [
+            446048
+          ],
+          "n_support": [
+            665,
+            665
+          ],
+          "support_count": 1330,
+          "backend": "cpu",
+          "pair_solver": null,
+          "pair_kkt_violation": [
+            0.0009401552381435585
+          ],
+          "accuracy": 0.7354085603112841,
+          "first_repeat_predictions_equal": true,
+          "all_margins_finite": true,
+          "agreement_with_previous": 1.0,
+          "agreement_with_sklearn": 1.0,
+          "max_margin_difference_from_previous": 0.0,
+          "max_margin_difference_from_sklearn": 0.0024834525922025064,
+          "margins_close_to_previous": true,
+          "margins_close_to_sklearn": true
+        },
+        "sklearn": {
+          "fit_status": 0,
+          "n_iter": [
+            884620
+          ],
+          "n_support": [
+            665,
+            664
+          ],
+          "support_count": 1329,
+          "backend": "sklearn",
+          "pair_solver": null,
+          "pair_kkt_violation": null,
+          "accuracy": 0.7354085603112841,
+          "first_repeat_predictions_equal": true,
+          "all_margins_finite": true,
+          "agreement_with_previous": 1.0,
+          "agreement_with_sklearn": 1.0,
+          "max_margin_difference_from_previous": 0.0024834525922025064,
+          "max_margin_difference_from_sklearn": 0.0,
+          "margins_close_to_previous": true,
+          "margins_close_to_sklearn": true
+        }
+      },
+      "quality_samples_including_first": {
+        "current": [
+          {
+            "fit_status": 0,
+            "n_iter": [
+              545492
+            ],
+            "n_support": [
+              665,
+              665
+            ],
+            "support_count": 1330,
+            "backend": "cpu",
+            "pair_solver": [
+              "native_working_set"
+            ],
+            "pair_kkt_violation": [
+              0.0009591116118627951
+            ],
+            "accuracy": 0.7354085603112841,
+            "first_repeat_predictions_equal": true,
+            "all_margins_finite": true,
+            "agreement_with_previous": 1.0,
+            "agreement_with_sklearn": 1.0,
+            "max_margin_difference_from_previous": 0.0036011418790595218,
+            "max_margin_difference_from_sklearn": 0.0035405877456298196,
+            "margins_close_to_previous": true,
+            "margins_close_to_sklearn": true
+          },
+          {
+            "fit_status": 0,
+            "n_iter": [
+              545492
+            ],
+            "n_support": [
+              665,
+              665
+            ],
+            "support_count": 1330,
+            "backend": "cpu",
+            "pair_solver": [
+              "native_working_set"
+            ],
+            "pair_kkt_violation": [
+              0.0009591116118627951
+            ],
+            "accuracy": 0.7354085603112841,
+            "first_repeat_predictions_equal": true,
+            "all_margins_finite": true,
+            "agreement_with_previous": 1.0,
+            "agreement_with_sklearn": 1.0,
+            "max_margin_difference_from_previous": 0.0036011418790595218,
+            "max_margin_difference_from_sklearn": 0.0035405877456298196,
+            "margins_close_to_previous": true,
+            "margins_close_to_sklearn": true
+          },
+          {
+            "fit_status": 0,
+            "n_iter": [
+              545492
+            ],
+            "n_support": [
+              665,
+              665
+            ],
+            "support_count": 1330,
+            "backend": "cpu",
+            "pair_solver": [
+              "native_working_set"
+            ],
+            "pair_kkt_violation": [
+              0.0009591116118627951
+            ],
+            "accuracy": 0.7354085603112841,
+            "first_repeat_predictions_equal": true,
+            "all_margins_finite": true,
+            "agreement_with_previous": 1.0,
+            "agreement_with_sklearn": 1.0,
+            "max_margin_difference_from_previous": 0.0036011418790595218,
+            "max_margin_difference_from_sklearn": 0.0035405877456298196,
+            "margins_close_to_previous": true,
+            "margins_close_to_sklearn": true
+          },
+          {
+            "fit_status": 0,
+            "n_iter": [
+              545492
+            ],
+            "n_support": [
+              665,
+              665
+            ],
+            "support_count": 1330,
+            "backend": "cpu",
+            "pair_solver": [
+              "native_working_set"
+            ],
+            "pair_kkt_violation": [
+              0.0009591116118627951
+            ],
+            "accuracy": 0.7354085603112841,
+            "first_repeat_predictions_equal": true,
+            "all_margins_finite": true,
+            "agreement_with_previous": 1.0,
+            "agreement_with_sklearn": 1.0,
+            "max_margin_difference_from_previous": 0.0036011418790595218,
+            "max_margin_difference_from_sklearn": 0.0035405877456298196,
+            "margins_close_to_previous": true,
+            "margins_close_to_sklearn": true
+          },
+          {
+            "fit_status": 0,
+            "n_iter": [
+              545492
+            ],
+            "n_support": [
+              665,
+              665
+            ],
+            "support_count": 1330,
+            "backend": "cpu",
+            "pair_solver": [
+              "native_working_set"
+            ],
+            "pair_kkt_violation": [
+              0.0009591116118627951
+            ],
+            "accuracy": 0.7354085603112841,
+            "first_repeat_predictions_equal": true,
+            "all_margins_finite": true,
+            "agreement_with_previous": 1.0,
+            "agreement_with_sklearn": 1.0,
+            "max_margin_difference_from_previous": 0.0036011418790595218,
+            "max_margin_difference_from_sklearn": 0.0035405877456298196,
+            "margins_close_to_previous": true,
+            "margins_close_to_sklearn": true
+          },
+          {
+            "fit_status": 0,
+            "n_iter": [
+              545492
+            ],
+            "n_support": [
+              665,
+              665
+            ],
+            "support_count": 1330,
+            "backend": "cpu",
+            "pair_solver": [
+              "native_working_set"
+            ],
+            "pair_kkt_violation": [
+              0.0009591116118627951
+            ],
+            "accuracy": 0.7354085603112841,
+            "first_repeat_predictions_equal": true,
+            "all_margins_finite": true,
+            "agreement_with_previous": 1.0,
+            "agreement_with_sklearn": 1.0,
+            "max_margin_difference_from_previous": 0.0036011418790595218,
+            "max_margin_difference_from_sklearn": 0.0035405877456298196,
+            "margins_close_to_previous": true,
+            "margins_close_to_sklearn": true
+          }
+        ],
+        "previous": [
+          {
+            "fit_status": 0,
+            "n_iter": [
+              446048
+            ],
+            "n_support": [
+              665,
+              665
+            ],
+            "support_count": 1330,
+            "backend": "cpu",
+            "pair_solver": null,
+            "pair_kkt_violation": [
+              0.0009401552381435585
+            ],
+            "accuracy": 0.7354085603112841,
+            "first_repeat_predictions_equal": true,
+            "all_margins_finite": true,
+            "agreement_with_previous": 1.0,
+            "agreement_with_sklearn": 1.0,
+            "max_margin_difference_from_previous": 0.0,
+            "max_margin_difference_from_sklearn": 0.0024834525922025064,
+            "margins_close_to_previous": true,
+            "margins_close_to_sklearn": true
+          },
+          {
+            "fit_status": 0,
+            "n_iter": [
+              446048
+            ],
+            "n_support": [
+              665,
+              665
+            ],
+            "support_count": 1330,
+            "backend": "cpu",
+            "pair_solver": null,
+            "pair_kkt_violation": [
+              0.0009401552381435585
+            ],
+            "accuracy": 0.7354085603112841,
+            "first_repeat_predictions_equal": true,
+            "all_margins_finite": true,
+            "agreement_with_previous": 1.0,
+            "agreement_with_sklearn": 1.0,
+            "max_margin_difference_from_previous": 0.0,
+            "max_margin_difference_from_sklearn": 0.0024834525922025064,
+            "margins_close_to_previous": true,
+            "margins_close_to_sklearn": true
+          },
+          {
+            "fit_status": 0,
+            "n_iter": [
+              446048
+            ],
+            "n_support": [
+              665,
+              665
+            ],
+            "support_count": 1330,
+            "backend": "cpu",
+            "pair_solver": null,
+            "pair_kkt_violation": [
+              0.0009401552381435585
+            ],
+            "accuracy": 0.7354085603112841,
+            "first_repeat_predictions_equal": true,
+            "all_margins_finite": true,
+            "agreement_with_previous": 1.0,
+            "agreement_with_sklearn": 1.0,
+            "max_margin_difference_from_previous": 0.0,
+            "max_margin_difference_from_sklearn": 0.0024834525922025064,
+            "margins_close_to_previous": true,
+            "margins_close_to_sklearn": true
+          },
+          {
+            "fit_status": 0,
+            "n_iter": [
+              446048
+            ],
+            "n_support": [
+              665,
+              665
+            ],
+            "support_count": 1330,
+            "backend": "cpu",
+            "pair_solver": null,
+            "pair_kkt_violation": [
+              0.0009401552381435585
+            ],
+            "accuracy": 0.7354085603112841,
+            "first_repeat_predictions_equal": true,
+            "all_margins_finite": true,
+            "agreement_with_previous": 1.0,
+            "agreement_with_sklearn": 1.0,
+            "max_margin_difference_from_previous": 0.0,
+            "max_margin_difference_from_sklearn": 0.0024834525922025064,
+            "margins_close_to_previous": true,
+            "margins_close_to_sklearn": true
+          },
+          {
+            "fit_status": 0,
+            "n_iter": [
+              446048
+            ],
+            "n_support": [
+              665,
+              665
+            ],
+            "support_count": 1330,
+            "backend": "cpu",
+            "pair_solver": null,
+            "pair_kkt_violation": [
+              0.0009401552381435585
+            ],
+            "accuracy": 0.7354085603112841,
+            "first_repeat_predictions_equal": true,
+            "all_margins_finite": true,
+            "agreement_with_previous": 1.0,
+            "agreement_with_sklearn": 1.0,
+            "max_margin_difference_from_previous": 0.0,
+            "max_margin_difference_from_sklearn": 0.0024834525922025064,
+            "margins_close_to_previous": true,
+            "margins_close_to_sklearn": true
+          },
+          {
+            "fit_status": 0,
+            "n_iter": [
+              446048
+            ],
+            "n_support": [
+              665,
+              665
+            ],
+            "support_count": 1330,
+            "backend": "cpu",
+            "pair_solver": null,
+            "pair_kkt_violation": [
+              0.0009401552381435585
+            ],
+            "accuracy": 0.7354085603112841,
+            "first_repeat_predictions_equal": true,
+            "all_margins_finite": true,
+            "agreement_with_previous": 1.0,
+            "agreement_with_sklearn": 1.0,
+            "max_margin_difference_from_previous": 0.0,
+            "max_margin_difference_from_sklearn": 0.0024834525922025064,
+            "margins_close_to_previous": true,
+            "margins_close_to_sklearn": true
+          }
+        ],
+        "sklearn": [
+          {
+            "fit_status": 0,
+            "n_iter": [
+              884620
+            ],
+            "n_support": [
+              665,
+              664
+            ],
+            "support_count": 1329,
+            "backend": "sklearn",
+            "pair_solver": null,
+            "pair_kkt_violation": null,
+            "accuracy": 0.7354085603112841,
+            "first_repeat_predictions_equal": true,
+            "all_margins_finite": true,
+            "agreement_with_previous": 1.0,
+            "agreement_with_sklearn": 1.0,
+            "max_margin_difference_from_previous": 0.0024834525922025064,
+            "max_margin_difference_from_sklearn": 0.0,
+            "margins_close_to_previous": true,
+            "margins_close_to_sklearn": true
+          },
+          {
+            "fit_status": 0,
+            "n_iter": [
+              884620
+            ],
+            "n_support": [
+              665,
+              664
+            ],
+            "support_count": 1329,
+            "backend": "sklearn",
+            "pair_solver": null,
+            "pair_kkt_violation": null,
+            "accuracy": 0.7354085603112841,
+            "first_repeat_predictions_equal": true,
+            "all_margins_finite": true,
+            "agreement_with_previous": 1.0,
+            "agreement_with_sklearn": 1.0,
+            "max_margin_difference_from_previous": 0.0024834525922025064,
+            "max_margin_difference_from_sklearn": 0.0,
+            "margins_close_to_previous": true,
+            "margins_close_to_sklearn": true
+          },
+          {
+            "fit_status": 0,
+            "n_iter": [
+              884620
+            ],
+            "n_support": [
+              665,
+              664
+            ],
+            "support_count": 1329,
+            "backend": "sklearn",
+            "pair_solver": null,
+            "pair_kkt_violation": null,
+            "accuracy": 0.7354085603112841,
+            "first_repeat_predictions_equal": true,
+            "all_margins_finite": true,
+            "agreement_with_previous": 1.0,
+            "agreement_with_sklearn": 1.0,
+            "max_margin_difference_from_previous": 0.0024834525922025064,
+            "max_margin_difference_from_sklearn": 0.0,
+            "margins_close_to_previous": true,
+            "margins_close_to_sklearn": true
+          },
+          {
+            "fit_status": 0,
+            "n_iter": [
+              884620
+            ],
+            "n_support": [
+              665,
+              664
+            ],
+            "support_count": 1329,
+            "backend": "sklearn",
+            "pair_solver": null,
+            "pair_kkt_violation": null,
+            "accuracy": 0.7354085603112841,
+            "first_repeat_predictions_equal": true,
+            "all_margins_finite": true,
+            "agreement_with_previous": 1.0,
+            "agreement_with_sklearn": 1.0,
+            "max_margin_difference_from_previous": 0.0024834525922025064,
+            "max_margin_difference_from_sklearn": 0.0,
+            "margins_close_to_previous": true,
+            "margins_close_to_sklearn": true
+          },
+          {
+            "fit_status": 0,
+            "n_iter": [
+              884620
+            ],
+            "n_support": [
+              665,
+              664
+            ],
+            "support_count": 1329,
+            "backend": "sklearn",
+            "pair_solver": null,
+            "pair_kkt_violation": null,
+            "accuracy": 0.7354085603112841,
+            "first_repeat_predictions_equal": true,
+            "all_margins_finite": true,
+            "agreement_with_previous": 1.0,
+            "agreement_with_sklearn": 1.0,
+            "max_margin_difference_from_previous": 0.0024834525922025064,
+            "max_margin_difference_from_sklearn": 0.0,
+            "margins_close_to_previous": true,
+            "margins_close_to_sklearn": true
+          },
+          {
+            "fit_status": 0,
+            "n_iter": [
+              884620
+            ],
+            "n_support": [
+              665,
+              664
+            ],
+            "support_count": 1329,
+            "backend": "sklearn",
+            "pair_solver": null,
+            "pair_kkt_violation": null,
+            "accuracy": 0.7354085603112841,
+            "first_repeat_predictions_equal": true,
+            "all_margins_finite": true,
+            "agreement_with_previous": 1.0,
+            "agreement_with_sklearn": 1.0,
+            "max_margin_difference_from_previous": 0.0024834525922025064,
+            "max_margin_difference_from_sklearn": 0.0,
+            "margins_close_to_previous": true,
+            "margins_close_to_sklearn": true
+          }
+        ]
+      },
+      "quality_passed": true,
+      "quality_thresholds": {
+        "prediction_agreement": 0.99,
+        "margin_atol": 0.02,
+        "margin_rtol": 0.005
+      },
+      "speedup_vs_previous": {
+        "fit": 26.408152920727556,
+        "first_predict": 1.1477913800553474,
+        "repeat_predict": 1.107944999099833
+      },
+      "speedup_vs_sklearn": {
+        "fit": 2.5016172221383624,
+        "first_predict": 7.2414472831582195,
+        "repeat_predict": 10.686895639093313
+      },
+      "workers": {
+        "current": {
+          "variant": "current",
+          "case": "linear_medium",
+          "seed": 42,
+          "repeats": 5,
+          "fixture_sha256": "3d5ab1d2f7a52863937cb4066fb8a8f667dc8d623262509850099d7861da1626",
+          "environment": {
+            "pid": 26169,
+            "python_executable": "/Users/tunguz/Programming/mlxlearn/.venv/bin/python",
+            "python": "3.14.2 (main, Dec  9 2025, 19:29:30) [Clang 21.1.4 ]",
+            "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+            "numpy": "2.5.4",
+            "scipy": "1.18.1",
+            "sklearn": "1.9.1",
+            "mlx": "0.32.4",
+            "mlx_device": {
+              "device_name": "Apple M4 Max",
+              "max_recommended_working_set_size": 115448725504,
+              "memory_size": 137438953472,
+              "architecture": "applegpu_g16s",
+              "max_buffer_length": 86586540032,
+              "resource_limit": 499000
+            },
+            "thread_environment": {
+              "VECLIB_MAXIMUM_THREADS": "1",
+              "OPENBLAS_NUM_THREADS": "1",
+              "MKL_NUM_THREADS": "1",
+              "OMP_NUM_THREADS": "1"
+            },
+            "threadpools_inside_limit": [
+              {
+                "user_api": "openmp",
+                "internal_api": "openmp",
+                "num_threads": 1,
+                "prefix": "libomp",
+                "filepath": "/Users/tunguz/Programming/mlxlearn/.venv/lib/python3.14/site-packages/sklearn/.dylibs/libomp.dylib",
+                "version": null
+              }
+            ],
+            "thread_limit": 1,
+            "source_root": "/Users/tunguz/Programming/mlxlearn",
+            "source_sha256": {
+              "MANIFEST.in": "4ddc9e699b7804fd60d43d248d23cf391c2411f2e967fb4f812d811676dec4ef",
+              "pyproject.toml": "ac2f048b770b20db4b4824d02b2186568ec8d723126b7a0f0cb678f571e02f4c",
+              "setup.py": "440e3b5f4653e1de4d90222f4a4659b3096c94c61563c96aa6fef863e78af4ff",
+              "src/mlxlearn/__init__.py": "a382f5fb1a7022d68d4d0bd6f775b10348132d1cc98f5a1a8ec6a2676895d441",
+              "src/mlxlearn/_common/__init__.py": "736aa2ce3d7d1f74557c76a9b5e5356d15a05e1f02a86204f2508ea6c4767646",
+              "src/mlxlearn/_common/arrays.py": "981cc12835e2855a75c5331e54f1aabefa2ef92e7525078d789acf6488da46fc",
+              "src/mlxlearn/_common/base.py": "199bca892fb71ebda1ec38ad69c7be51724d39ff903ca6eb3c11ca1584a136bb",
+              "src/mlxlearn/_common/config.py": "924ea8f158598a2f4418e64a036a1bf0345caf047e5353364251f66c3a0ec8e7",
+              "src/mlxlearn/_common/device.py": "f8a3e2eac9ffe64d99bded696ffe7e42d14059964fc0c19104c7675e04e2ce74",
+              "src/mlxlearn/_common/diagnostics.py": "0e6676eef716be71d94c6b1e71ac8d00dee12ff4aac85ff76341cefaee5fe3d9",
+              "src/mlxlearn/_common/preparation.py": "1dc679dec3d693165a76230f5327fe9341872fec1acfb7552bb11db8e280958f",
+              "src/mlxlearn/_common/rng.py": "5a4bba4f2a03108c31467692310986107a1178928bd5bab20d258037ff10afef",
+              "src/mlxlearn/_common/validation.py": "997df987a2b857b2bc5b72c12f5dcd62dc3569e80a90bdf3ae263dfac042ea3a",
+              "src/mlxlearn/_kernels/__init__.py": "0a2227680a6afb7d09a596f0aaab4ef6671fe9e58169739d1cc3a9e32c3b062e",
+              "src/mlxlearn/_kernels/_neighbors_cpu_native.cpp": "d3b116cd2c95c8d2ad05aa7de4e3b5a82761693b7577aa6f7afbfe4d0d5b5bce",
+              "src/mlxlearn/_kernels/_svc_cpu_native.cpp": "ad2bfe13d17bce3ee42377d7ab905181a9d9cf564980bfab222fcbfd75bb4493",
+              "src/mlxlearn/_kernels/distance.py": "2857c9343031e28de213406b6cebac96e3fa13d86a55dc96a272057bd071c4d5",
+              "src/mlxlearn/_kernels/kernels.py": "eea5010cb0b160346fa3c75a724a3e23dc82ea3ed2fe29877f49a7a0c68d657b",
+              "src/mlxlearn/_kernels/logistic_input.py": "5f0180ba62076f9899fafca359f67e04f50c796febd2111ea3b3610e6f758efb",
+              "src/mlxlearn/_kernels/neighbors_cpu.py": "3e4955ebae4ae0c64ee8c81d7fcacd91dea4fd1f60e8dfbf65207a53c3854b27",
+              "src/mlxlearn/_kernels/svc_cpu.py": "c7679b03ba486083b35916ba9dc090dacb9f97d140225c4f1d4668d013c44f29",
+              "src/mlxlearn/_kernels/svc_fused.py": "e0ca39fcbd512d227d6009df4cf1a4ebe6dec91bf933b470147d024f6a978ff1",
+              "src/mlxlearn/_kernels/svc_predict.py": "db32cd3981149af94525035afea31a23afeef679ed6ffeec4139aafdb4d31ab7",
+              "src/mlxlearn/_solvers/__init__.py": "974fa44cf7975d4fa63d6a9d304219dde43bd86ebcb1c151c7630b0a1c4fdacb",
+              "src/mlxlearn/_solvers/_metal_cg.h": "b1c6724e7f53643b2160a27662ff5d9f9ab73acffadb65bad8047c670cd088af",
+              "src/mlxlearn/_solvers/_metal_loop.mm": "ed5b75b074d9f0151033d7ff9fb502aebac2a35ab5e339405fdfcd525a86302e",
+              "src/mlxlearn/_solvers/_smo_block_native.cpp": "db7403ece2716620233c4905a150151d00e53d8531fe7b797367b4976b9efa09",
+              "src/mlxlearn/_solvers/_smo_native.cpp": "75560c70ff18ea0393652de583858dfb9251053d56cbaab43f4d6f81388f4596",
+              "src/mlxlearn/_solvers/block_smo.py": "e7880c29f6634ee7af873bc76636d161de59b3ffe1376c6e3d5500b479e526ed",
+              "src/mlxlearn/_solvers/fused_lbfgs.py": "d590d9f7abbca24a69198816575680dff1ed32c5ac6ce7789eb36f5ba3b27c3e",
+              "src/mlxlearn/_solvers/lbfgs.py": "f5ae7d633ce7d714143c3243d070365729dda302aff499a0ff027f6b2e496376",
+              "src/mlxlearn/_solvers/logistic.py": "7924cf917feeca78af93548e5a20d28a00e2a5895ca0446f4da2112cdaa9de0b",
+              "src/mlxlearn/_solvers/native_command.py": "51c7f6336b4f13f027e696eb044502a149cbf3cbae1e52744430ccecf325c23b",
+              "src/mlxlearn/_solvers/native_geometry.py": "8ac947730be7a72e250816d5203259919a227ffcdb211bf16793f027161b3578",
+              "src/mlxlearn/_solvers/native_logistic.py": "16973621730edb6b4bf25311d876a413f64b69e506fe19b5cb56226536ffc577",
+              "src/mlxlearn/_solvers/native_logistic_fused.py": "4b1642ed93acded47d8ba4e42cc3f4349ac635abce9f1123d8e21ff8a1408016",
+              "src/mlxlearn/_solvers/native_smo.py": "9aa909514a8456cc105974b4980cd6835b396581424d035cdebbb76c2c367438",
+              "src/mlxlearn/_solvers/smo.py": "e34751a6ba5ff5eddf68d8efdec4391ebae9392e1dbb15d20196f91572ec14f9",
+              "src/mlxlearn/exceptions.py": "5b9b4efd548f90156d3d10d406aec74d1d6ed4ebaa4859d88d6589f1ba241e2a",
+              "src/mlxlearn/linear_model/__init__.py": "ea1456645a4d5962e1616a0234a012e2e331dd3750365644fa6cd4d21aaa1293",
+              "src/mlxlearn/linear_model/_logistic.py": "84f00ad847c23899076d6194949511ad85a485797b0547eb18a18f85f4560861",
+              "src/mlxlearn/neighbors/__init__.py": "2f18f3864ba4ea0229a4c2317e0612da2fa458daef7d28a7a88f3e382fb951b4",
+              "src/mlxlearn/neighbors/_base.py": "cb23565992c76e508c6386a517ff27ed64889fa59997c4ddb0cbd531bfbfcce7",
+              "src/mlxlearn/neighbors/_classification.py": "e297b9d39cda405edd072f418bf89ac9540eacda8389df10a59c1093ac6d6176",
+              "src/mlxlearn/neighbors/_regression.py": "7c35872659898a6f44cafe2d8e0e5bdc25da5654adccc77f502a526e4d7dd6eb",
+              "src/mlxlearn/neighbors/_unsupervised.py": "bd89ac3b589561ca4eef521df813d3b4c7ba00c7400f3a1f380d6b7a8abdde60",
+              "src/mlxlearn/patching/__init__.py": "46daa0d9c3d8a26b400907e3421a55de239c7032ef7537fd1b955af85f00d551",
+              "src/mlxlearn/patching/_estimators.py": "f96f417b3cd5f630f84f499fe8a1317a008c4951b241afc3928516e5997dc0a7",
+              "src/mlxlearn/patching/_patch.py": "889eadd8bc80dfdae3017096446b8e766370d200a672e97a067c2652fe245970",
+              "src/mlxlearn/patching/_registry.py": "bd02f5436f8b62d28f3a0eca1aca7bc9e99eed31e9156eec844805695dde5e16",
+              "src/mlxlearn/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "src/mlxlearn/svm/__init__.py": "3fec63550675c0482c6b9da28e0dcc5fbe7b9c92662bce1e37f2edca4f5ebd66",
+              "src/mlxlearn/svm/_classes.py": "2a30fa106f592bbf2f7fa03bd88c8fe7de87106aeb70521117a3c23752b7b856",
+              "src/mlxlearn_device/__init__.py": "a61b0e97913febf3d100b02ae26658a8ff5cee44844ae936970a91e728feb0ef",
+              "src/mlxlearn_device/_compensated.py": "f3494b103de3bf9e8549412d3b18a43287fa5c03c08502138e18b4537ad5d15d",
+              "src/mlxlearn_device/_duality.py": "1694aad68fe565d695f6c3795362c9e3bd02c22d8b6a08c18c6c8231786aa04e",
+              "src/mlxlearn_device/_hessian_vector.py": "75daa73c833a26d6722b1335e03aa2c7eec7cce9e7dfff8657c0df4c4fceeadf",
+              "src/mlxlearn_device/_logistic.py": "3c5e0f9ec2aa14fafa774ea72aaf27ae2909958981431ee913a08d99de304f08",
+              "src/mlxlearn_device/_native.py": "a49425c647dab43cc31ea3d29590ee791cfa6b2138d155c2c15b924b4e67869d",
+              "src/mlxlearn_device/_native_cg.py": "b32fa9508f634c909ec5c3e9a17262466014c74602c10261704adbf7279ada9b",
+              "src/mlxlearn_device/_neighbors.py": "290771cfacb6c9852a635f777fbc1bfe59d20ca46a78691e6db0f90ab54943df",
+              "src/mlxlearn_device/_neighbors_compact.py": "c9428bf5a8c6c398db26553b12a6094b1205677851c39180c09081e95d9be99f",
+              "src/mlxlearn_device/_neighbors_fused.py": "3b88f12ab13ec02419327f32a69c3d3794c0d54787cdbea656501398d49c3d61",
+              "src/mlxlearn_device/_neighbors_general.py": "6b866da270cf99952d44029a33be6e79305566b74b5e85890aa23c01f952726d",
+              "src/mlxlearn_device/_neighbors_integer.py": "2d750d458d673f02c9768aaedfcbb48037facf18d3d9d364639871a072ac357f",
+              "src/mlxlearn_device/_neighbors_paired.py": "927f8470b50ae98eebfe5e533bf215aad385726dc20ac4c6d33329f4f4b9ca56",
+              "src/mlxlearn_device/_neighbors_precision.py": "9656a276177eb249da07382854e5cfa7b972cbb609899190a4b91032d77d7cea",
+              "src/mlxlearn_device/_neighbors_registers.py": "62df395f3b173b8ab4e0da3ac63b8e904c31b04813bb9c1662d30d49d8a3c92e",
+              "src/mlxlearn_device/_neighbors_screen.py": "6c2985c44ce762b581276a2c2c80a457d6af49933b6382f8ef574b5f44eef37a",
+              "src/mlxlearn_device/_neighbors_shortlist.py": "538116f27b10cf4d995027546a15918bf0aa64ffa68b44474fc16192bdb4ca31",
+              "src/mlxlearn_device/_neighbors_small.py": "98298c008669a7da2cb9cbd7da4c223af5c12af44de879f55e4ad2e24e04f182",
+              "src/mlxlearn_device/_neighbors_votes.py": "e34b08e5d772d39c260f26daa31399b6d88f9d13f4a31ef531a40cc76e99c59f",
+              "src/mlxlearn_device/_newton.py": "348cf32bf5beadcdd3c8f56bca5db699f9e2c6afd3aeba02f018effc1371ce7e",
+              "src/mlxlearn_device/hessian_sketch.py": "576f6bb49aa4520bbf318ee248cd3f32aca873e799c6e216a098155d8b2ed6b0"
+            },
+            "native_extensions": {
+              "mlxlearn._solvers._smo_native": {
+                "path": "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_smo_native.cpython-314-darwin.so",
+                "sha256": "736af163197e89756503bced2dd1917408edccb18f8a84e6f69f4ad2bef68df1"
+              },
+              "mlxlearn._kernels._svc_cpu_native": {
+                "path": "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/_svc_cpu_native.cpython-314-darwin.so",
+                "sha256": "ea9cac44f619d1b110617bf96ff9f1bb7f2a826ef463a22847075394293fc822"
+              },
+              "mlxlearn._solvers._smo_block_native": {
+                "path": "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_smo_block_native.cpython-314-darwin.so",
+                "sha256": "a3350231fe0ec31a2c1edd1ae3009b72f0544b07bb8b4a50c013aeaa7543b743"
+              }
+            },
+            "imported_mlxlearn_modules": {
+              "mlxlearn._common.arrays": "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/arrays.py",
+              "mlxlearn.exceptions": "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/exceptions.py",
+              "mlxlearn._common.config": "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/config.py",
+              "mlxlearn._common.device": "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/device.py",
+              "mlxlearn._common.diagnostics": "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/diagnostics.py",
+              "mlxlearn._common.base": "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/base.py",
+              "mlxlearn._common.rng": "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/rng.py",
+              "mlxlearn._common": "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/__init__.py",
+              "mlxlearn.patching._registry": "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_registry.py",
+              "mlxlearn.patching._patch": "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/_patch.py",
+              "mlxlearn.patching": "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/patching/__init__.py",
+              "mlxlearn": "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/__init__.py",
+              "mlxlearn._common.validation": "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/validation.py",
+              "mlxlearn._kernels._neighbors_cpu_native": "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/_neighbors_cpu_native.cpython-314-darwin.so",
+              "mlxlearn._kernels.neighbors_cpu": "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/neighbors_cpu.py",
+              "mlxlearn._kernels.distance": "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/distance.py",
+              "mlxlearn._kernels": "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/__init__.py",
+              "mlxlearn._kernels._svc_cpu_native": "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/_svc_cpu_native.cpython-314-darwin.so",
+              "mlxlearn._kernels.svc_cpu": "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/svc_cpu.py",
+              "mlxlearn._kernels.kernels": "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/kernels.py",
+              "mlxlearn._kernels.svc_predict": "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_kernels/svc_predict.py",
+              "mlxlearn._solvers": "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/__init__.py",
+              "mlxlearn._solvers.smo": "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/smo.py",
+              "mlxlearn._solvers._smo_block_native": "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_smo_block_native.cpython-314-darwin.so",
+              "mlxlearn._solvers.block_smo": "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/block_smo.py",
+              "mlxlearn._solvers._smo_native": "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/_smo_native.cpython-314-darwin.so",
+              "mlxlearn._solvers.native_smo": "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/_solvers/native_smo.py",
+              "mlxlearn.svm._classes": "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/svm/_classes.py",
+              "mlxlearn.svm": "/Users/tunguz/Programming/mlxlearn/src/mlxlearn/svm/__init__.py"
+            },
+            "harness_sha256": "152dd3d01f669bce2b35128a70e8f4c1e867098d606c066a0fb34bce4f524028"
+          },
+          "worker_command": [
+            "/Users/tunguz/Programming/mlxlearn/.venv/bin/python",
+            "-m",
+            "benchmarks.svc_working_set",
+            "--worker",
+            "--variant",
+            "current",
+            "--source-root",
+            "/Users/tunguz/Programming/mlxlearn",
+            "--case",
+            "linear_medium",
+            "--fixture",
+            "/var/folders/rj/2r_78zvx5r1265qkzhz8xwzc0000gn/T/svc-working-set-0awrp55n/linear_medium-fixture.npz",
+            "--worker-output",
+            "/var/folders/rj/2r_78zvx5r1265qkzhz8xwzc0000gn/T/svc-working-set-0awrp55n/linear_medium-current.json",
+            "--repeats",
+            "5",
+            "--seed",
+            "42"
+          ]
+        },
+        "previous": {
+          "variant": "previous",
+          "case": "linear_medium",
+          "seed": 42,
+          "repeats": 5,
+          "fixture_sha256": "3d5ab1d2f7a52863937cb4066fb8a8f667dc8d623262509850099d7861da1626",
+          "environment": {
+            "pid": 26182,
+            "python_executable": "/Users/tunguz/Programming/mlxlearn/.venv/bin/python",
+            "python": "3.14.2 (main, Dec  9 2025, 19:29:30) [Clang 21.1.4 ]",
+            "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+            "numpy": "2.5.4",
+            "scipy": "1.18.1",
+            "sklearn": "1.9.1",
+            "mlx": "0.32.4",
+            "mlx_device": {
+              "device_name": "Apple M4 Max",
+              "max_recommended_working_set_size": 115448725504,
+              "memory_size": 137438953472,
+              "architecture": "applegpu_g16s",
+              "max_buffer_length": 86586540032,
+              "resource_limit": 499000
+            },
+            "thread_environment": {
+              "VECLIB_MAXIMUM_THREADS": "1",
+              "OPENBLAS_NUM_THREADS": "1",
+              "MKL_NUM_THREADS": "1",
+              "OMP_NUM_THREADS": "1"
+            },
+            "threadpools_inside_limit": [
+              {
+                "user_api": "openmp",
+                "internal_api": "openmp",
+                "num_threads": 1,
+                "prefix": "libomp",
+                "filepath": "/Users/tunguz/Programming/mlxlearn/.venv/lib/python3.14/site-packages/sklearn/.dylibs/libomp.dylib",
+                "version": null
+              }
+            ],
+            "thread_limit": 1,
+            "source_root": "/private/tmp/mlxlearn-svc-pre-working-set-2026-10-31",
+            "source_sha256": {
+              "MANIFEST.in": "6165384c31c5f065e5a39394e9e1267f2c1de020d4ea8dd05ce577a1b083ed75",
+              "pyproject.toml": "ac2f048b770b20db4b4824d02b2186568ec8d723126b7a0f0cb678f571e02f4c",
+              "setup.py": "fb8b04dd4af276194f8b6be4d3c094b92a5df1c9de126c021b5d8d3f56919a20",
+              "src/mlxlearn/__init__.py": "a382f5fb1a7022d68d4d0bd6f775b10348132d1cc98f5a1a8ec6a2676895d441",
+              "src/mlxlearn/_common/__init__.py": "736aa2ce3d7d1f74557c76a9b5e5356d15a05e1f02a86204f2508ea6c4767646",
+              "src/mlxlearn/_common/arrays.py": "981cc12835e2855a75c5331e54f1aabefa2ef92e7525078d789acf6488da46fc",
+              "src/mlxlearn/_common/base.py": "199bca892fb71ebda1ec38ad69c7be51724d39ff903ca6eb3c11ca1584a136bb",
+              "src/mlxlearn/_common/config.py": "924ea8f158598a2f4418e64a036a1bf0345caf047e5353364251f66c3a0ec8e7",
+              "src/mlxlearn/_common/device.py": "f8a3e2eac9ffe64d99bded696ffe7e42d14059964fc0c19104c7675e04e2ce74",
+              "src/mlxlearn/_common/diagnostics.py": "0e6676eef716be71d94c6b1e71ac8d00dee12ff4aac85ff76341cefaee5fe3d9",
+              "src/mlxlearn/_common/preparation.py": "1dc679dec3d693165a76230f5327fe9341872fec1acfb7552bb11db8e280958f",
+              "src/mlxlearn/_common/rng.py": "5a4bba4f2a03108c31467692310986107a1178928bd5bab20d258037ff10afef",
+              "src/mlxlearn/_common/validation.py": "997df987a2b857b2bc5b72c12f5dcd62dc3569e80a90bdf3ae263dfac042ea3a",
+              "src/mlxlearn/_kernels/__init__.py": "0a2227680a6afb7d09a596f0aaab4ef6671fe9e58169739d1cc3a9e32c3b062e",
+              "src/mlxlearn/_kernels/_neighbors_cpu_native.cpp": "d3b116cd2c95c8d2ad05aa7de4e3b5a82761693b7577aa6f7afbfe4d0d5b5bce",
+              "src/mlxlearn/_kernels/_svc_cpu_native.cpp": "6e636f125d3acfce4114293d545b0f81fb1f6eae49deafa4ca95c4e8e1e59d3c",
+              "src/mlxlearn/_kernels/distance.py": "2857c9343031e28de213406b6cebac96e3fa13d86a55dc96a272057bd071c4d5",
+              "src/mlxlearn/_kernels/kernels.py": "0815377eae947c3b19a5273d6b0d535670f9dd86312881084b4761e82cada287",
+              "src/mlxlearn/_kernels/logistic_input.py": "5f0180ba62076f9899fafca359f67e04f50c796febd2111ea3b3610e6f758efb",
+              "src/mlxlearn/_kernels/neighbors_cpu.py": "3e4955ebae4ae0c64ee8c81d7fcacd91dea4fd1f60e8dfbf65207a53c3854b27",
+              "src/mlxlearn/_kernels/svc_cpu.py": "1736b4086b680cd3f438138d82a901fadb2564e4dd15ea17bdd06629d2eae044",
+              "src/mlxlearn/_kernels/svc_fused.py": "635c529a2a05bfc399b99b9a70f1b8b37b29ca5fd803f113a6b0944c79640435",
+              "src/mlxlearn/_solvers/__init__.py": "974fa44cf7975d4fa63d6a9d304219dde43bd86ebcb1c151c7630b0a1c4fdacb",
+              "src/mlxlearn/_solvers/_metal_cg.h": "b1c6724e7f53643b2160a27662ff5d9f9ab73acffadb65bad8047c670cd088af",
+              "src/mlxlearn/_solvers/_metal_loop.mm": "ed5b75b074d9f0151033d7ff9fb502aebac2a35ab5e339405fdfcd525a86302e",
+              "src/mlxlearn/_solvers/_smo_native.cpp": "7e23935449724e564c23fe7f2e4870d8cf3c581d3adbc7b700d396c28735fc60",
+              "src/mlxlearn/_solvers/fused_lbfgs.py": "d590d9f7abbca24a69198816575680dff1ed32c5ac6ce7789eb36f5ba3b27c3e",
+              "src/mlxlearn/_solvers/lbfgs.py": "f5ae7d633ce7d714143c3243d070365729dda302aff499a0ff027f6b2e496376",
+              "src/mlxlearn/_solvers/logistic.py": "7924cf917feeca78af93548e5a20d28a00e2a5895ca0446f4da2112cdaa9de0b",
+              "src/mlxlearn/_solvers/native_command.py": "51c7f6336b4f13f027e696eb044502a149cbf3cbae1e52744430ccecf325c23b",
+              "src/mlxlearn/_solvers/native_geometry.py": "8ac947730be7a72e250816d5203259919a227ffcdb211bf16793f027161b3578",
+              "src/mlxlearn/_solvers/native_logistic.py": "16973621730edb6b4bf25311d876a413f64b69e506fe19b5cb56226536ffc577",
+              "src/mlxlearn/_solvers/native_logistic_fused.py": "4b1642ed93acded47d8ba4e42cc3f4349ac635abce9f1123d8e21ff8a1408016",
+              "src/mlxlearn/_solvers/native_smo.py": "1b671babda38c4d1de8e70e18e5f7a469c6abc66e19d681800c3cd40a00271e5",
+              "src/mlxlearn/_solvers/smo.py": "70a9f68a2050c8e03438a28436ada58c039096e204de011da3c47a0b7ff0e236",
+              "src/mlxlearn/exceptions.py": "5b9b4efd548f90156d3d10d406aec74d1d6ed4ebaa4859d88d6589f1ba241e2a",
+              "src/mlxlearn/linear_model/__init__.py": "ea1456645a4d5962e1616a0234a012e2e331dd3750365644fa6cd4d21aaa1293",
+              "src/mlxlearn/linear_model/_logistic.py": "84f00ad847c23899076d6194949511ad85a485797b0547eb18a18f85f4560861",
+              "src/mlxlearn/neighbors/__init__.py": "2f18f3864ba4ea0229a4c2317e0612da2fa458daef7d28a7a88f3e382fb951b4",
+              "src/mlxlearn/neighbors/_base.py": "cb23565992c76e508c6386a517ff27ed64889fa59997c4ddb0cbd531bfbfcce7",
+              "src/mlxlearn/neighbors/_classification.py": "e297b9d39cda405edd072f418bf89ac9540eacda8389df10a59c1093ac6d6176",
+              "src/mlxlearn/neighbors/_regression.py": "7c35872659898a6f44cafe2d8e0e5bdc25da5654adccc77f502a526e4d7dd6eb",
+              "src/mlxlearn/neighbors/_unsupervised.py": "bd89ac3b589561ca4eef521df813d3b4c7ba00c7400f3a1f380d6b7a8abdde60",
+              "src/mlxlearn/patching/__init__.py": "46daa0d9c3d8a26b400907e3421a55de239c7032ef7537fd1b955af85f00d551",
+              "src/mlxlearn/patching/_estimators.py": "f96f417b3cd5f630f84f499fe8a1317a008c4951b241afc3928516e5997dc0a7",
+              "src/mlxlearn/patching/_patch.py": "889eadd8bc80dfdae3017096446b8e766370d200a672e97a067c2652fe245970",
+              "src/mlxlearn/patching/_registry.py": "bd02f5436f8b62d28f3a0eca1aca7bc9e99eed31e9156eec844805695dde5e16",
+              "src/mlxlearn/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "src/mlxlearn/svm/__init__.py": "3fec63550675c0482c6b9da28e0dcc5fbe7b9c92662bce1e37f2edca4f5ebd66",
+              "src/mlxlearn/svm/_classes.py": "aea0a5b9c718720720df5200ed7c6a01f744c4cd6fb06dee2ac8f96152c11482",
+              "src/mlxlearn_device/__init__.py": "a61b0e97913febf3d100b02ae26658a8ff5cee44844ae936970a91e728feb0ef",
+              "src/mlxlearn_device/_compensated.py": "f3494b103de3bf9e8549412d3b18a43287fa5c03c08502138e18b4537ad5d15d",
+              "src/mlxlearn_device/_duality.py": "1694aad68fe565d695f6c3795362c9e3bd02c22d8b6a08c18c6c8231786aa04e",
+              "src/mlxlearn_device/_hessian_vector.py": "75daa73c833a26d6722b1335e03aa2c7eec7cce9e7dfff8657c0df4c4fceeadf",
+              "src/mlxlearn_device/_logistic.py": "3c5e0f9ec2aa14fafa774ea72aaf27ae2909958981431ee913a08d99de304f08",
+              "src/mlxlearn_device/_native.py": "a49425c647dab43cc31ea3d29590ee791cfa6b2138d155c2c15b924b4e67869d",
+              "src/mlxlearn_device/_native_cg.py": "b32fa9508f634c909ec5c3e9a17262466014c74602c10261704adbf7279ada9b",
+              "src/mlxlearn_device/_neighbors.py": "290771cfacb6c9852a635f777fbc1bfe59d20ca46a78691e6db0f90ab54943df",
+              "src/mlxlearn_device/_neighbors_compact.py": "c9428bf5a8c6c398db26553b12a6094b1205677851c39180c09081e95d9be99f",
+              "src/mlxlearn_device/_neighbors_fused.py": "3b88f12ab13ec02419327f32a69c3d3794c0d54787cdbea656501398d49c3d61",
+              "src/mlxlearn_device/_neighbors_general.py": "6b866da270cf99952d44029a33be6e79305566b74b5e85890aa23c01f952726d",
+              "src/mlxlearn_device/_neighbors_integer.py": "2d750d458d673f02c9768aaedfcbb48037facf18d3d9d364639871a072ac357f",
+              "src/mlxlearn_device/_neighbors_paired.py": "927f8470b50ae98eebfe5e533bf215aad385726dc20ac4c6d33329f4f4b9ca56",
+              "src/mlxlearn_device/_neighbors_precision.py": "9656a276177eb249da07382854e5cfa7b972cbb609899190a4b91032d77d7cea",
+              "src/mlxlearn_device/_neighbors_registers.py": "62df395f3b173b8ab4e0da3ac63b8e904c31b04813bb9c1662d30d49d8a3c92e",
+              "src/mlxlearn_device/_neighbors_screen.py": "6c2985c44ce762b581276a2c2c80a457d6af49933b6382f8ef574b5f44eef37a",
+              "src/mlxlearn_device/_neighbors_shortlist.py": "538116f27b10cf4d995027546a15918bf0aa64ffa68b44474fc16192bdb4ca31",
+              "src/mlxlearn_device/_neighbors_small.py": "98298c008669a7da2cb9cbd7da4c223af5c12af44de879f55e4ad2e24e04f182",
+              "src/mlxlearn_device/_neighbors_votes.py": "e34b08e5d772d39c260f26daa31399b6d88f9d13f4a31ef531a40cc76e99c59f",
+              "src/mlxlearn_device/_newton.py": "348cf32bf5beadcdd3c8f56bca5db699f9e2c6afd3aeba02f018effc1371ce7e",
+              "src/mlxlearn_device/hessian_sketch.py": "576f6bb49aa4520bbf318ee248cd3f32aca873e799c6e216a098155d8b2ed6b0"
+            },
+            "native_extensions": {
+              "mlxlearn._solvers._smo_native": {
+                "path": "/private/tmp/mlxlearn-svc-pre-working-set-2026-10-31/src/mlxlearn/_solvers/_smo_native.cpython-314-darwin.so",
+                "sha256": "25b3e5d6f0a7a79425154d757e6c8d4967e256c6877d327db0e6247344a1e429"
+              },
+              "mlxlearn._kernels._svc_cpu_native": {
+                "path": "/private/tmp/mlxlearn-svc-pre-working-set-2026-10-31/src/mlxlearn/_kernels/_svc_cpu_native.cpython-314-darwin.so",
+                "sha256": "6d2b8e47d59a40b3b77e93747304f620e55f1aecff67991b89e4243348a9009a"
+              }
+            },
+            "imported_mlxlearn_modules": {
+              "mlxlearn._common.arrays": "/private/tmp/mlxlearn-svc-pre-working-set-2026-10-31/src/mlxlearn/_common/arrays.py",
+              "mlxlearn.exceptions": "/private/tmp/mlxlearn-svc-pre-working-set-2026-10-31/src/mlxlearn/exceptions.py",
+              "mlxlearn._common.config": "/private/tmp/mlxlearn-svc-pre-working-set-2026-10-31/src/mlxlearn/_common/config.py",
+              "mlxlearn._common.device": "/private/tmp/mlxlearn-svc-pre-working-set-2026-10-31/src/mlxlearn/_common/device.py",
+              "mlxlearn._common.diagnostics": "/private/tmp/mlxlearn-svc-pre-working-set-2026-10-31/src/mlxlearn/_common/diagnostics.py",
+              "mlxlearn._common.base": "/private/tmp/mlxlearn-svc-pre-working-set-2026-10-31/src/mlxlearn/_common/base.py",
+              "mlxlearn._common.rng": "/private/tmp/mlxlearn-svc-pre-working-set-2026-10-31/src/mlxlearn/_common/rng.py",
+              "mlxlearn._common": "/private/tmp/mlxlearn-svc-pre-working-set-2026-10-31/src/mlxlearn/_common/__init__.py",
+              "mlxlearn.patching._registry": "/private/tmp/mlxlearn-svc-pre-working-set-2026-10-31/src/mlxlearn/patching/_registry.py",
+              "mlxlearn.patching._patch": "/private/tmp/mlxlearn-svc-pre-working-set-2026-10-31/src/mlxlearn/patching/_patch.py",
+              "mlxlearn.patching": "/private/tmp/mlxlearn-svc-pre-working-set-2026-10-31/src/mlxlearn/patching/__init__.py",
+              "mlxlearn": "/private/tmp/mlxlearn-svc-pre-working-set-2026-10-31/src/mlxlearn/__init__.py",
+              "mlxlearn._common.validation": "/private/tmp/mlxlearn-svc-pre-working-set-2026-10-31/src/mlxlearn/_common/validation.py",
+              "mlxlearn._kernels._neighbors_cpu_native": "/private/tmp/mlxlearn-svc-pre-working-set-2026-10-31/src/mlxlearn/_kernels/_neighbors_cpu_native.cpython-314-darwin.so",
+              "mlxlearn._kernels.neighbors_cpu": "/private/tmp/mlxlearn-svc-pre-working-set-2026-10-31/src/mlxlearn/_kernels/neighbors_cpu.py",
+              "mlxlearn._kernels.distance": "/private/tmp/mlxlearn-svc-pre-working-set-2026-10-31/src/mlxlearn/_kernels/distance.py",
+              "mlxlearn._kernels": "/private/tmp/mlxlearn-svc-pre-working-set-2026-10-31/src/mlxlearn/_kernels/__init__.py",
+              "mlxlearn._kernels._svc_cpu_native": "/private/tmp/mlxlearn-svc-pre-working-set-2026-10-31/src/mlxlearn/_kernels/_svc_cpu_native.cpython-314-darwin.so",
+              "mlxlearn._kernels.svc_cpu": "/private/tmp/mlxlearn-svc-pre-working-set-2026-10-31/src/mlxlearn/_kernels/svc_cpu.py",
+              "mlxlearn._kernels.kernels": "/private/tmp/mlxlearn-svc-pre-working-set-2026-10-31/src/mlxlearn/_kernels/kernels.py",
+              "mlxlearn._solvers": "/private/tmp/mlxlearn-svc-pre-working-set-2026-10-31/src/mlxlearn/_solvers/__init__.py",
+              "mlxlearn._solvers.smo": "/private/tmp/mlxlearn-svc-pre-working-set-2026-10-31/src/mlxlearn/_solvers/smo.py",
+              "mlxlearn._solvers._smo_native": "/private/tmp/mlxlearn-svc-pre-working-set-2026-10-31/src/mlxlearn/_solvers/_smo_native.cpython-314-darwin.so",
+              "mlxlearn._solvers.native_smo": "/private/tmp/mlxlearn-svc-pre-working-set-2026-10-31/src/mlxlearn/_solvers/native_smo.py",
+              "mlxlearn.svm._classes": "/private/tmp/mlxlearn-svc-pre-working-set-2026-10-31/src/mlxlearn/svm/_classes.py",
+              "mlxlearn.svm": "/private/tmp/mlxlearn-svc-pre-working-set-2026-10-31/src/mlxlearn/svm/__init__.py"
+            },
+            "harness_sha256": "152dd3d01f669bce2b35128a70e8f4c1e867098d606c066a0fb34bce4f524028"
+          },
+          "worker_command": [
+            "/Users/tunguz/Programming/mlxlearn/.venv/bin/python",
+            "-m",
+            "benchmarks.svc_working_set",
+            "--worker",
+            "--variant",
+            "previous",
+            "--source-root",
+            "/private/tmp/mlxlearn-svc-pre-working-set-2026-10-31",
+            "--case",
+            "linear_medium",
+            "--fixture",
+            "/var/folders/rj/2r_78zvx5r1265qkzhz8xwzc0000gn/T/svc-working-set-0awrp55n/linear_medium-fixture.npz",
+            "--worker-output",
+            "/var/folders/rj/2r_78zvx5r1265qkzhz8xwzc0000gn/T/svc-working-set-0awrp55n/linear_medium-previous.json",
+            "--repeats",
+            "5",
+            "--seed",
+            "42"
+          ]
+        },
+        "sklearn": {
+          "variant": "sklearn",
+          "case": "linear_medium",
+          "seed": 42,
+          "repeats": 5,
+          "fixture_sha256": "3d5ab1d2f7a52863937cb4066fb8a8f667dc8d623262509850099d7861da1626",
+          "environment": {
+            "pid": 26424,
+            "python_executable": "/Users/tunguz/Programming/mlxlearn/.venv/bin/python",
+            "python": "3.14.2 (main, Dec  9 2025, 19:29:30) [Clang 21.1.4 ]",
+            "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+            "numpy": "2.5.4",
+            "scipy": "1.18.1",
+            "sklearn": "1.9.1",
+            "mlx": "0.32.4",
+            "mlx_device": {
+              "device_name": "Apple M4 Max",
+              "max_recommended_working_set_size": 115448725504,
+              "memory_size": 137438953472,
+              "architecture": "applegpu_g16s",
+              "max_buffer_length": 86586540032,
+              "resource_limit": 499000
+            },
+            "thread_environment": {
+              "VECLIB_MAXIMUM_THREADS": "1",
+              "OPENBLAS_NUM_THREADS": "1",
+              "MKL_NUM_THREADS": "1",
+              "OMP_NUM_THREADS": "1"
+            },
+            "threadpools_inside_limit": [
+              {
+                "user_api": "openmp",
+                "internal_api": "openmp",
+                "num_threads": 1,
+                "prefix": "libomp",
+                "filepath": "/Users/tunguz/Programming/mlxlearn/.venv/lib/python3.14/site-packages/sklearn/.dylibs/libomp.dylib",
+                "version": null
+              }
+            ],
+            "thread_limit": 1,
+            "source_root": null,
+            "source_sha256": {},
+            "native_extensions": {},
+            "imported_mlxlearn_modules": {},
+            "harness_sha256": "152dd3d01f669bce2b35128a70e8f4c1e867098d606c066a0fb34bce4f524028"
+          },
+          "worker_command": [
+            "/Users/tunguz/Programming/mlxlearn/.venv/bin/python",
+            "-m",
+            "benchmarks.svc_working_set",
+            "--worker",
+            "--variant",
+            "sklearn",
+            "--source-root",
+            "/Users/tunguz/Programming/mlxlearn",
+            "--case",
+            "linear_medium",
+            "--fixture",
+            "/var/folders/rj/2r_78zvx5r1265qkzhz8xwzc0000gn/T/svc-working-set-0awrp55n/linear_medium-fixture.npz",
+            "--worker-output",
+            "/var/folders/rj/2r_78zvx5r1265qkzhz8xwzc0000gn/T/svc-working-set-0awrp55n/linear_medium-sklearn.json",
+            "--repeats",
+            "5",
+            "--seed",
+            "42"
+          ]
+        }
+      },
+      "worker_order": [
+        "current",
+        "previous",
+        "sklearn"
+      ]
+    }
+  ]
+}

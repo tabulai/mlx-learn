@@ -8,6 +8,21 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- SVC now solves eligible subproblems with native hierarchical working sets,
+  batches GPU kernel-row requests within the configured cache budget, and
+  certifies convergence using a reconstructed full gradient. The native pair
+  solver implements active-set shrinking. Inference reuses owned support-vector
+  preparation and RBF norms, with exact mutation checks and safe pickle/refit
+  behavior. Public tolerances and iteration budgets are preserved. See the
+  [additional speedups, source study and limitations](docs/svc-working-set-2026-10-31.md).
+- SVC now uses a native float64 SMO loop with fused gradient/working-set scans
+  and a bounded native row cache. Metal kernels fuse nonlinear transforms and
+  on-demand row evaluation; native CPU routines replace NumPy statistics,
+  prediction reductions and multiclass voting. The exact C-SVC objective,
+  float32 kernel/float64 optimizer precision split, public API, and conservative
+  automatic routing remain intact. Final KKT diagnostics now describe the
+  returned iterate even when the iteration budget is exhausted. See the
+  [benchmarks and validation](docs/svc-native-2026-10-31.md).
 - Native KNN selection for `k=5` now validates dot products and selects exact
   integer neighbors in one pass, committing private results only after every
   row passes. Precision, canonical ties, malformed-input checks and error

@@ -232,6 +232,17 @@ and independent references confirm the reproduced ill-conditioned and weighted
 accuracy fixes. General rank-deficiency checks pass; the report records cases
 without a speed win, reference limitations and full-suite validation status.
 
+SVC uses native C++ hierarchical working sets and pairwise SMO with active-set
+shrinking, preserving float64 optimizer state and float32 kernel rows. GPU kernel
+transforms and requested row batches use fused Metal kernels. Prepared support
+vectors and norms are reused for prediction with exact mutation checks. Native
+CPU routines handle statistics, decision reductions and multiclass voting;
+NumPy remains at the validation and public-array boundary, with portable
+fallbacks if the optional extensions are unavailable. Automatic backend
+thresholds remain conservative. See the
+[working-set implementation and benchmarks](docs/svc-working-set-2026-10-31.md)
+and the [earlier native-loop acceleration](docs/svc-native-2026-10-31.md).
+
 KNN shares a NumPy-free GPU search core with `mlxlearn_device.fit_neighbors`.
 Small neighbor counts use fused Metal distance/selection kernels, and GPU
 classifier search and voting stay on the device until the final output. Automatic
@@ -365,7 +376,7 @@ What that means for the measured development build on an M4 Max:
 |---|---|
 | **Neighbor queries/inference** | Wins **625/648**, **648/648** and **648/648** medians against default brute, single-thread brute and auto sklearn on the [full panel](docs/knn-digits-benchmarks-2026-10-30.md). The ≥2× counts are **587**, **300** and **592**, respectively. |
 | Neighbor `fit` and startup | Owns training data and defers search preparation where appropriate. Fit-only, first fit-plus-query and total process startup are reported separately; query gains do not guarantee faster fit or startup. |
-| `SVC` | **2.93× on wide data** (4 000 × 256, rbf), but slower than LIBSVM on narrow data — 0.47× at 4 000 × 32, worse below. `kernel="linear"` never uses MLX. Width decides, and patched dispatch routes accordingly. |
+| `SVC` | Native working sets improve measured linear and RBF fits; tiny-cache RBF still trails sklearn and prediction gains vary. See the [current results and limitations](docs/svc-working-set-2026-10-31.md). Patched routing remains conservative, and linear is excluded from automatic GPU selection. |
 | `LogisticRegression` | **Slower than scikit-learn below 1 024 features**, by a lot. The crossover is set high so patched dispatch hands those to scikit-learn; see [`docs/benchmarks.md`](docs/benchmarks.md) for why and what would change it. |
 
 Reproduce them:

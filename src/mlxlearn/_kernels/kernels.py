@@ -42,6 +42,7 @@ from .._common.arrays import NUMPY_FLOAT
 from .._common.config import get_tuning
 from .._common.device import use_device
 from ..exceptions import UnsupportedParameterError
+from . import svc_cpu
 
 __all__ = [
     "SUPPORTED_KERNELS",
@@ -139,7 +140,9 @@ def resolve_gamma(gamma, X: np.ndarray) -> float:
     """
     if isinstance(gamma, str):
         if gamma == "scale":
-            variance = float(X.var())
+            variance = svc_cpu.variance(X)
+            if variance is None:
+                variance = float(X.var())
             return 1.0 / (X.shape[1] * variance) if variance > 1e-12 else 1.0
         if gamma == "auto":
             return 1.0 / X.shape[1]
@@ -176,6 +179,9 @@ def kernel_diagonal(spec: KernelSpec, X: np.ndarray) -> np.ndarray:
     mlxlearn uses, which is why the two agree on the working-set quadratic
     coefficient to better than the tolerance the solver stops on.
     """
+    native = svc_cpu.diagonal(X, spec)
+    if native is not None:
+        return native
     if spec.kernel == "rbf":
         # ‖x − x‖² = 0 exactly, so exp(0) = 1 exactly. Computing it would only
         # introduce a rounding error the analytic value does not have.
@@ -256,8 +262,12 @@ def _integer_power(mx, base, degree: int):
     return result
 
 
-def _transform(mx, spec: KernelSpec, dot, a_sq, b_sq):
+def _transform(mx, spec: KernelSpec, dot, a_sq, b_sq, *, backend="cpu"):
     """Turn an inner-product tile into a kernel tile, on device."""
+    if backend == "mlx" and 0 <= int(spec.degree) < 2**64:
+        from .svc_fused import transform
+
+        return transform(spec, dot, a_sq, b_sq)
     if spec.kernel == "linear":
         return dot
     if spec.kernel == "rbf":
@@ -272,11 +282,16 @@ def _transform(mx, spec: KernelSpec, dot, a_sq, b_sq):
     return _integer_power(mx, z, int(spec.degree))
 
 
-def _prepare(spec: KernelSpec, A, center) -> np.ndarray:
-    """Host-side float32 copy of ``A``, translated when the kernel allows it."""
-    out = np.ascontiguousarray(A, dtype=NUMPY_FLOAT)
+def _prepare(A) -> np.ndarray:
+    """Convert the input buffer; translation is evaluated on the MLX device."""
+    return np.ascontiguousarray(A, dtype=NUMPY_FLOAT)
+
+
+def _device_array(mx, spec, data, center):
+    """Upload once and translate on device, keeping array arithmetic out of NumPy."""
+    out = mx.array(data, dtype=mx.float32)
     if center is not None and spec.uses_center:
-        out = np.ascontiguousarray(out - np.asarray(center, dtype=NUMPY_FLOAT))
+        out = out - mx.array(center, dtype=mx.float32)
     return out
 
 
@@ -317,8 +332,8 @@ def kernel_matrix(
     """
     import mlx.core as mx
 
-    A32 = _prepare(spec, A, center)
-    B32 = A32 if B is None else _prepare(spec, B, center)
+    A32 = _prepare(A)
+    B32 = A32 if B is None else _prepare(B)
     n_a, n_b = A32.shape[0], B32.shape[0]
     out = np.empty((n_a, n_b), dtype=NUMPY_FLOAT)
     if n_a == 0 or n_b == 0:
@@ -328,14 +343,18 @@ def kernel_matrix(
     needs_norms = spec.kernel == "rbf"
 
     with use_device(_device(backend)):
-        right = mx.array(B32, dtype=mx.float32)
+        right = _device_array(mx, spec, B32, center)
         right_t = right.T
         b_sq = mx.sum(right * right, axis=1) if needs_norms else None
         for start in range(0, n_a, rows):
             end = min(start + rows, n_a)
-            block = mx.array(A32[start:end], dtype=mx.float32)
-            a_sq = mx.sum(block * block, axis=1) if needs_norms else None
-            tile = _transform(mx, spec, block @ right_t, a_sq, b_sq)
+            block = right[start:end] if B is None else _device_array(
+                mx, spec, A32[start:end], center
+            )
+            a_sq = None
+            if needs_norms:
+                a_sq = b_sq[start:end] if B is None else mx.sum(block * block, axis=1)
+            tile = _transform(mx, spec, block @ right_t, a_sq, b_sq, backend=backend)
             mx.eval(tile)
             out[start:end] = np.asarray(tile)
     return out
@@ -350,6 +369,7 @@ def kernel_combine(
     backend: str = "cpu",
     center: np.ndarray | None = None,
     block_rows: int | None = None,
+    bias: np.ndarray | None = None,
 ) -> np.ndarray:
     """``K(A, B) @ weights``, blocked over ``A``, returned as float64.
 
@@ -362,6 +382,8 @@ def kernel_combine(
     backend : {"mlx", "cpu"}, default="cpu"
     center : ndarray of shape (n_features,), optional
     block_rows : int, optional
+    bias : ndarray of shape (n_outputs,), optional
+        Subtract this intercept convention in the native reduction.
 
     Returns
     -------
@@ -369,42 +391,51 @@ def kernel_combine(
 
     Notes
     -----
-    The kernel entries are computed in float32 on device — that is where the work
-    is, ``n_a · n_b · n_features`` — and the contraction against ``weights`` is
-    done in float64 on the host. The contraction is only ``n_a · n_b · n_outputs``
-    with ``n_outputs`` equal to the number of one-vs-one classifiers, so it is
-    negligible next to the kernel, while doing it in float32 would add an
-    accumulation error over every support vector on top of the kernel's own
-    rounding. Buying an order of magnitude of decision-value accuracy for a cost
-    that does not show up in a profile is not a trade worth declining.
+    Kernel entries are computed in float32 on device. Native CPU code contracts
+    them against float64 weights and subtracts the optional bias in float64.
+    This preserves the decision-value precision contract without NumPy numerical
+    work. Installations without the optional extension use the portable NumPy
+    reduction. GPU evaluation fuses each nonlinear kernel's transform into one
+    pass after MLX's tuned matrix multiply.
 
-    The result is independent of ``block_rows``: each row of ``A`` is reduced on
-    its own, so any chunking gives bit-identical output.
+    Different ``block_rows`` remain numerically equivalent within float32
+    kernel precision; matrix multiplication and transcendental routines can
+    select different accumulation/vectorization orders for different shapes.
     """
     import mlx.core as mx
 
-    A32 = _prepare(spec, A, center)
-    B32 = _prepare(spec, B, center)
+    A32 = _prepare(A)
+    B32 = _prepare(B)
     n_a, n_b = A32.shape[0], B32.shape[0]
     W = np.asarray(weights, dtype=np.float64)
     out = np.zeros((n_a, W.shape[1]), dtype=np.float64)
-    if n_a == 0 or n_b == 0:
+    if n_a == 0:
         return out
+    if n_b == 0:
+        native = svc_cpu.contract(np.empty((n_a, 0), dtype=NUMPY_FLOAT), W, bias)
+        if native is not None:
+            return native
+        return out if bias is None else out - bias
 
     rows = _block_rows(n_a, n_b, backend, block_rows)
     needs_norms = spec.kernel == "rbf"
 
     with use_device(_device(backend)):
-        right = mx.array(B32, dtype=mx.float32)
+        right = _device_array(mx, spec, B32, center)
         right_t = right.T
         b_sq = mx.sum(right * right, axis=1) if needs_norms else None
         for start in range(0, n_a, rows):
             end = min(start + rows, n_a)
-            block = mx.array(A32[start:end], dtype=mx.float32)
+            block = _device_array(mx, spec, A32[start:end], center)
             a_sq = mx.sum(block * block, axis=1) if needs_norms else None
-            tile = _transform(mx, spec, block @ right_t, a_sq, b_sq)
+            tile = _transform(mx, spec, block @ right_t, a_sq, b_sq, backend=backend)
             mx.eval(tile)
-            out[start:end] = np.asarray(tile).astype(np.float64) @ W
+            native = svc_cpu.contract(np.asarray(tile), W, bias)
+            if native is not None:
+                out[start:end] = native
+            else:
+                block_out = np.asarray(tile).astype(np.float64) @ W
+                out[start:end] = block_out if bias is None else block_out - bias
     return out
 
 
@@ -420,21 +451,22 @@ class KernelRows:
     Attributes
     ----------
     X : ndarray of shape (n_samples, n_features)
-        Float32 C-ordered copy, already translated when ``spec.uses_center``.
+        Owned float32 C-ordered copy of the original coordinates.
     spec : KernelSpec
     backend : {"mlx", "cpu"}
 
     Notes
     -----
-    A row costs one ``(n, d) @ (d,)`` product. That is deliberate: a decomposition
-    solver touches a small, scattered subset of rows, so computing the rows it
-    actually asks for beats materializing all ``n`` of them — and it is the only
-    shape of this problem that fits in bounded memory at large ``n``.
+    Each row streams the resident ``(n, d)`` design. The GPU fuses its dot
+    products or direct squared distances with the kernel transform; CPU MLX
+    uses a matrix-vector product. Computing rows on demand keeps large
+    decomposition problems within the cache budget.
     """
 
     X: np.ndarray
     spec: KernelSpec
     backend: str
+    center: np.ndarray | None = None
     _device_X: object = None  # mx.array (n, d)
     _device_sq: object = None  # mx.array (n,), only for rbf
 
@@ -442,9 +474,9 @@ class KernelRows:
         import mlx.core as mx
 
         with use_device(_device(self.backend)):
-            data = mx.array(self.X, dtype=mx.float32)
+            data = _device_array(mx, self.spec, self.X, self.center)
             self._device_X = data
-            if self.spec.kernel == "rbf":
+            if self.spec.kernel == "rbf" and self.backend != "mlx":
                 self._device_sq = mx.sum(data * data, axis=1)
                 mx.eval(data, self._device_sq)
             else:
@@ -460,11 +492,19 @@ class KernelRows:
 
         with use_device(_device(self.backend)):
             data = self._device_X
+            if self.backend == "mlx" and 0 <= int(self.spec.degree) < 2**64:
+                from .svc_fused import row
+
+                out = row(self.spec, data, index)
+                mx.eval(out)
+                return np.asarray(out, dtype=NUMPY_FLOAT)
             dot = (data @ data[index][:, None])[:, 0]
             if self.spec.kernel == "linear":
                 out = dot
             elif self.spec.kernel == "rbf":
                 sq = self._device_sq
+                if sq is None:
+                    sq = mx.sum(data * data, axis=1)
                 squared = sq[index] + sq - 2.0 * dot
                 out = mx.exp(-self.spec.gamma * mx.maximum(squared, 0.0))
             else:
@@ -473,6 +513,36 @@ class KernelRows:
                     out = mx.tanh(z)
                 else:
                     out = _integer_power(mx, z, int(self.spec.degree))
+            mx.eval(out)
+            return np.asarray(out, dtype=NUMPY_FLOAT)
+
+    def rows(self, indices) -> np.ndarray:
+        """Evaluate a working set together and synchronize once for the batch."""
+        import operator
+
+        import mlx.core as mx
+
+        ids = [operator.index(index) for index in indices]
+        if any(index < 0 or index >= self.n_samples for index in ids):
+            raise IndexError("kernel row index out of bounds")
+        if not ids:
+            return np.empty((0, self.n_samples), dtype=NUMPY_FLOAT)
+        with use_device(_device(self.backend)):
+            if self.backend == "mlx" and 0 <= int(self.spec.degree) < 2**64:
+                from .svc_fused import rows
+
+                out = rows(self.spec, self._device_X, ids)
+            else:
+                data = self._device_X
+                selected = mx.array(ids, dtype=mx.int32)
+                left = data[selected]
+                a_sq = b_sq = None
+                if self.spec.uses_center:
+                    b_sq = self._device_sq
+                    if b_sq is None:
+                        b_sq = mx.sum(data * data, axis=1)
+                    a_sq = b_sq[selected]
+                out = _transform(mx, self.spec, left @ data.T, a_sq, b_sq, backend=self.backend)
             mx.eval(out)
             return np.asarray(out, dtype=NUMPY_FLOAT)
 
@@ -491,7 +561,7 @@ def build_kernel_rows(
     explicit copy a row source could alias the caller's buffer and change its own
     answers when the caller mutated their array, mid-fit.
     """
-    prepared = _prepare(spec, X, center)
+    prepared = _prepare(X)
     if prepared is X or np.shares_memory(prepared, X):
         prepared = prepared.copy()
-    return KernelRows(X=prepared, spec=spec, backend=backend)
+    return KernelRows(X=prepared, spec=spec, backend=backend, center=center)
