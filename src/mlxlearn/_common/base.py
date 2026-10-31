@@ -5,9 +5,14 @@ that no estimator has to reimplement it and drift.
 
 Two invariants matter more than anything else here.
 
-**The sticky backend.** The backend is chosen once, during ``fit``, and stored on
-``_execution_backend_``. Every subsequent ``predict`` / ``predict_proba`` /
-``transform`` / ``kneighbors`` uses *that* backend. Inference never re-decides.
+**The sticky fitted policy.** The backend is chosen during ``fit`` and stored on
+``_execution_backend_``. Subsequent inference normally uses that backend.
+NumPy KNN estimators fitted with ``device="auto"`` additionally capture an
+automatic policy that may run an owned CPU or GPU search for each query batch.
+Their ``execution_policy_`` describes that fitted policy, and
+``last_query_backend_`` reports the backend that actually searched. Explicit
+device choices remain fixed. Changing global configuration after fit does not
+change either policy.
 An estimator whose MLX fit produced MLX-shaped state must not later find itself in
 scikit-learn's inference path holding state that path cannot read — and the
 converse, an estimator that fell back to scikit-learn at fit time, must not have
@@ -25,7 +30,9 @@ undiscoverable.
 Layer 1 classes (``mlxlearn.svm.SVC``) set ``_mlxlearn_allow_fallback = False``
 and therefore only ever raise. Layer 2 classes, defined in
 ``mlxlearn.patching``, set it to ``True``. That single flag is the whole
-difference between the two layers.
+difference in fallback policy between the two layers. Patched neighbor classes
+also retain stock inheritance for identity and graph-helper compatibility; their
+owned numerical search is the same as in the direct interface.
 """
 
 from __future__ import annotations

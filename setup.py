@@ -1,4 +1,4 @@
-"""Build the optional Apple Silicon native Metal command-loop extension."""
+"""Build the optional Apple Silicon Metal and exact CPU search extensions."""
 
 from __future__ import annotations
 
@@ -47,6 +47,16 @@ if sys.platform == "darwin" and platform.machine() == "arm64":
             optional=True,
         )
     )
-    options["bdist_wheel"] = {"py_limited_api": "cp310"}
+    extensions.append(
+        Extension(
+            "mlxlearn._kernels._neighbors_cpu_native",
+            ["src/mlxlearn/_kernels/_neighbors_cpu_native.cpp"],
+            language="c++",
+            extra_compile_args=["-O3", "-std=c++17", "-fno-fast-math", "-ffp-contract=off"],
+            optional=True,
+        )
+    )
+    # The CPU module uses Py_buffer, including on Python 3.10. Its wheel must
+    # carry the actual CPython ABI tag, even though the Metal module is abi3.
 
 setup(ext_modules=extensions, cmdclass={"build_ext": MetalBuildExt}, options=options)

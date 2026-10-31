@@ -373,23 +373,27 @@ def test_small_problems_use_the_cpu_path(small_classification_data):
     assert model.execution_backend_ == "cpu"
 
 
-def test_large_problems_use_mlx(classification_data):
+def test_narrow_fits_defer_gpu_storage_for_potential_single_queries(classification_data):
     X, y = classification_data
     model = KNeighborsClassifier(n_neighbors=3).fit(X, y)
-    assert model.execution_backend_ == "mlx"
+    assert model.execution_backend_ == "cpu" and model.execution_policy_ == "auto"
+    assert model._index_._device_index is None and model._index_._gpu_available is None
 
 
-def test_inference_reuses_the_fitted_backend(classification_data):
-    """The sticky invariant, asserted through the diagnostics record."""
+def test_inference_reuses_the_fitted_backend(small_classification_data):
+    """Explicit fixed policy remains sticky after global configuration changes."""
     from mlxlearn import get_backend_diagnostics
 
-    X, y = classification_data
-    model = KNeighborsClassifier(n_neighbors=3).fit(X, y)
+    X, y = small_classification_data
+    with tuning_context(force_backend="cpu"):
+        model = KNeighborsClassifier(n_neighbors=3).fit(X, y)
     fitted = model.execution_backend_
-    model.predict(X[:10])
+    with tuning_context(force_backend="mlx"):
+        model.predict(X[:10])
 
     inference = [e for e in get_backend_diagnostics() if e.operation in ("predict", "kneighbors")]
     assert inference, "no inference event recorded"
+    assert model.execution_policy_ == "fixed" and model.last_query_backend_ == fitted
     assert all(e.backend == fitted for e in inference)
     assert all(e.reason == "sticky" for e in inference)
 
@@ -400,7 +404,8 @@ def test_refit_may_change_backend(small_classification_data, classification_data
 
     model = KNeighborsClassifier(n_neighbors=3).fit(small_X, small_y)
     assert model.execution_backend_ == "cpu"
-    model.fit(big_X, big_y)
+    with tuning_context(force_backend="mlx"):
+        model.fit(big_X, big_y)
     assert model.execution_backend_ == "mlx"
 
 
