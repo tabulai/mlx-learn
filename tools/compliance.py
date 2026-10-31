@@ -85,6 +85,10 @@ BRANDING_EXEMPT = {
     "docs/provenance.md",
     # Read-only predecessor/source comparison, retained as investigation evidence.
     "docs/performance-investigation-2026-10-26.md",
+    # Immutable import-time traces record modules in the benchmark environment,
+    # including a dependency's compatibility probe; this is measured evidence.
+    "benchmarks/results/knn-startup-2026-10-30-importtime-current.log",
+    "benchmarks/results/knn-startup-2026-10-30-importtime-sklearn.log",
 }
 
 #: The only private scikit-learn imports mlxlearn may use, and only from ``patching/``.
