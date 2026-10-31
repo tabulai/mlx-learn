@@ -1,0 +1,247 @@
+........................................................................ [  8%]
+........................................................................ [ 17%]
+........................................................................ [ 26%]
+........................................................................ [ 35%]
+........................................................................ [ 44%]
+........................................................................ [ 53%]
+........................................................................ [ 62%]
+........................................................................ [ 71%]
+........................................................................ [ 80%]
+........................................................................ [ 89%]
+........................................................................ [ 98%]
+.......FF.FF...                                                          [100%]
+=================================== FAILURES ===================================
+___________ test_layer1_passes_sklearn_checks[KNeighborsClassifier] ____________
+
+estimator_class = <class 'mlxlearn.neighbors._classification.KNeighborsClassifier'>
+
+    @pytest.mark.parametrize("estimator_class", LAYER1, ids=lambda c: c.__name__)
+    def test_layer1_passes_sklearn_checks(estimator_class):
+>       _run(estimator_class, "Layer 1")
+
+tests/test_sklearn_compliance.py:100: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+estimator_class = <class 'mlxlearn.neighbors._classification.KNeighborsClassifier'>
+layer = 'Layer 1'
+
+    def _run(estimator_class, layer: str):
+        estimator = estimator_class()
+        # __name__ is set to the scikit-learn name on the Layer 2 classes, so this
+        # key works for both layers.
+        inherited = INHERITED_FAILURES.get(estimator_class.__name__, set())
+    
+        results = check_estimator(estimator, on_fail=None)
+        assert results, f"no checks ran for {estimator_class}"
+    
+        failures = []
+        for result in results:
+            if result["status"] != "failed":
+                continue
+            name = result["check_name"]
+            if name in inherited:
+                continue
+            if (estimator_class.__name__, name) in EXPECTED_XFAILS:
+                continue
+            failures.append(f"{name}: {result['exception']}")
+    
+>       assert not failures, (
+            f"{layer} {estimator_class.__name__} failed {len(failures)} scikit-learn checks:\n"
+            + "\n".join(f"  - {f}" for f in failures)
+        )
+E       AssertionError: Layer 1 KNeighborsClassifier failed 1 scikit-learn checks:
+E           - check_dict_unchanged: Estimator changes __dict__ during predict
+E       assert not ['check_dict_unchanged: Estimator changes __dict__ during predict']
+
+tests/test_sklearn_compliance.py:91: AssertionError
+____________ test_layer1_passes_sklearn_checks[KNeighborsRegressor] ____________
+
+estimator_class = <class 'mlxlearn.neighbors._regression.KNeighborsRegressor'>
+
+    @pytest.mark.parametrize("estimator_class", LAYER1, ids=lambda c: c.__name__)
+    def test_layer1_passes_sklearn_checks(estimator_class):
+>       _run(estimator_class, "Layer 1")
+
+tests/test_sklearn_compliance.py:100: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+estimator_class = <class 'mlxlearn.neighbors._regression.KNeighborsRegressor'>
+layer = 'Layer 1'
+
+    def _run(estimator_class, layer: str):
+        estimator = estimator_class()
+        # __name__ is set to the scikit-learn name on the Layer 2 classes, so this
+        # key works for both layers.
+        inherited = INHERITED_FAILURES.get(estimator_class.__name__, set())
+    
+        results = check_estimator(estimator, on_fail=None)
+        assert results, f"no checks ran for {estimator_class}"
+    
+        failures = []
+        for result in results:
+            if result["status"] != "failed":
+                continue
+            name = result["check_name"]
+            if name in inherited:
+                continue
+            if (estimator_class.__name__, name) in EXPECTED_XFAILS:
+                continue
+            failures.append(f"{name}: {result['exception']}")
+    
+>       assert not failures, (
+            f"{layer} {estimator_class.__name__} failed {len(failures)} scikit-learn checks:\n"
+            + "\n".join(f"  - {f}" for f in failures)
+        )
+E       AssertionError: Layer 1 KNeighborsRegressor failed 1 scikit-learn checks:
+E           - check_dict_unchanged: Estimator changes __dict__ during predict
+E       assert not ['check_dict_unchanged: Estimator changes __dict__ during predict']
+
+tests/test_sklearn_compliance.py:91: AssertionError
+_ test_layer2_passes_sklearn_checks[mlxlearn.patching._estimators.KNeighborsClassifier] _
+
+estimator_class = <class 'mlxlearn.patching._estimators.KNeighborsClassifier'>
+
+    @pytest.mark.parametrize("estimator_class", LAYER2, ids=lambda c: c.__module__ + "." + c.__name__)
+    def test_layer2_passes_sklearn_checks(estimator_class):
+        """The patched classes must be at least as compatible as the strict ones.
+    
+        They accept strictly more — sparse input and multi-output targets reach
+        scikit-learn — so a failure here means the fallback is not transparent.
+        """
+>       _run(estimator_class, "Layer 2")
+
+tests/test_sklearn_compliance.py:110: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+estimator_class = <class 'mlxlearn.patching._estimators.KNeighborsClassifier'>
+layer = 'Layer 2'
+
+    def _run(estimator_class, layer: str):
+        estimator = estimator_class()
+        # __name__ is set to the scikit-learn name on the Layer 2 classes, so this
+        # key works for both layers.
+        inherited = INHERITED_FAILURES.get(estimator_class.__name__, set())
+    
+        results = check_estimator(estimator, on_fail=None)
+        assert results, f"no checks ran for {estimator_class}"
+    
+        failures = []
+        for result in results:
+            if result["status"] != "failed":
+                continue
+            name = result["check_name"]
+            if name in inherited:
+                continue
+            if (estimator_class.__name__, name) in EXPECTED_XFAILS:
+                continue
+            failures.append(f"{name}: {result['exception']}")
+    
+>       assert not failures, (
+            f"{layer} {estimator_class.__name__} failed {len(failures)} scikit-learn checks:\n"
+            + "\n".join(f"  - {f}" for f in failures)
+        )
+E       AssertionError: Layer 2 KNeighborsClassifier failed 1 scikit-learn checks:
+E           - check_dict_unchanged: Estimator changes __dict__ during predict
+E       assert not ['check_dict_unchanged: Estimator changes __dict__ during predict']
+
+tests/test_sklearn_compliance.py:91: AssertionError
+_ test_layer2_passes_sklearn_checks[mlxlearn.patching._estimators.KNeighborsRegressor] _
+
+estimator_class = <class 'mlxlearn.patching._estimators.KNeighborsRegressor'>
+
+    @pytest.mark.parametrize("estimator_class", LAYER2, ids=lambda c: c.__module__ + "." + c.__name__)
+    def test_layer2_passes_sklearn_checks(estimator_class):
+        """The patched classes must be at least as compatible as the strict ones.
+    
+        They accept strictly more — sparse input and multi-output targets reach
+        scikit-learn — so a failure here means the fallback is not transparent.
+        """
+>       _run(estimator_class, "Layer 2")
+
+tests/test_sklearn_compliance.py:110: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+estimator_class = <class 'mlxlearn.patching._estimators.KNeighborsRegressor'>
+layer = 'Layer 2'
+
+    def _run(estimator_class, layer: str):
+        estimator = estimator_class()
+        # __name__ is set to the scikit-learn name on the Layer 2 classes, so this
+        # key works for both layers.
+        inherited = INHERITED_FAILURES.get(estimator_class.__name__, set())
+    
+        results = check_estimator(estimator, on_fail=None)
+        assert results, f"no checks ran for {estimator_class}"
+    
+        failures = []
+        for result in results:
+            if result["status"] != "failed":
+                continue
+            name = result["check_name"]
+            if name in inherited:
+                continue
+            if (estimator_class.__name__, name) in EXPECTED_XFAILS:
+                continue
+            failures.append(f"{name}: {result['exception']}")
+    
+>       assert not failures, (
+            f"{layer} {estimator_class.__name__} failed {len(failures)} scikit-learn checks:\n"
+            + "\n".join(f"  - {f}" for f in failures)
+        )
+E       AssertionError: Layer 2 KNeighborsRegressor failed 1 scikit-learn checks:
+E           - check_dict_unchanged: Estimator changes __dict__ during predict
+E       assert not ['check_dict_unchanged: Estimator changes __dict__ during predict']
+
+tests/test_sklearn_compliance.py:91: AssertionError
+=============================== warnings summary ===============================
+tests/unit/test_neighbors_float32_validation.py::test_nonfinite_tail_still_raises_validation_errors_at_fit_and_query[opposite_infinities]
+tests/unit/test_neighbors_float32_validation.py::test_nonfinite_tail_still_raises_validation_errors_at_fit_and_query[opposite_infinities]
+  /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/numpy/_core/fromnumeric.py:83: RuntimeWarning: invalid value encountered in reduce
+    return ufunc.reduce(obj, axis, dtype, out, **passkwargs)
+
+tests/test_sklearn_compliance.py::test_layer1_passes_sklearn_checks[NearestNeighbors]
+tests/test_sklearn_compliance.py::test_layer2_passes_sklearn_checks[mlxlearn.patching._estimators.NearestNeighbors]
+  /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/sklearn/utils/estimator_checks.py:918: SkipTestWarning: Skipping check check_array_api_input for NearestNeighbors because it raised SkipTest: SCIPY_ARRAY_API is not set: not checking array_api input
+    warnings.warn(
+
+tests/test_sklearn_compliance.py::test_layer1_passes_sklearn_checks[KNeighborsClassifier]
+tests/test_sklearn_compliance.py::test_layer2_passes_sklearn_checks[mlxlearn.patching._estimators.KNeighborsClassifier]
+  /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/sklearn/utils/estimator_checks.py:918: SkipTestWarning: Skipping check check_array_api_input for KNeighborsClassifier because it raised SkipTest: SCIPY_ARRAY_API is not set: not checking array_api input
+    warnings.warn(
+
+tests/test_sklearn_compliance.py::test_layer1_passes_sklearn_checks[KNeighborsRegressor]
+tests/test_sklearn_compliance.py::test_layer2_passes_sklearn_checks[mlxlearn.patching._estimators.KNeighborsRegressor]
+  /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/sklearn/utils/estimator_checks.py:918: SkipTestWarning: Skipping check check_array_api_input for KNeighborsRegressor because it raised SkipTest: SCIPY_ARRAY_API is not set: not checking array_api input
+    warnings.warn(
+
+tests/test_sklearn_compliance.py::test_layer2_passes_sklearn_checks[mlxlearn.patching._estimators.NearestNeighbors]
+  /Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/base.py:163: MLXLearnFallbackWarning: NearestNeighbors.fit received sparse input, but mlxlearn's MLX kernels are dense. Convert with X.toarray() to use mlxlearn, or run under patch_sklearn() to have sparse input handled by scikit-learn automatically. This warning is shown once per estimator and reason; call mlxlearn.get_backend_diagnostics() for the full record.
+    return self._handle_capability_error(exc, operation, shape=shape)
+
+tests/test_sklearn_compliance.py::test_layer2_passes_sklearn_checks[mlxlearn.patching._estimators.KNeighborsClassifier]
+  /Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/base.py:163: MLXLearnFallbackWarning: KNeighborsClassifier.fit received sparse input, but mlxlearn's MLX kernels are dense. Convert with X.toarray() to use mlxlearn, or run under patch_sklearn() to have sparse input handled by scikit-learn automatically. This warning is shown once per estimator and reason; call mlxlearn.get_backend_diagnostics() for the full record.
+    return self._handle_capability_error(exc, operation, shape=shape)
+
+tests/test_sklearn_compliance.py::test_layer2_passes_sklearn_checks[mlxlearn.patching._estimators.KNeighborsClassifier]
+  /Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/base.py:163: MLXLearnFallbackWarning: KNeighborsClassifier supports single-output targets only on the MLX path; got y with shape (42, 3). This warning is shown once per estimator and reason; call mlxlearn.get_backend_diagnostics() for the full record.
+    return self._handle_capability_error(exc, operation, shape=shape)
+
+tests/test_sklearn_compliance.py::test_layer2_passes_sklearn_checks[mlxlearn.patching._estimators.KNeighborsClassifier]
+  /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/sklearn/utils/estimator_checks.py:918: SkipTestWarning: Skipping check check_classifiers_multilabel_output_format_decision_function for KNeighborsClassifier because it raised SkipTest: KNeighborsClassifier does not have a decision_function method.
+    warnings.warn(
+
+tests/test_sklearn_compliance.py::test_layer2_passes_sklearn_checks[mlxlearn.patching._estimators.KNeighborsRegressor]
+  /Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/base.py:163: MLXLearnFallbackWarning: KNeighborsRegressor.fit received sparse input, but mlxlearn's MLX kernels are dense. Convert with X.toarray() to use mlxlearn, or run under patch_sklearn() to have sparse input handled by scikit-learn automatically. This warning is shown once per estimator and reason; call mlxlearn.get_backend_diagnostics() for the full record.
+    return self._handle_capability_error(exc, operation, shape=shape)
+
+tests/test_sklearn_compliance.py::test_layer2_passes_sklearn_checks[mlxlearn.patching._estimators.KNeighborsRegressor]
+  /Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/base.py:163: MLXLearnFallbackWarning: KNeighborsRegressor supports single-output targets only on the MLX path; got y with shape (11, 5). This warning is shown once per estimator and reason; call mlxlearn.get_backend_diagnostics() for the full record.
+    return self._handle_capability_error(exc, operation, shape=shape)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_sklearn_compliance.py::test_layer1_passes_sklearn_checks[KNeighborsClassifier]
+FAILED tests/test_sklearn_compliance.py::test_layer1_passes_sklearn_checks[KNeighborsRegressor]
+FAILED tests/test_sklearn_compliance.py::test_layer2_passes_sklearn_checks[mlxlearn.patching._estimators.KNeighborsClassifier]
+FAILED tests/test_sklearn_compliance.py::test_layer2_passes_sklearn_checks[mlxlearn.patching._estimators.KNeighborsRegressor]
+4 failed, 803 passed, 5 deselected, 14 warnings in 11.85s

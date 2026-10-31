@@ -345,8 +345,8 @@ Native binary SHA-256: `bacc58cf95a565df84eb40dd214d97c3bdf646153ff775e5488105f6
 
 ## Evidence
 
-[Repeat raw results](../benchmarks/results/knn-latency-final-2026-10-30-warm-exceptions-repeat.json) — SHA-256 `310495b7a788c628e821a282dba0b89396281ba09c07d7eb5360cbafceda4bcf`.
+[Repeat raw results](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-d49eb902b4f3d2fe6eac) — SHA-256 `310495b7a788c628e821a282dba0b89396281ba09c07d7eb5360cbafceda4bcf`.
 
-[Original full control](../benchmarks/results/knn-latency-final-2026-10-30-control.json) — SHA-256 `e12764076f2aaa5665324f2ec6a8ab2288eef9c5569bed33ba2a64434f305e95`.
+[Original full control](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-eb50543f229000482d06) — SHA-256 `e12764076f2aaa5665324f2ec6a8ab2288eef9c5569bed33ba2a64434f305e95`.
 
-[Independent repeat audit, all paired ratios, routing and cross-run flags](../benchmarks/results/knn-latency-final-2026-10-30-warm-exceptions-repeat-audit.json).
+[Independent repeat audit, all paired ratios, routing and cross-run flags](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-cfa29ed0066eb7017312).

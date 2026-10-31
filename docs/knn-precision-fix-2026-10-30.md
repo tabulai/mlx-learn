@@ -33,7 +33,7 @@ This comparison uses 50,000 training rows, 32 features, 256 queries, k=5, and fl
 
 Each range spans six seeds; paired speedups are medians of per-pair ratios, not ratios of the displayed ranges. Identical-current-code A/A ratios span 0.989–1.012×. Unequal-scale fresh latency is 8.5–9.9% lower than v3. Unequal-scale query differences are small and are reported without claiming a query speed gain.
 
-Full records: [six-seed paired results](../benchmarks/results/knn-precision-verified-dispatch-vs-v3-2026-10-30.json). The harness loads the actual frozen v3 index, kernels and public validation methods. It checks static dependencies, globals, restored hooks, and source/harness hashes; all these integrity checks pass.
+Full records: [six-seed paired results](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-2ab9f553ad4500f2bc1e). The harness loads the actual frozen v3 index, kernels and public validation methods. It checks static dependencies, globals, restored hooks, and source/harness hashes; all these integrity checks pass.
 
 ## Full rerun
 
@@ -89,7 +89,7 @@ A longer follow-up retains **31 calls after 10 warmups** on every shape, using t
 | `batch_8_k32` | 1.087× | 0.950× |
 | `batch_50000_32_k5` | 1.235× | 1.284× |
 
-[Complete longer panel](../benchmarks/results/knn-precision-verified-panel-repeat-2026-10-30.json). Current, v3 and resident quality checks and source integrity all pass; sklearn’s existing copied-row residual remains visible.
+[Complete longer panel](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-d985a7266fe3eaf453fa). Current, v3 and resident quality checks and source integrity all pass; sklearn’s existing copied-row residual remains visible.
 
 The distribution suite covers Gaussian, clustered, offset-1e4, and unequal-scale data for seeds 151, 251 and 252, with three warmups and nine retained calls per operation. Current output passes all 12 distribution/seed cases, for both query and fresh fit-plus-query, including the formerly failing offset case.
 

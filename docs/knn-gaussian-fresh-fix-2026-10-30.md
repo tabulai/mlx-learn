@@ -144,9 +144,9 @@ sklearn panel should not be compared as though they used the same warmup protoco
 
 ## Reproduction and artifacts
 
-- [Controlled four-worker results](../benchmarks/results/knn-gaussian-fresh-final-2026-10-30-control.json)
-- [Complete three-baseline results](../benchmarks/results/knn-gaussian-fresh-final-2026-10-30-broad.json)
-- [Derived broad summary](../benchmarks/results/knn-gaussian-fresh-final-2026-10-30-summary.json)
+- [Controlled four-worker results](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-2c25c338eb8511a10104)
+- [Complete three-baseline results](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-f8f82b657c035b95a37d)
+- [Derived broad summary](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-e4c267f4b694d73c2156)
 - [Execution record](../benchmarks/results/knn-gaussian-fresh-final-2026-10-30-execution.json)
 - [Final integrity and acceptance checks](../benchmarks/results/knn-gaussian-fresh-final-2026-10-30-validation.json)
 - [Frozen production archive](../benchmarks/reference/knn-gaussian-fresh-final-2026-10-30.zip) and [manifest](../benchmarks/reference/knn-gaussian-fresh-final-2026-10-30.manifest.json)

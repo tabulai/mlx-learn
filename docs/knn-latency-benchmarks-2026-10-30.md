@@ -317,11 +317,11 @@ Integrity checks: `{"fixture_integrity_pass": true, "harness_integrity_pass": tr
 
 ## Artifacts
 
-[Raw measurements and every audit](../benchmarks/results/knn-latency-final-2026-10-30-broad.json)
+[Raw measurements and every audit](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-4518c0aa82225d0c1915)
 
-[Validated derived summary](../benchmarks/results/knn-latency-final-2026-10-30-summary.json)
+[Validated derived summary](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-a4defb5c86346c46e2c9)
 
-[Controlled source comparison](../benchmarks/results/knn-latency-final-2026-10-30-control.json)
+[Controlled source comparison](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-eb50543f229000482d06)
 
 [Vector figure](assets/knn-latency-benchmarks-2026-10-30.svg)
 

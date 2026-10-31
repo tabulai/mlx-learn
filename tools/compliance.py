@@ -104,7 +104,7 @@ ALLOWED_LICENSES = (
     "public domain",
 )
 
-RUNTIME_DEPENDENCIES = ("numpy", "scikit-learn", "mlx")
+RUNTIME_DEPENDENCIES = ("numpy", "scipy", "scikit-learn", "mlx")
 
 #: Upstream copyright signatures that would require an entry in THIRD_PARTY_NOTICES.md.
 UPSTREAM_HEADER_PATTERNS = (

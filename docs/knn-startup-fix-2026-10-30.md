@@ -284,7 +284,7 @@ change measured by the completed panels above.
 
 The [execution record](../benchmarks/results/knn-startup-final2-2026-10-30-execution.json)
 records exact timing commands, test commands, environment and artifact hashes.
-The [independent full audit](../benchmarks/results/knn-startup-final2-2026-10-30-independent-audit.json)
+The [independent full audit](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-0627165e9250a108f9c6)
 checks the broad, balanced-control, fresh-process and fresh-model evidence.
 Separate audit records accompany the two additional control reports.
 

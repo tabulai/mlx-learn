@@ -315,8 +315,8 @@ The completed 18-fixture × 30-fresh-model × 5-worker panel contains 2700 fresh
 
 ## Evidence
 
-[Legacy raw results](../benchmarks/results/knn-followup-final-2026-10-30-legacy-control.json) — SHA256 `b3a07683bff86e647c4d1dc44342fd13da69500a1a90ff5b67824b44616996de`.
+[Legacy raw results](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-45337c132701c2fa1e75) — SHA256 `b3a07683bff86e647c4d1dc44342fd13da69500a1a90ff5b67824b44616996de`.
 
-[Independent intermediate audit, every cell and paired ratio](../benchmarks/results/knn-followup-final-2026-10-30-legacy-control-audit.json).
+[Independent intermediate audit, every cell and paired ratio](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-2ed1365fc34ed9847121).
 
-[Initialized-process first-query raw results](../benchmarks/results/knn-followup-final-2026-10-30-first-query.json) — SHA256 `12ac0c8a05571e4f55841076f248b1698bcd468927e75a5d5a17d136c401f876`.
+[Initialized-process first-query raw results](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-e1ba0dcbe694eeac1b99) — SHA256 `12ac0c8a05571e4f55841076f248b1698bcd468927e75a5d5a17d136c401f876`.

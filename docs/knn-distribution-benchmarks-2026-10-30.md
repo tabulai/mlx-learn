@@ -174,11 +174,11 @@ Integrity checks: `{"fixture_integrity_pass": true, "harness_integrity_pass": tr
 
 ## Artifacts
 
-[Raw measurements and every audit](../benchmarks/results/knn-distribution-final-2026-10-30-broad.json)
+[Raw measurements and every audit](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-5b9b9450c0ba31561b03)
 
-[Validated derived summary](../benchmarks/results/knn-distribution-final-2026-10-30-summary.json)
+[Validated derived summary](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-2435126a46060574fb2a)
 
-[Controlled source comparison](../benchmarks/results/knn-distribution-final-2026-10-30-control.json)
+[Controlled source comparison](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-707aa562806a99e5e15d)
 
 [Vector figure](assets/knn-distribution-final-2026-10-30.svg)
 

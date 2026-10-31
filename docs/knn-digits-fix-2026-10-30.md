@@ -167,7 +167,7 @@ call, and engine indices only. Public prediction calls were timed but were not
 individually audited after each call. Separate correctness tests and the final
 public benchmark panels supply those prediction audits.
 
-The [development GPU control](../benchmarks/results/knn-digits-candidate-2026-10-30-control.json)
+The [development GPU control](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-cc96cf6c82004afd39f0)
 retained all 27 Digits cells across both GPU controls, two automatic replicas and
 both ratio statistics: all 216 comparisons exceeded 1×, with a minimum of
 1.110×. Some comparisons with preceding automatic remained below 1×; those
@@ -188,7 +188,7 @@ The supplemental probe used the same Python wrappers and coordinates, the exact
 old and new binaries, two current replicas, all six mode orderings and all three
 Breast Cancer splits. All **10,800 results** passed independent neighbor or
 prediction checks, including all 2,160 warmup and 8,640 retained calls. Every
-timing remains in the [raw results](../benchmarks/results/knn-digits-breast-native-preservation-2026-10-30.json).
+timing remains in the [raw results](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-7fd99d2f5bf7650d7d2e).
 
 Old/new median-time ratios for the concentrated native primitive were
 0.9884–1.0021×; warmed public query, classification, regression and probability
@@ -274,8 +274,8 @@ definitions are unchanged from the preceding panels. The native build retains
 
 The [execution record](../benchmarks/results/knn-digits-final-2026-10-30-execution.json)
 contains exact commands, timestamps, versions, baseline identities and artifact
-hashes. The [independent verifier](../benchmarks/results/knn-digits-final-2026-10-30-independent-audit.json),
-[additional acceptance audit](../benchmarks/results/knn-digits-final-2026-10-30-additional-audit.json)
+hashes. The [independent verifier](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-94ba3b57658c12377bb5),
+[additional acceptance audit](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-88d3bb17ad5ad333ff56)
 and [post-run integrity record](../benchmarks/results/knn-digits-final-2026-10-30-post-run-integrity.json)
 all pass their numerical/evidence checks. Performance limits and the unmet
 1.10× margin checks remain separate from numerical acceptance.

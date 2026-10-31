@@ -1,0 +1,162 @@
+{
+  "protocol": "All GPU workloads run sequentially, every failed sample/nonzero exit retained, no oracle or tolerance changes. No production or harness mutations during timing.",
+  "source_archive": {
+    "path": "benchmarks/reference/knn-128-final-2026-10-30.zip",
+    "sha256": "920753a01375683bcfe776e6bbb79765f6f237471913ce8155a6bdc2806cf7ca"
+  },
+  "harness_archive": {
+    "path": "benchmarks/reference/knn-128-final-harnesses-2026-10-30.zip",
+    "sha256": "5b5dae1255f660e5903ff118d762cae3b49488a7d1eeb21474b2f75cc1e4d955"
+  },
+  "runs": [
+    {
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3",
+        "-m",
+        "benchmarks.knn_128_control",
+        "--output",
+        "benchmarks/results/knn-128-final-control-vs-v3-2026-10-30.json"
+      ],
+      "started_at": "2026-10-30T15:22:32.683543+00:00",
+      "elapsed_seconds": 54.37226970901247,
+      "exit_code": 0,
+      "log": "benchmarks/results/knn-128-final-control-vs-v3-2026-10-30.log"
+    },
+    {
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3",
+        "-m",
+        "benchmarks.knn_fresh_dispatch",
+        "--output",
+        "benchmarks/results/knn-128-final-dispatch-vs-v3-2026-10-30.json"
+      ],
+      "started_at": "2026-10-30T15:23:27.055248+00:00",
+      "elapsed_seconds": 114.00778791704215,
+      "exit_code": 0,
+      "log": "benchmarks/results/knn-128-final-dispatch-vs-v3-2026-10-30.log"
+    },
+    {
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3",
+        "-m",
+        "benchmarks.knn_acceleration",
+        "--reference-archive",
+        "benchmarks/reference/knn-pre-v4-2026-10-28.zip",
+        "--output",
+        "benchmarks/results/knn-128-final-original-vs-v3-2026-10-30.json"
+      ],
+      "started_at": "2026-10-30T15:25:21.061851+00:00",
+      "elapsed_seconds": 28.434492707950994,
+      "exit_code": 0,
+      "log": "benchmarks/results/knn-128-final-original-vs-v3-2026-10-30.log"
+    },
+    {
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3",
+        "-m",
+        "benchmarks.knn_review_distributions",
+        "--seed",
+        "151",
+        "--output",
+        "benchmarks/results/knn-128-final-distributions-seed151-2026-10-30.json"
+      ],
+      "started_at": "2026-10-30T15:25:49.496253+00:00",
+      "elapsed_seconds": 8.650291166035458,
+      "exit_code": 0,
+      "log": "benchmarks/results/knn-128-final-distributions-seed151-2026-10-30.log"
+    },
+    {
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3",
+        "-m",
+        "benchmarks.knn_review_distributions",
+        "--seed",
+        "251",
+        "--output",
+        "benchmarks/results/knn-128-final-distributions-seed251-2026-10-30.json"
+      ],
+      "started_at": "2026-10-30T15:25:58.146780+00:00",
+      "elapsed_seconds": 8.549600249971263,
+      "exit_code": 1,
+      "log": "benchmarks/results/knn-128-final-distributions-seed251-2026-10-30.log"
+    },
+    {
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3",
+        "-m",
+        "benchmarks.knn_review_distributions",
+        "--seed",
+        "252",
+        "--output",
+        "benchmarks/results/knn-128-final-distributions-seed252-2026-10-30.json"
+      ],
+      "started_at": "2026-10-30T15:26:06.696565+00:00",
+      "elapsed_seconds": 8.623143709031865,
+      "exit_code": 0,
+      "log": "benchmarks/results/knn-128-final-distributions-seed252-2026-10-30.log"
+    },
+    {
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3",
+        "-m",
+        "benchmarks.knn_pipeline",
+        "--profile",
+        "full",
+        "--resident",
+        "--reference-archive",
+        "benchmarks/reference/knn-pre-v4-2026-10-28.zip",
+        "--output",
+        "benchmarks/results/knn-128-final-panel-vs-v3-2026-10-30.json"
+      ],
+      "started_at": "2026-10-30T15:26:15.319891+00:00",
+      "elapsed_seconds": 13.886087374994531,
+      "exit_code": 0,
+      "log": "benchmarks/results/knn-128-final-panel-vs-v3-2026-10-30.log"
+    },
+    {
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3",
+        "-m",
+        "benchmarks.knn_pipeline",
+        "--profile",
+        "full",
+        "--resident",
+        "--warmup",
+        "10",
+        "--repeats",
+        "31",
+        "--reference-archive",
+        "benchmarks/reference/knn-pre-v4-2026-10-28.zip",
+        "--output",
+        "benchmarks/results/knn-128-final-panel-repeat-2026-10-30.json"
+      ],
+      "started_at": "2026-10-30T15:26:29.206151+00:00",
+      "elapsed_seconds": 49.92822641704697,
+      "exit_code": 0,
+      "log": "benchmarks/results/knn-128-final-panel-repeat-2026-10-30.log"
+    }
+  ],
+  "tests": {
+    "command": [
+      "python3",
+      "-m",
+      "pytest",
+      "-q",
+      "tests/unit/test_*neighbors*.py",
+      "tests/unit/test_validation_range.py",
+      "tests/unit/test_knn_acceleration_benchmark.py",
+      "tests/unit/test_knn_warmed_benchmark.py",
+      "tests/parity/test_neighbors.py",
+      "tests/parity/test_neighbors_fp32.py",
+      "tests/patching",
+      "tests/test_sklearn_compliance.py",
+      "-k",
+      "not LogisticRegression and not SVC"
+    ],
+    "passed": 652,
+    "exit_code": 0,
+    "log": "benchmarks/results/knn-128-full-tests-2026-10-30.log"
+  },
+  "final_source_integrity_pass": true,
+  "final_harness_integrity_pass": true
+}

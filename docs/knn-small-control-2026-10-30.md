@@ -1,6 +1,6 @@
 # Small-workload controlled benchmark
 
-Completed `2026-10-30T17:54:44.690226+00:00`. Acceptance: **True**. [Raw results](../benchmarks/results/knn-small-final-2026-10-30-control.json) (SHA-256 `f4c349f1b5b2bebd8884a6c8d65467d44561bde4a3892f7023ca5ae5aef2df9d`).
+Completed `2026-10-30T17:54:44.690226+00:00`. Acceptance: **True**. [Raw results](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-9683de46cbb53145a382) (SHA-256 `f4c349f1b5b2bebd8884a6c8d65467d44561bde4a3892f7023ca5ae5aef2df9d`).
 
 Three isolated public-API workers: current, identical-code A/A and frozen `knn-gaussian-fresh-final-2026-10-30.zip`. All GPU calls are serial. Each worker/operation gets 1 seconds of continuous warmup followed by 31 interleaved paired rounds. Every call includes public validation, NumPy boundaries and synchronization. Cold first-fit/query records come from persistent workers, excluding process startup.
 

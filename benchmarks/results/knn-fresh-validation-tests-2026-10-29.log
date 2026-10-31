@@ -1,0 +1,211 @@
+..........FFFF.......................................................... [ 84%]
+.............                                                            [100%]
+=================================== FAILURES ===================================
+____ test_large_float32_layouts_are_checked_and_fit_keeps_owned_storage[c] _____
+
+layout = 'c'
+
+    @pytest.mark.parametrize("layout", ["c", "fortran", "strided", "readonly"])
+    def test_large_float32_layouts_are_checked_and_fit_keeps_owned_storage(layout):
+        width = 64 if layout == "strided" else 32
+        source = np.arange(_SHAPE[0] * width, dtype=np.float32).reshape(_SHAPE[0], width)
+        if layout == "fortran":
+            source = np.asfortranarray(source)
+        X = source[:, ::2] if layout == "strided" else source.view()
+        if layout == "readonly":
+            X.setflags(write=False)
+        expected = X.copy()
+        prepared, finite = _prepare_neighbors_input(X)
+        assert prepared is X and finite is True
+    
+        with tuning_context(force_backend="cpu"):
+            model = NearestNeighbors(n_neighbors=1).fit(X)
+        # The checked flag must not be confused with ownership of a private cast.
+        source.fill(-100)
+        assert not np.shares_memory(model._fit_X, source)
+        np.testing.assert_array_equal(model._fit_X, expected)
+        np.testing.assert_array_equal(model._index_.device_index.X, expected)
+>       np.testing.assert_array_equal(model.kneighbors(expected[3:5], return_distance=False), [[3], [4]])
+E       AssertionError: 
+E       Arrays are not equal
+E       
+E       Mismatched elements: 1 / 2 (50%)
+E       Mismatch at index:
+E        [1, 0]: 3 (ACTUAL), 4 (DESIRED)
+E       Max absolute difference among violations: 1
+E       Max relative difference among violations: 0.25
+E        ACTUAL: array([[3],
+E              [3]])
+E        DESIRED: array([[3],
+E              [4]])
+
+tests/unit/test_neighbors_float32_validation.py:94: AssertionError
+_ test_large_float32_layouts_are_checked_and_fit_keeps_owned_storage[fortran] __
+
+layout = 'fortran'
+
+    @pytest.mark.parametrize("layout", ["c", "fortran", "strided", "readonly"])
+    def test_large_float32_layouts_are_checked_and_fit_keeps_owned_storage(layout):
+        width = 64 if layout == "strided" else 32
+        source = np.arange(_SHAPE[0] * width, dtype=np.float32).reshape(_SHAPE[0], width)
+        if layout == "fortran":
+            source = np.asfortranarray(source)
+        X = source[:, ::2] if layout == "strided" else source.view()
+        if layout == "readonly":
+            X.setflags(write=False)
+        expected = X.copy()
+        prepared, finite = _prepare_neighbors_input(X)
+        assert prepared is X and finite is True
+    
+        with tuning_context(force_backend="cpu"):
+            model = NearestNeighbors(n_neighbors=1).fit(X)
+        # The checked flag must not be confused with ownership of a private cast.
+        source.fill(-100)
+        assert not np.shares_memory(model._fit_X, source)
+        np.testing.assert_array_equal(model._fit_X, expected)
+        np.testing.assert_array_equal(model._index_.device_index.X, expected)
+>       np.testing.assert_array_equal(model.kneighbors(expected[3:5], return_distance=False), [[3], [4]])
+E       AssertionError: 
+E       Arrays are not equal
+E       
+E       Mismatched elements: 1 / 2 (50%)
+E       Mismatch at index:
+E        [1, 0]: 3 (ACTUAL), 4 (DESIRED)
+E       Max absolute difference among violations: 1
+E       Max relative difference among violations: 0.25
+E        ACTUAL: array([[3],
+E              [3]])
+E        DESIRED: array([[3],
+E              [4]])
+
+tests/unit/test_neighbors_float32_validation.py:94: AssertionError
+_ test_large_float32_layouts_are_checked_and_fit_keeps_owned_storage[strided] __
+
+layout = 'strided'
+
+    @pytest.mark.parametrize("layout", ["c", "fortran", "strided", "readonly"])
+    def test_large_float32_layouts_are_checked_and_fit_keeps_owned_storage(layout):
+        width = 64 if layout == "strided" else 32
+        source = np.arange(_SHAPE[0] * width, dtype=np.float32).reshape(_SHAPE[0], width)
+        if layout == "fortran":
+            source = np.asfortranarray(source)
+        X = source[:, ::2] if layout == "strided" else source.view()
+        if layout == "readonly":
+            X.setflags(write=False)
+        expected = X.copy()
+        prepared, finite = _prepare_neighbors_input(X)
+        assert prepared is X and finite is True
+    
+        with tuning_context(force_backend="cpu"):
+            model = NearestNeighbors(n_neighbors=1).fit(X)
+        # The checked flag must not be confused with ownership of a private cast.
+        source.fill(-100)
+        assert not np.shares_memory(model._fit_X, source)
+        np.testing.assert_array_equal(model._fit_X, expected)
+        np.testing.assert_array_equal(model._index_.device_index.X, expected)
+>       np.testing.assert_array_equal(model.kneighbors(expected[3:5], return_distance=False), [[3], [4]])
+E       AssertionError: 
+E       Arrays are not equal
+E       
+E       Mismatched elements: 1 / 2 (50%)
+E       Mismatch at index:
+E        [1, 0]: 3 (ACTUAL), 4 (DESIRED)
+E       Max absolute difference among violations: 1
+E       Max relative difference among violations: 0.25
+E        ACTUAL: array([[3],
+E              [3]])
+E        DESIRED: array([[3],
+E              [4]])
+
+tests/unit/test_neighbors_float32_validation.py:94: AssertionError
+_ test_large_float32_layouts_are_checked_and_fit_keeps_owned_storage[readonly] _
+
+layout = 'readonly'
+
+    @pytest.mark.parametrize("layout", ["c", "fortran", "strided", "readonly"])
+    def test_large_float32_layouts_are_checked_and_fit_keeps_owned_storage(layout):
+        width = 64 if layout == "strided" else 32
+        source = np.arange(_SHAPE[0] * width, dtype=np.float32).reshape(_SHAPE[0], width)
+        if layout == "fortran":
+            source = np.asfortranarray(source)
+        X = source[:, ::2] if layout == "strided" else source.view()
+        if layout == "readonly":
+            X.setflags(write=False)
+        expected = X.copy()
+        prepared, finite = _prepare_neighbors_input(X)
+        assert prepared is X and finite is True
+    
+        with tuning_context(force_backend="cpu"):
+            model = NearestNeighbors(n_neighbors=1).fit(X)
+        # The checked flag must not be confused with ownership of a private cast.
+        source.fill(-100)
+        assert not np.shares_memory(model._fit_X, source)
+        np.testing.assert_array_equal(model._fit_X, expected)
+        np.testing.assert_array_equal(model._index_.device_index.X, expected)
+>       np.testing.assert_array_equal(model.kneighbors(expected[3:5], return_distance=False), [[3], [4]])
+E       AssertionError: 
+E       Arrays are not equal
+E       
+E       Mismatched elements: 1 / 2 (50%)
+E       Mismatch at index:
+E        [1, 0]: 3 (ACTUAL), 4 (DESIRED)
+E       Max absolute difference among violations: 1
+E       Max relative difference among violations: 0.25
+E        ACTUAL: array([[3],
+E              [3]])
+E        DESIRED: array([[3],
+E              [4]])
+
+tests/unit/test_neighbors_float32_validation.py:94: AssertionError
+=============================== warnings summary ===============================
+tests/unit/test_neighbors_float32_validation.py::test_nonfinite_tail_still_raises_validation_errors_at_fit_and_query[opposite_infinities]
+tests/unit/test_neighbors_float32_validation.py::test_nonfinite_tail_still_raises_validation_errors_at_fit_and_query[opposite_infinities]
+  /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/numpy/_core/fromnumeric.py:83: RuntimeWarning: invalid value encountered in reduce
+    return ufunc.reduce(obj, axis, dtype, out, **passkwargs)
+
+tests/test_sklearn_compliance.py::test_layer1_passes_sklearn_checks[NearestNeighbors]
+tests/test_sklearn_compliance.py::test_layer2_passes_sklearn_checks[mlxlearn.patching._estimators.NearestNeighbors]
+  /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/sklearn/utils/estimator_checks.py:918: SkipTestWarning: Skipping check check_array_api_input for NearestNeighbors because it raised SkipTest: SCIPY_ARRAY_API is not set: not checking array_api input
+    warnings.warn(
+
+tests/test_sklearn_compliance.py::test_layer1_passes_sklearn_checks[KNeighborsClassifier]
+tests/test_sklearn_compliance.py::test_layer2_passes_sklearn_checks[mlxlearn.patching._estimators.KNeighborsClassifier]
+  /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/sklearn/utils/estimator_checks.py:918: SkipTestWarning: Skipping check check_array_api_input for KNeighborsClassifier because it raised SkipTest: SCIPY_ARRAY_API is not set: not checking array_api input
+    warnings.warn(
+
+tests/test_sklearn_compliance.py::test_layer1_passes_sklearn_checks[KNeighborsRegressor]
+tests/test_sklearn_compliance.py::test_layer2_passes_sklearn_checks[mlxlearn.patching._estimators.KNeighborsRegressor]
+  /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/sklearn/utils/estimator_checks.py:918: SkipTestWarning: Skipping check check_array_api_input for KNeighborsRegressor because it raised SkipTest: SCIPY_ARRAY_API is not set: not checking array_api input
+    warnings.warn(
+
+tests/test_sklearn_compliance.py::test_layer2_passes_sklearn_checks[mlxlearn.patching._estimators.NearestNeighbors]
+  /Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/base.py:158: MLXLearnFallbackWarning: NearestNeighbors.fit received sparse input, but mlxlearn's MLX kernels are dense. Convert with X.toarray() to use mlxlearn, or run under patch_sklearn() to have sparse input handled by scikit-learn automatically. This warning is shown once per estimator and reason; call mlxlearn.get_backend_diagnostics() for the full record.
+    return self._handle_capability_error(exc, operation, shape=shape)
+
+tests/test_sklearn_compliance.py::test_layer2_passes_sklearn_checks[mlxlearn.patching._estimators.KNeighborsClassifier]
+  /Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/base.py:158: MLXLearnFallbackWarning: KNeighborsClassifier.fit received sparse input, but mlxlearn's MLX kernels are dense. Convert with X.toarray() to use mlxlearn, or run under patch_sklearn() to have sparse input handled by scikit-learn automatically. This warning is shown once per estimator and reason; call mlxlearn.get_backend_diagnostics() for the full record.
+    return self._handle_capability_error(exc, operation, shape=shape)
+
+tests/test_sklearn_compliance.py::test_layer2_passes_sklearn_checks[mlxlearn.patching._estimators.KNeighborsClassifier]
+  /Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/base.py:158: MLXLearnFallbackWarning: KNeighborsClassifier supports single-output targets only on the MLX path; got y with shape (42, 3). This warning is shown once per estimator and reason; call mlxlearn.get_backend_diagnostics() for the full record.
+    return self._handle_capability_error(exc, operation, shape=shape)
+
+tests/test_sklearn_compliance.py::test_layer2_passes_sklearn_checks[mlxlearn.patching._estimators.KNeighborsClassifier]
+  /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/sklearn/utils/estimator_checks.py:918: SkipTestWarning: Skipping check check_classifiers_multilabel_output_format_decision_function for KNeighborsClassifier because it raised SkipTest: KNeighborsClassifier does not have a decision_function method.
+    warnings.warn(
+
+tests/test_sklearn_compliance.py::test_layer2_passes_sklearn_checks[mlxlearn.patching._estimators.KNeighborsRegressor]
+  /Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/base.py:158: MLXLearnFallbackWarning: KNeighborsRegressor.fit received sparse input, but mlxlearn's MLX kernels are dense. Convert with X.toarray() to use mlxlearn, or run under patch_sklearn() to have sparse input handled by scikit-learn automatically. This warning is shown once per estimator and reason; call mlxlearn.get_backend_diagnostics() for the full record.
+    return self._handle_capability_error(exc, operation, shape=shape)
+
+tests/test_sklearn_compliance.py::test_layer2_passes_sklearn_checks[mlxlearn.patching._estimators.KNeighborsRegressor]
+  /Users/tunguz/Programming/mlxlearn/src/mlxlearn/_common/base.py:158: MLXLearnFallbackWarning: KNeighborsRegressor supports single-output targets only on the MLX path; got y with shape (11, 5). This warning is shown once per estimator and reason; call mlxlearn.get_backend_diagnostics() for the full record.
+    return self._handle_capability_error(exc, operation, shape=shape)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/unit/test_neighbors_float32_validation.py::test_large_float32_layouts_are_checked_and_fit_keeps_owned_storage[c]
+FAILED tests/unit/test_neighbors_float32_validation.py::test_large_float32_layouts_are_checked_and_fit_keeps_owned_storage[fortran]
+FAILED tests/unit/test_neighbors_float32_validation.py::test_large_float32_layouts_are_checked_and_fit_keeps_owned_storage[strided]
+FAILED tests/unit/test_neighbors_float32_validation.py::test_large_float32_layouts_are_checked_and_fit_keeps_owned_storage[readonly]
+4 failed, 81 passed, 5 deselected, 14 warnings in 2.55s

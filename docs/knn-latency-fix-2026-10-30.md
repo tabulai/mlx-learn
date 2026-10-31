@@ -72,8 +72,8 @@ The full implementation control also retains these limitations:
   both summaries. These do not include the 60 preservation cells. All targeted
   sklearn median comparisons still win.
 
-Both the [independent audit](../benchmarks/results/knn-latency-final-2026-10-30-independent-audit.json)
-and the [additional audit](../benchmarks/results/knn-latency-final-2026-10-30-additional-audit.json)
+Both the [independent audit](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-abb09daa9f08f0b84c85)
+and the [additional audit](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-f6d8351c7638b689a86e)
 retain the raw pointers and source/runtime verification. All **14,472 current
 broad accuracy audits** pass; every current/control cold, warmup, probe and
 retained audit passes. Sklearn's canonical tie alternatives and precision
@@ -108,7 +108,7 @@ regression has paired speedups 0.884× and 0.882×, with ratio-of-medians values
 current forced GPU. The repeat therefore supports the large Digits improvement
 while leaving a claim of uniformly faster performance against every historical
 GPU observation unsupported. See [every repeat cell](knn-latency-warm-repeat-2026-10-30.md)
-and its [independent audit](../benchmarks/results/knn-latency-final-2026-10-30-warm-exceptions-repeat-audit.json).
+and its [independent audit](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-cfa29ed0066eb7017312).
 
 ## Implementation
 

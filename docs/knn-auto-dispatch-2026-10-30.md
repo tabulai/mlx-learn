@@ -52,7 +52,7 @@ The [four-worker control](knn-auto-control-2026-10-30.md) passes all **849,312**
 cold, warmup, probe and retained output audits: 254,741 automatic, 252,045
 automatic A/A, 167,951 current GPU and 174,575 previous GPU checks. These are
 repeated-output checks over 48 fixtures, not independent datasets. The
-[independent verifier](../benchmarks/results/knn-auto-final-2026-10-30-independent-audit.json)
+[independent verifier](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-909c2524d2d9fca7b7e9)
 recomputes timing summaries, verifies fixture identities and confirms that
 all current workers used the archived native binary and source.
 
@@ -243,7 +243,7 @@ Euclidean workloads and native runtime, not every metric, device or dataset.
 
 The [execution record](../benchmarks/results/knn-auto-final-2026-10-30-execution.json)
 contains commands, validation counts, source differences, build results and
-artifact hashes. The [broad raw results](../benchmarks/results/knn-auto-final-2026-10-30-broad.json),
-[control raw results](../benchmarks/results/knn-auto-final-2026-10-30-control.json)
-and [broad summary](../benchmarks/results/knn-auto-final-2026-10-30-summary.json)
+artifact hashes. The [broad raw results](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-b67d621aa3885c71a254),
+[control raw results](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-02db155e93c2bde4fa12)
+and [broad summary](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-ee3373ddaecb8184e311)
 retain every measured case.

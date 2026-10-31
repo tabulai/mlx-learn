@@ -1,0 +1,64 @@
+{
+  "purpose": "Explain retained pre-existing float64 ordering audit failure; no tolerance change",
+  "fixture": {
+    "case": {
+      "name": "offset_1e4_50000_32_k5",
+      "n_train": 50000,
+      "n_query": 256,
+      "n_features": 32,
+      "k": 5
+    },
+    "distribution": "offset_1e4",
+    "seed": 251,
+    "parameters": {
+      "base_distribution": "independent standard normal",
+      "common_offset": 10000.0
+    },
+    "copied_training_queries": 2,
+    "fixture_sha256": "050da5304b43af2085d6167f75a84dbbf2f402a24782d868afd4e789784d2c72",
+    "array_sha256": {
+      "X": "fcc23a7436d3d4d031e4353c7f3db3c1cd61bf4d225c8c4a58f155b4cf38a63e",
+      "Q": "180e1e8d3673f0a6e167d1f683fffe6a48f24f264475b328f41779d0323f876a",
+      "distances": "be969556e1ef30805fdbf6b3e4a90493dc55b285bd700196efef3df3bc6118ca",
+      "indices": "94fff306d207f75979b9126175d7a63ed118d4f4e77cde044d3c0dee47959602"
+    },
+    "input_dtype": "float32",
+    "train_min": 9994.18359375,
+    "train_max": 10005.03125
+  },
+  "mismatches": [
+    {
+      "query": 79,
+      "position": 3,
+      "actual_index": 1902,
+      "float64_index": 43153,
+      "actual_exact_squared": 21.925426483154297,
+      "reference_exact_squared": 21.92542552947998,
+      "actual_float32_squared": 21.925426483154297,
+      "reference_float32_squared": 21.925426483154297,
+      "float32_tie": true
+    },
+    {
+      "query": 79,
+      "position": 4,
+      "actual_index": 43153,
+      "float64_index": 1902,
+      "actual_exact_squared": 21.92542552947998,
+      "reference_exact_squared": 21.925426483154297,
+      "actual_float32_squared": 21.925426483154297,
+      "reference_float32_squared": 21.925426483154297,
+      "float32_tie": true
+    }
+  ],
+  "original_scan_matches_float64_indices": false,
+  "filters_vs_original_scan": {
+    "compact": {
+      "indices_equal_original": true,
+      "squared_equal_original": true
+    },
+    "integer": {
+      "indices_equal_original": true,
+      "squared_equal_original": true
+    }
+  }
+}

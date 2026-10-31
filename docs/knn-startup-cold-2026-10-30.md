@@ -371,6 +371,6 @@ These columns keep the remaining recorded phases visible. Fit return may precede
 
 ## Evidence
 
-[Every raw launch, audit and runtime identity](../benchmarks/results/knn-startup-final2-2026-10-30-cold.json)
+[Every raw launch, audit and runtime identity](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-6cc6ee855fc0ee02cbe5)
 
 [Validated derived summary](../benchmarks/results/knn-startup-final2-2026-10-30-cold-summary.json)

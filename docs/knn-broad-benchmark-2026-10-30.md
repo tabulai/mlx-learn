@@ -157,8 +157,8 @@ Counts are repeated audit calls across cold, warmup and retained phases, includi
 
 ## Reproduction and artifacts
 
-- [Raw results, all calls and audits](../benchmarks/results/knn-broad-2026-10-30.json)
-- [Compact derived summary and evidence pointers](../benchmarks/results/knn-broad-summary-2026-10-30.json)
+- [Raw results, all calls and audits](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-d99a529dcd35c0a5f03d)
+- [Compact derived summary and evidence pointers](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-398a3af0bf650fc23f36)
 - [Execution record](../benchmarks/results/knn-broad-execution-2026-10-30.json) and [run log](../benchmarks/results/knn-broad-2026-10-30.log)
 - [Frozen production source](../benchmarks/reference/knn-128-final-2026-10-30.zip) and [manifest](../benchmarks/reference/knn-128-final-2026-10-30.manifest.json)
 - [Frozen six-file benchmark harness](../benchmarks/reference/knn-broad-harnesses-2026-10-30.zip) and [manifest](../benchmarks/reference/knn-broad-harnesses-2026-10-30.manifest.json)

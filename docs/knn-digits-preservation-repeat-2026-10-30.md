@@ -184,8 +184,8 @@ All raw paired ratios, actual routing, first/middle/last summaries, position and
 
 ## Evidence
 
-[Every raw observation](../benchmarks/results/knn-digits-final-2026-10-30-preservation-repeat.json) — SHA-256 `bd2627a521e5eb1c5abba9fa6251dc0032bc2b5e4f50fd4550f2267becb91dda`.
+[Every raw observation](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-0830307addd51b3e3ba8) — SHA-256 `bd2627a521e5eb1c5abba9fa6251dc0032bc2b5e4f50fd4550f2267becb91dda`.
 
-[Independent audit and complete crossmatching](../benchmarks/results/knn-digits-final-2026-10-30-preservation-repeat-audit.json).
+[Independent audit and complete crossmatching](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-b73c3ba81f37debedae8).
 
-[Full balanced control](../benchmarks/results/knn-digits-final-2026-10-30-control.json).
+[Full balanced control](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-be3597d137d9b612b065).

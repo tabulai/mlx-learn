@@ -1231,6 +1231,6 @@ All configurations and metrics are retained in this separate view. Earlier fixtu
 
 ## Evidence
 
-[Raw requests, setup, source/runtime identities, and all audits](../benchmarks/results/knn-startup-final2-2026-10-30-first-query.json)
+[Raw requests, setup, source/runtime identities, and all audits](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-9e76b184f04ddb02fe4a)
 
 [Validated summary](../benchmarks/results/knn-startup-final2-2026-10-30-first-query-summary.json)

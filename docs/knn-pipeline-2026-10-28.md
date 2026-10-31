@@ -97,7 +97,7 @@ tuned-probe JSON files preserve these intermediate measurements.
 Apple M4 Max, 128 GiB unified memory, MLX 0.32.2. Nine measured samples
 follow three warmups. Speedups below compare NumPy-to-NumPy calls with the frozen
 implementation; values below 1 mean a regression. These are local measurements,
-not portable speed guarantees. The [complete results](../benchmarks/results/knn-pipeline-2026-10-28.json)
+not portable speed guarantees. The [complete results](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-bf2517e9d550b3a0099f)
 include all samples, resident timings, and both sklearn thread policies.
 
 | Training × features / queries / k | Query (ms) | Query speedup | Fresh fit + query speedup |

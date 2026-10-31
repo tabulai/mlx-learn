@@ -149,9 +149,9 @@ Integrity checks: `{"fixture_integrity_pass": true, "harness_integrity_pass": tr
 
 ## Artifacts
 
-[Raw measurements and every audit](../benchmarks/results/knn-small-final-2026-10-30-broad.json)
+[Raw measurements and every audit](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-06668b55761f291264b0)
 
-[Validated derived summary](../benchmarks/results/knn-small-final-2026-10-30-summary.json)
+[Validated derived summary](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-78621ee72619d7369c59)
 
 [Vector figure](assets/knn-small-final-2026-10-30.svg)
 

@@ -30,7 +30,7 @@ Six actual dataset seeds (45, 46, 47, 145, 245, 345) use the same 4096 × 128 tr
 
 Identical-source A/A paired ratios range **0.926–1.107×**. This exposes meaningful process/timing variation: near-1.00× results should be read as parity, not statistically established small wins. The improvement over the preceding precision implementation is visible across all six datasets. Paired ratios are medians of per-round ratios and need not equal the ratio of displayed medians. No confidence interval or universal speed claim is inferred from these measurements.
 
-[Complete controlled results](../benchmarks/results/knn-128-final-control-vs-v3-2026-10-30.json) include every sample, warmup, source/fixture/harness hash and loaded-worker inventory. All four variants pass accuracy and integrity checks.
+[Complete controlled results](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-7028b19017fae0d91493) include every sample, warmup, source/fixture/harness hash and loaded-worker inventory. All four variants pass accuracy and integrity checks.
 
 ## Gaussian and unequal-scale gains
 
@@ -43,7 +43,7 @@ The existing 50,000 × 32 / 256-query / k=5 protocol was rerun unchanged on Gaus
 | Unequal scale | Fresh fit + query | 0.746–0.765 | 0.823–0.840 | **1.087–1.114×** |
 | Unequal scale | Query | 0.483–0.566 | 0.482–0.569 | **0.981–1.002×** |
 
-[Complete Gaussian/scale results](../benchmarks/results/knn-128-final-dispatch-vs-v3-2026-10-30.json). All accuracy, frozen implementation, method/global identity and source/harness integrity checks pass. Unequal-scale query ratios are reported without claiming a query improvement; the fresh-fit saving and Gaussian gains are preserved.
+[Complete Gaussian/scale results](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-54ee805031cf3fa0e8c8). All accuracy, frozen implementation, method/global identity and source/harness integrity checks pass. Unequal-scale query ratios are reported without claiming a query improvement; the fresh-fit saving and Gaussian gains are preserved.
 
 ## Full benchmark rerun
 
@@ -79,7 +79,7 @@ The entire eleven-shape panel ran twice: the established five-call/two-warmup pr
 | `batch_8_k32` | 0.942× | 1.636 | 1.806 | 1.104× | 1.090× |
 | `batch_50000_32_k5` | 1.314× | 1.268 | 1.677 | 1.323× | 1.252× |
 
-[Short full panel](../benchmarks/results/knn-128-final-panel-vs-v3-2026-10-30.json); [longer full panel](../benchmarks/results/knn-128-final-panel-repeat-2026-10-30.json).
+[Short full panel](../benchmarks/results/knn-128-final-panel-vs-v3-2026-10-30.json); [longer full panel](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-9caa5f759c7a73b773b7).
 
 The distribution suite reran Gaussian, clustered, offset-1e4 and unequal-scale data at seeds 151, 251 and 252, using nine calls after three warmups. Current accuracy passes all 12 dataset cases for query and fresh fit-plus-query, including the previously fixed offset ordering failure.
 

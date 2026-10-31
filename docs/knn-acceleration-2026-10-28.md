@@ -337,7 +337,7 @@ The reference is the same immediately previous implementation. Query performance
 | Probabilities, distance | 1.612 | 1.827 | 3.004 | 1.809 | 1.13× | 1.12× | — |
 | Regressor, distance | 1.604 | 1.812 | 2.990 | 1.660 | 1.13× | 1.04× | — |
 
-Current, frozen and resident implementations pass all regression audits. Both sklearn variants retain the earlier strict-distance failure on an exactly copied row in the 1,024-feature case: the residual is 2.47349e-6, with matching neighbor indices. No tolerance was relaxed. The [regression JSON](../benchmarks/results/knn-acceleration-regression-2026-10-28.json) preserves that comparator failure.
+Current, frozen and resident implementations pass all regression audits. Both sklearn variants retain the earlier strict-distance failure on an exactly copied row in the 1,024-feature case: the residual is 2.47349e-6, with matching neighbor indices. No tolerance was relaxed. The [regression JSON](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-bd0d6ecae6c132993a5d) preserves that comparator failure.
 
 ## Validation and reproduction
 

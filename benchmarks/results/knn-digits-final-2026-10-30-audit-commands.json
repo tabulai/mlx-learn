@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "status": "prepared_not_executed",
+  "prefix": "knn-digits-final-2026-10-30",
+  "working_directory": "/Users/tunguz/Programming/mlxlearn",
+  "execution_policy": "Run only after all six timed panels have finished and the timing slot is released. Run the independent verifier first; the reporting driver consumes its output. These commands read evidence and write new derived artifacts, without launching estimators. Do not overwrite existing audit/report artifacts.",
+  "commands": [
+    {
+      "name": "independent_verification",
+      "argv": [
+        "python3", "-m", "benchmarks.knn_auto_verify",
+        "--broad", "benchmarks/results/knn-digits-final-2026-10-30-broad.json",
+        "--control", "benchmarks/results/knn-digits-final-2026-10-30-control.json",
+        "--previous-broad", "benchmarks/results/knn-small-final-2026-10-30-broad.json",
+        "--previous-auto-broad", "benchmarks/results/knn-startup-final2-2026-10-30-broad.json",
+        "--cold", "benchmarks/results/knn-digits-final-2026-10-30-cold.json",
+        "--first-query", "benchmarks/results/knn-digits-final-2026-10-30-first-query.json",
+        "--runtime-archive", "benchmarks/reference/knn-digits-final-2026-10-30-runtime.zip",
+        "--output", "benchmarks/results/knn-digits-final-2026-10-30-independent-audit.json"
+      ],
+      "stdout_stderr_log": "benchmarks/results/knn-digits-final-2026-10-30-independent-audit.log"
+    },
+    {
+      "name": "repeat_reports_and_digits_acceptance",
+      "requires": "independent_verification",
+      "argv": ["python3", "benchmarks/results/knn-digits-final-2026-10-30-report-audit.py"],
+      "stdout_stderr_log": "benchmarks/results/knn-digits-final-2026-10-30-report-audit.log",
+      "outputs": [
+        "benchmarks/results/knn-digits-final-2026-10-30-additional-audit.json",
+        "benchmarks/results/knn-digits-final-2026-10-30-legacy-control-audit.json",
+        "benchmarks/results/knn-digits-final-2026-10-30-preservation-repeat-audit.json",
+        "docs/knn-digits-legacy-control-2026-10-30.md",
+        "docs/knn-digits-preservation-repeat-2026-10-30.md"
+      ]
+    }
+  ],
+  "acceptance_interpretation": "Numerical/integrity acceptance is separate from speed acceptance. The reporting driver assesses every one of the 432 declared Digits GPU comparisons and all 48 distance-weighted regression margin comparisons. Every below-1 result against the immediate prior automatic implementation remains visible; it is not hidden by wins against GPU or sklearn. The two order/warmup protocols are retained separately and absolute timings are not compared across them."
+}

@@ -400,6 +400,6 @@ These columns keep the remaining recorded phases visible. Fit return may precede
 
 ## Evidence
 
-[Every raw launch, audit and runtime identity](../benchmarks/results/knn-digits-final-2026-10-30-cold.json)
+[Every raw launch, audit and runtime identity](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-05657ea3da4585beab86)
 
 [Validated derived summary](../benchmarks/results/knn-digits-final-2026-10-30-cold-summary.json)

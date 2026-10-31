@@ -1,0 +1,262 @@
+........................................................................ [  5%]
+........................................................................ [ 10%]
+........................................................................ [ 15%]
+........................................................................ [ 20%]
+........................................................................ [ 26%]
+........................................................................ [ 31%]
+........................................................................ [ 36%]
+........................................................................ [ 41%]
+........................................................................ [ 47%]
+........................................................................ [ 52%]
+........................................................................ [ 57%]
+........................................................................ [ 62%]
+........................................................................ [ 68%]
+...................F.................................................... [ 73%]
+........................................................................ [ 78%]
+........................................................................ [ 83%]
+........................................................................ [ 89%]
+........................................................................ [ 94%]
+........................................................................ [ 99%]
+.....                                                                    [100%]
+=================================== FAILURES ===================================
+_ test_fallback_delegate_survives_patch_unpatch_pickle_and_refit[KNeighborsClassifier] _
+
+estimator = <class 'mlxlearn.neighbors._classification.KNeighborsClassifier'>
+
+    @pytest.mark.parametrize("estimator", ESTIMATORS)
+    def test_fallback_delegate_survives_patch_unpatch_pickle_and_refit(estimator):
+        import joblib
+        import sklearn.neighbors
+    
+        X, queries, classes, targets = _arrays()
+        y = _target(estimator, classes, targets)
+        stock = getattr(sklearn.neighbors, estimator.__name__)
+        expected = stock(n_neighbors=3, metric="manhattan", algorithm="brute").fit(X, y)
+        mlxlearn.patch_sklearn(estimator.__name__)
+        patched = getattr(sklearn.neighbors, estimator.__name__)
+        with config_context(fallback_policy="silent"):
+            model = patched(n_neighbors=3, metric="manhattan", algorithm="brute").fit(X, y)
+        assert model.execution_backend_ == "sklearn"
+        restored = pickle.loads(pickle.dumps(model))
+        storage = io.BytesIO()
+        joblib.dump(model, storage)
+        storage.seek(0)
+        joblib_restored = joblib.load(storage)
+        # Both transports must work while the public sklearn name is still patched.
+        for copied in (restored, joblib_restored):
+            np.testing.assert_array_equal(copied.kneighbors(queries)[1], expected.kneighbors(queries)[1])
+        mlxlearn.unpatch_sklearn(estimator.__name__)
+        assert getattr(sklearn.neighbors, estimator.__name__) is stock
+        for actual in (model, restored, joblib_restored):
+            np.testing.assert_array_equal(actual.kneighbors(queries)[1], expected.kneighbors(queries)[1])
+            if estimator is not NearestNeighbors:
+>               np.testing.assert_array_equal(actual.predict(queries), expected.predict(queries))
+                                              ^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/unit/test_neighbors_standalone.py:240: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/mlxlearn/neighbors/_classification.py:202: in predict
+    self._note_inference("predict")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+/private/tmp/mlxlearn-knn-startup-sk172/lib/python3.13/site-packages/sklearn/neighbors/_classification.py:262: in predict
+    probabilities = self.predict_proba(X)
+                    ^^^^^^^^^^^^^^^^^^^^^
+/private/tmp/mlxlearn-knn-startup-sk172/lib/python3.13/site-packages/sklearn/neighbors/_classification.py:348: in predict_proba
+    probabilities = ArgKminClassMode.compute(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+cls = <class 'sklearn.metrics._pairwise_distances_reduction._dispatcher.ArgKminClassMode'>
+X = array([[-0.06145749,  0.9321934 , -2.777891  ],
+       [ 0.40493345, -1.0024059 , -0.12198903],
+       [ 0.9963318 , -0.86112934,  1.0189428 ]], dtype=float32)
+Y = array([[-0.37244612,  1.6299108 , -0.64299875],
+       [-0.09270749,  0.9009434 , -2.809141  ],
+       [-0.7165381 ,  ...5093 ],
+       [-0.19467841, -0.41551936, -1.2879909 ],
+       [-0.9072526 ,  1.048911  , -1.4213828 ]], dtype=float32)
+k = 3, weights = 'uniform'
+Y_labels = array([0, 0, 0, 0, 1, 1, 1, 1, 0, 1, 1, 0, 0, 1, 1, 1, 1, 1, 0, 1, 0, 0,
+       1, 0, 1, 1, 0, 1, 1, 1, 0, 0])
+unique_Y_labels = array(['negative', 'positive'], dtype='<U8')
+metric = 'manhattan', chunk_size = None, metric_kwargs = {}
+strategy = 'parallel_on_X'
+
+    @classmethod
+    def compute(
+        cls,
+        X,
+        Y,
+        k,
+        weights,
+        Y_labels,
+        unique_Y_labels,
+        metric="euclidean",
+        chunk_size=None,
+        metric_kwargs=None,
+        strategy=None,
+    ):
+        """Compute the argkmin reduction.
+    
+        Parameters
+        ----------
+        X : ndarray of shape (n_samples_X, n_features)
+            The input array to be labelled.
+    
+        Y : ndarray of shape (n_samples_Y, n_features)
+            The input array whose class membership are provided through the
+            `Y_labels` parameter.
+    
+        k : int
+            The number of nearest neighbors to consider.
+    
+        weights : ndarray
+            The weights applied over the `Y_labels` of `Y` when computing the
+            weighted mode of the labels.
+    
+        Y_labels : ndarray
+            An array containing the index of the class membership of the
+            associated samples in `Y`. This is used in labeling `X`.
+    
+        unique_Y_labels : ndarray
+            An array containing all unique indices contained in the
+            corresponding `Y_labels` array.
+    
+        metric : str, default='euclidean'
+            The distance metric to use. For a list of available metrics, see
+            the documentation of :class:`~sklearn.metrics.DistanceMetric`.
+            Currently does not support `'precomputed'`.
+    
+        chunk_size : int, default=None,
+            The number of vectors per chunk. If None (default) looks-up in
+            scikit-learn configuration for `pairwise_dist_chunk_size`,
+            and use 256 if it is not set.
+    
+        metric_kwargs : dict, default=None
+            Keyword arguments to pass to specified metric function.
+    
+        strategy : str, {'auto', 'parallel_on_X', 'parallel_on_Y'}, default=None
+            The chunking strategy defining which dataset parallelization are made on.
+    
+            For both strategies the computations happens with two nested loops,
+            respectively on chunks of X and chunks of Y.
+            Strategies differs on which loop (outer or inner) is made to run
+            in parallel with the Cython `prange` construct:
+    
+              - 'parallel_on_X' dispatches chunks of X uniformly on threads.
+                Each thread then iterates on all the chunks of Y. This strategy is
+                embarrassingly parallel and comes with no datastructures
+                synchronisation.
+    
+              - 'parallel_on_Y' dispatches chunks of Y uniformly on threads.
+                Each thread processes all the chunks of X in turn. This strategy is
+                a sequence of embarrassingly parallel subtasks (the inner loop on Y
+                chunks) with intermediate datastructures synchronisation at each
+                iteration of the sequential outer loop on X chunks.
+    
+              - 'auto' relies on a simple heuristic to choose between
+                'parallel_on_X' and 'parallel_on_Y': when `X.shape[0]` is large enough,
+                'parallel_on_X' is usually the most efficient strategy.
+                When `X.shape[0]` is small but `Y.shape[0]` is large, 'parallel_on_Y'
+                brings more opportunity for parallelism and is therefore more efficient
+                despite the synchronization step at each iteration of the outer loop
+                on chunks of `X`.
+    
+              - None (default) looks-up in scikit-learn configuration for
+                `pairwise_dist_parallel_strategy`, and use 'auto' if it is not set.
+    
+        Returns
+        -------
+        probabilities : ndarray of shape (n_samples_X, n_classes)
+            An array containing the class probabilities for each sample.
+    
+        Notes
+        -----
+        This classmethod is responsible for introspecting the arguments
+        values to dispatch to the most appropriate implementation of
+        :class:`PairwiseDistancesArgKmin`.
+    
+        This allows decoupling the API entirely from the implementation details
+        whilst maintaining RAII: all temporarily allocated datastructures necessary
+        for the concrete implementation are therefore freed when this classmethod
+        returns.
+        """
+        if weights not in {"uniform", "distance"}:
+            raise ValueError(
+                "Only the 'uniform' or 'distance' weights options are supported"
+                f" at this time. Got: {weights=}."
+            )
+        if X.dtype == Y.dtype == np.float64:
+            return ArgKminClassMode64.compute(
+                X=X,
+                Y=Y,
+                k=k,
+                weights=weights,
+                Y_labels=np.array(Y_labels, dtype=np.intp),
+                unique_Y_labels=np.array(unique_Y_labels, dtype=np.intp),
+                metric=metric,
+                chunk_size=chunk_size,
+                metric_kwargs=metric_kwargs,
+                strategy=strategy,
+            )
+    
+        if X.dtype == Y.dtype == np.float32:
+            return ArgKminClassMode32.compute(
+                X=X,
+                Y=Y,
+                k=k,
+                weights=weights,
+                Y_labels=np.array(Y_labels, dtype=np.intp),
+>               unique_Y_labels=np.array(unique_Y_labels, dtype=np.intp),
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                metric=metric,
+                chunk_size=chunk_size,
+                metric_kwargs=metric_kwargs,
+                strategy=strategy,
+            )
+E           ValueError: invalid literal for int() with base 10: np.str_('negative')
+
+/private/tmp/mlxlearn-knn-startup-sk172/lib/python3.13/site-packages/sklearn/metrics/_pairwise_distances_reduction/_dispatcher.py:607: ValueError
+=============================== warnings summary ===============================
+tests/unit/test_neighbors_float32_validation.py::test_nonfinite_tail_still_raises_validation_errors_at_fit_and_query[opposite_infinities]
+tests/unit/test_neighbors_float32_validation.py::test_nonfinite_tail_still_raises_validation_errors_at_fit_and_query[opposite_infinities]
+  /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/numpy/_core/fromnumeric.py:83: RuntimeWarning: invalid value encountered in reduce
+    return ufunc.reduce(obj, axis, dtype, out, **passkwargs)
+
+tests/unit/test_neighbors_standalone.py::test_fallback_delegate_survives_patch_unpatch_pickle_and_refit[NearestNeighbors]
+tests/unit/test_neighbors_standalone.py::test_fallback_delegate_survives_patch_unpatch_pickle_and_refit[KNeighborsClassifier]
+tests/unit/test_neighbors_standalone.py::test_fallback_delegate_survives_patch_unpatch_pickle_and_refit[KNeighborsClassifier]
+tests/unit/test_neighbors_standalone.py::test_fallback_delegate_survives_patch_unpatch_pickle_and_refit[KNeighborsClassifier]
+tests/unit/test_neighbors_standalone.py::test_fallback_delegate_survives_patch_unpatch_pickle_and_refit[KNeighborsRegressor]
+tests/unit/test_neighbors_standalone.py::test_fallback_delegate_survives_patch_unpatch_pickle_and_refit[KNeighborsRegressor]
+  /Library/Frameworks/Python.framework/Versions/3.13/lib/python3.13/site-packages/joblib/numpy_pickle.py:188: DeprecationWarning: Setting the shape on a NumPy array has been deprecated in NumPy 2.5.
+  As an alternative, you can create a new view using np.reshape (with copy=False if needed).
+    array.shape = self.shape
+
+tests/test_sklearn_compliance.py::test_layer2_passes_sklearn_checks[mlxlearn.patching._estimators.NearestNeighbors]
+  /Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_base.py:299: MLXLearnFallbackWarning: NearestNeighbors.fit received sparse input, but mlxlearn's MLX kernels are dense. Convert with X.toarray() to use mlxlearn, or run under patch_sklearn() to have sparse input handled by scikit-learn automatically. This warning is shown once per estimator and reason; call mlxlearn.get_backend_diagnostics() for the full record.
+    return self._handle_capability_error(exc, "fit", shape=_safe_shape(X))
+
+tests/test_sklearn_compliance.py::test_layer2_passes_sklearn_checks[mlxlearn.patching._estimators.KNeighborsClassifier]
+  /Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_base.py:299: MLXLearnFallbackWarning: KNeighborsClassifier.fit received sparse input, but mlxlearn's MLX kernels are dense. Convert with X.toarray() to use mlxlearn, or run under patch_sklearn() to have sparse input handled by scikit-learn automatically. This warning is shown once per estimator and reason; call mlxlearn.get_backend_diagnostics() for the full record.
+    return self._handle_capability_error(exc, "fit", shape=_safe_shape(X))
+
+tests/test_sklearn_compliance.py::test_layer2_passes_sklearn_checks[mlxlearn.patching._estimators.KNeighborsClassifier]
+  /Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_base.py:299: MLXLearnFallbackWarning: KNeighborsClassifier supports single-output targets only on the MLX path; got y with shape (42, 3). This warning is shown once per estimator and reason; call mlxlearn.get_backend_diagnostics() for the full record.
+    return self._handle_capability_error(exc, "fit", shape=_safe_shape(X))
+
+tests/test_sklearn_compliance.py::test_layer2_passes_sklearn_checks[mlxlearn.patching._estimators.KNeighborsClassifier]
+  /private/tmp/mlxlearn-knn-startup-sk172/lib/python3.13/site-packages/sklearn/utils/estimator_checks.py:877: SkipTestWarning: Skipping check check_classifiers_multilabel_output_format_decision_function for KNeighborsClassifier because it raised SkipTest: KNeighborsClassifier does not have a decision_function method.
+    warnings.warn(
+
+tests/test_sklearn_compliance.py::test_layer2_passes_sklearn_checks[mlxlearn.patching._estimators.KNeighborsRegressor]
+  /Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_base.py:299: MLXLearnFallbackWarning: KNeighborsRegressor.fit received sparse input, but mlxlearn's MLX kernels are dense. Convert with X.toarray() to use mlxlearn, or run under patch_sklearn() to have sparse input handled by scikit-learn automatically. This warning is shown once per estimator and reason; call mlxlearn.get_backend_diagnostics() for the full record.
+    return self._handle_capability_error(exc, "fit", shape=_safe_shape(X))
+
+tests/test_sklearn_compliance.py::test_layer2_passes_sklearn_checks[mlxlearn.patching._estimators.KNeighborsRegressor]
+  /Users/tunguz/Programming/mlxlearn/src/mlxlearn/neighbors/_base.py:299: MLXLearnFallbackWarning: KNeighborsRegressor supports single-output targets only on the MLX path; got y with shape (11, 5). This warning is shown once per estimator and reason; call mlxlearn.get_backend_diagnostics() for the full record.
+    return self._handle_capability_error(exc, "fit", shape=_safe_shape(X))
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/unit/test_neighbors_standalone.py::test_fallback_delegate_survives_patch_unpatch_pickle_and_refit[KNeighborsClassifier]
+1 failed, 1372 passed, 5 deselected, 14 warnings in 16.94s

@@ -1,6 +1,6 @@
 # Automatic CPU/GPU controlled benchmark
 
-Completed `2026-10-30T21:59:31.366565+00:00`. Acceptance: **True**. [Raw results](../benchmarks/results/knn-latency-final-2026-10-30-control.json) (SHA-256 `e12764076f2aaa5665324f2ec6a8ab2288eef9c5569bed33ba2a64434f305e95`).
+Completed `2026-10-30T21:59:31.366565+00:00`. Acceptance: **True**. [Raw results](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-eb50543f229000482d06) (SHA-256 `e12764076f2aaa5665324f2ec6a8ab2288eef9c5569bed33ba2a64434f305e95`).
 
 5 isolated public-API workers: current automatic dispatch, an identical automatic A/A worker, current forced GPU and frozen forced-GPU `knn-small-final-2026-10-30.zip`. An additional previous-auto worker uses the preceding source and exact ABI-matched archived native binary. All CPU/GPU calls are serial. Each worker/operation gets 0.25 seconds of continuous warmup followed by 31 interleaved paired rounds. Every call includes public validation, NumPy boundaries and synchronization. Cold first-fit/query records come from persistent workers, excluding process startup. Default continuous warmup is 0.25 seconds (the preceding small control used 1 second); this is configurable and absolute timings must not be compared across those runs. Each worker/operation warms continuously for at least the requested duration. Its one post-warmup probe is audited and retained separately, excluded from paired ratios. All warmup audits and probe samples remain in the report.
 

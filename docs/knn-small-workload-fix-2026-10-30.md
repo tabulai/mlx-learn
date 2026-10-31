@@ -175,9 +175,9 @@ test. The complete benchmark retains workloads that still favor sklearn.
 
 ## Reproduction and artifacts
 
-- [Controlled raw results](../benchmarks/results/knn-small-final-2026-10-30-control.json)
-- [Broad raw results](../benchmarks/results/knn-small-final-2026-10-30-broad.json)
-- [Broad summary](../benchmarks/results/knn-small-final-2026-10-30-summary.json)
+- [Controlled raw results](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-9683de46cbb53145a382)
+- [Broad raw results](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-06668b55761f291264b0)
+- [Broad summary](../benchmarks/evidence/knn-evidence-2026-10-31.md#artifact-78621ee72619d7369c59)
 - [Execution record](../benchmarks/results/knn-small-final-2026-10-30-execution.json)
 - [Final integrity and acceptance checks](../benchmarks/results/knn-small-final-2026-10-30-validation.json)
 - [Independent control audit](../benchmarks/results/knn-small-independent-control-audit-2026-10-30.json)
