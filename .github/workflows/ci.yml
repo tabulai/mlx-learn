@@ -112,6 +112,8 @@ jobs:
           tests/unit/test_fused_lbfgs.py
       - name: Test
         run: python -m pytest -q --durations=25
+      - name: Benchmark harness regressions
+        run: python -m pytest -q benchmarks/test_knn_*.py
       - name: Locked two-liner runs verbatim
         run: |
           python - <<'PY'
