@@ -1,0 +1,2940 @@
+{
+  "production_and_harness_hashes_pass": true,
+  "source_archive_checks": [
+    {
+      "path": "benchmarks/reference/knn-small-final-2026-10-30.zip",
+      "sha256_pass": true,
+      "inventory_pass": true
+    },
+    {
+      "path": "benchmarks/reference/knn-small-final-2026-10-30-harnesses.zip",
+      "sha256_pass": true,
+      "inventory_pass": true
+    },
+    {
+      "path": "benchmarks/reference/knn-gaussian-fresh-final-2026-10-30.zip",
+      "sha256_pass": true,
+      "inventory_pass": true
+    }
+  ],
+  "production_changes_vs_previous": [
+    "mlxlearn/neighbors/_base.py",
+    "mlxlearn_device/_neighbors.py",
+    "mlxlearn_device/_neighbors_small.py"
+  ],
+  "same_fixture_array_hashes_as_previous_broad": true,
+  "broad_fixture_count": 72,
+  "same_control_fixture_arrays_as_previous_union": true,
+  "control_fixture_count": 48,
+  "same_source_control_and_broad": true,
+  "current_strict_audits": {
+    "audit_count": 14472,
+    "strict_passes": 14472,
+    "strict_failures": 0,
+    "failure_kind_counts": {},
+    "maximum_errors": {
+      "distance_max_abs": 2.295977981248143e-05,
+      "distance_max_abs_from_returned_points": 2.295977981248143e-05,
+      "max_abs": 3.902618989082285e-08
+    },
+    "prediction_mismatch_query_evaluations": 0,
+    "prediction_mismatch_boundary_tie_query_evaluations": 0,
+    "prediction_mismatch_without_boundary_tie_query_evaluations": 0
+  },
+  "targeted_cluster_offset_medians": {
+    "sklearn_default": {
+      "medians_faster_than_sklearn": 108,
+      "median_count": 108,
+      "minimum_speedup": 2.189034388121198,
+      "maximum_speedup": 4.6964013885123945,
+      "minimum_case_operation": [
+        "distribution_clusters_50000x32_k5_seed251",
+        "proba_uniform"
+      ],
+      "medians_at_least_two_x": 108,
+      "slower_cells": []
+    },
+    "sklearn_1": {
+      "medians_faster_than_sklearn": 108,
+      "median_count": 108,
+      "minimum_speedup": 1.3226284400678097,
+      "maximum_speedup": 18.09350669346232,
+      "minimum_case_operation": [
+        "distribution_clusters_4096x128_k5_seed252",
+        "fit_query"
+      ],
+      "medians_at_least_two_x": 57,
+      "slower_cells": []
+    },
+    "sklearn_auto": {
+      "medians_faster_than_sklearn": 108,
+      "median_count": 108,
+      "minimum_speedup": 2.143192195815212,
+      "maximum_speedup": 4.8264997242814465,
+      "minimum_case_operation": [
+        "distribution_clusters_50000x32_k5_seed251",
+        "proba_uniform"
+      ],
+      "medians_at_least_two_x": 108,
+      "slower_cells": []
+    }
+  },
+  "small_single_medians_vs_sklearn": {
+    "sklearn_default": {
+      "medians_faster_than_sklearn": 154,
+      "median_count": 162,
+      "minimum_speedup": 0.742137352742752,
+      "maximum_speedup": 6.835998956182595,
+      "minimum_case_operation": [
+        "real_iris_raw_k5_seed151",
+        "predict_uniform"
+      ],
+      "medians_at_least_two_x": 91,
+      "slower_cells": [
+        {
+          "speedup": 0.8958499339101741,
+          "case": "real_iris_raw_k5_seed151",
+          "operation": "indices"
+        },
+        {
+          "speedup": 0.742137352742752,
+          "case": "real_iris_raw_k5_seed151",
+          "operation": "predict_uniform"
+        },
+        {
+          "speedup": 0.927869924537716,
+          "case": "real_iris_raw_k5_seed151",
+          "operation": "proba_uniform"
+        },
+        {
+          "speedup": 0.9415863831315752,
+          "case": "real_iris_raw_k5_seed151",
+          "operation": "regress_uniform"
+        },
+        {
+          "speedup": 0.9283331630642595,
+          "case": "real_iris_raw_k5_seed251",
+          "operation": "predict_uniform"
+        },
+        {
+          "speedup": 0.8932702625819953,
+          "case": "real_iris_raw_k5_seed251",
+          "operation": "proba_uniform"
+        },
+        {
+          "speedup": 0.9339043692620983,
+          "case": "real_iris_raw_k5_seed252",
+          "operation": "proba_uniform"
+        },
+        {
+          "speedup": 0.7805961067500767,
+          "case": "real_wine_raw_k5_seed151",
+          "operation": "proba_uniform"
+        }
+      ]
+    },
+    "sklearn_1": {
+      "medians_faster_than_sklearn": 5,
+      "median_count": 162,
+      "minimum_speedup": 0.2563217492678566,
+      "maximum_speedup": 1.059619640942597,
+      "minimum_case_operation": [
+        "real_iris_raw_k5_seed252",
+        "kneighbors"
+      ],
+      "medians_at_least_two_x": 0,
+      "slower_cells": [
+        {
+          "speedup": 0.5648373389655665,
+          "case": "shape_single_8_k5_seed41",
+          "operation": "fit_query"
+        },
+        {
+          "speedup": 0.49001080166771677,
+          "case": "shape_single_8_k5_seed41",
+          "operation": "kneighbors"
+        },
+        {
+          "speedup": 0.8843910929132192,
+          "case": "shape_single_8_k5_seed41",
+          "operation": "indices"
+        },
+        {
+          "speedup": 0.5353739676446841,
+          "case": "shape_single_8_k5_seed41",
+          "operation": "predict_uniform"
+        },
+        {
+          "speedup": 0.9049372436549789,
+          "case": "shape_single_8_k5_seed41",
+          "operation": "proba_uniform"
+        },
+        {
+          "speedup": 0.9591484389417497,
+          "case": "shape_single_8_k5_seed41",
+          "operation": "regress_uniform"
+        },
+        {
+          "speedup": 0.854019841671701,
+          "case": "shape_single_8_k5_seed41",
+          "operation": "predict_distance"
+        },
+        {
+          "speedup": 0.904558719558291,
+          "case": "shape_single_8_k5_seed41",
+          "operation": "proba_distance"
+        },
+        {
+          "speedup": 0.9162818084693085,
+          "case": "shape_single_8_k5_seed41",
+          "operation": "regress_distance"
+        },
+        {
+          "speedup": 0.7789650278504562,
+          "case": "shape_single_32_k5_seed49",
+          "operation": "fit_query"
+        },
+        {
+          "speedup": 0.47291977175582495,
+          "case": "shape_single_32_k5_seed49",
+          "operation": "kneighbors"
+        },
+        {
+          "speedup": 0.44269601699168143,
+          "case": "shape_single_32_k5_seed49",
+          "operation": "indices"
+        },
+        {
+          "speedup": 0.4835176910185747,
+          "case": "shape_single_32_k5_seed49",
+          "operation": "predict_uniform"
+        },
+        {
+          "speedup": 0.48629301232877886,
+          "case": "shape_single_32_k5_seed49",
+          "operation": "proba_uniform"
+        },
+        {
+          "speedup": 0.4721447305651636,
+          "case": "shape_single_32_k5_seed49",
+          "operation": "regress_uniform"
+        },
+        {
+          "speedup": 0.5126157961727016,
+          "case": "shape_single_32_k5_seed49",
+          "operation": "predict_distance"
+        },
+        {
+          "speedup": 0.5564363038062063,
+          "case": "shape_single_32_k5_seed49",
+          "operation": "proba_distance"
+        },
+        {
+          "speedup": 0.4840770524425436,
+          "case": "shape_single_32_k5_seed49",
+          "operation": "regress_distance"
+        },
+        {
+          "speedup": 0.5532014734300784,
+          "case": "shape_single_8_k5_seed42",
+          "operation": "fit_query"
+        },
+        {
+          "speedup": 0.4901386847376945,
+          "case": "shape_single_8_k5_seed42",
+          "operation": "kneighbors"
+        },
+        {
+          "speedup": 0.7216294411825466,
+          "case": "shape_single_8_k5_seed42",
+          "operation": "indices"
+        },
+        {
+          "speedup": 0.8820149753245048,
+          "case": "shape_single_8_k5_seed42",
+          "operation": "predict_uniform"
+        },
+        {
+          "speedup": 0.6078767464625553,
+          "case": "shape_single_8_k5_seed42",
+          "operation": "proba_uniform"
+        },
+        {
+          "speedup": 0.9323954469989144,
+          "case": "shape_single_8_k5_seed42",
+          "operation": "regress_uniform"
+        },
+        {
+          "speedup": 0.5427077396821495,
+          "case": "shape_single_8_k5_seed42",
+          "operation": "predict_distance"
+        },
+        {
+          "speedup": 0.8870381190486095,
+          "case": "shape_single_8_k5_seed42",
+          "operation": "proba_distance"
+        },
+        {
+          "speedup": 0.9034975495019427,
+          "case": "shape_single_8_k5_seed42",
+          "operation": "regress_distance"
+        },
+        {
+          "speedup": 0.5277491204043069,
+          "case": "shape_single_32_k5_seed50",
+          "operation": "fit_query"
+        },
+        {
+          "speedup": 0.4457737628462155,
+          "case": "shape_single_32_k5_seed50",
+          "operation": "kneighbors"
+        },
+        {
+          "speedup": 0.45461402947135965,
+          "case": "shape_single_32_k5_seed50",
+          "operation": "indices"
+        },
+        {
+          "speedup": 0.5061632021318196,
+          "case": "shape_single_32_k5_seed50",
+          "operation": "predict_uniform"
+        },
+        {
+          "speedup": 0.6724762851005489,
+          "case": "shape_single_32_k5_seed50",
+          "operation": "proba_uniform"
+        },
+        {
+          "speedup": 0.4669886167378056,
+          "case": "shape_single_32_k5_seed50",
+          "operation": "regress_uniform"
+        },
+        {
+          "speedup": 0.5691362010412966,
+          "case": "shape_single_32_k5_seed50",
+          "operation": "predict_distance"
+        },
+        {
+          "speedup": 0.5146667724838985,
+          "case": "shape_single_32_k5_seed50",
+          "operation": "proba_distance"
+        },
+        {
+          "speedup": 0.4702979617316858,
+          "case": "shape_single_32_k5_seed50",
+          "operation": "regress_distance"
+        },
+        {
+          "speedup": 0.5453604145672514,
+          "case": "shape_single_8_k5_seed43",
+          "operation": "fit_query"
+        },
+        {
+          "speedup": 0.4794105669789044,
+          "case": "shape_single_8_k5_seed43",
+          "operation": "kneighbors"
+        },
+        {
+          "speedup": 0.7813515553010683,
+          "case": "shape_single_8_k5_seed43",
+          "operation": "indices"
+        },
+        {
+          "speedup": 0.7878804681440389,
+          "case": "shape_single_8_k5_seed43",
+          "operation": "predict_uniform"
+        },
+        {
+          "speedup": 0.8582105044633589,
+          "case": "shape_single_8_k5_seed43",
+          "operation": "proba_uniform"
+        },
+        {
+          "speedup": 0.7934009437543909,
+          "case": "shape_single_8_k5_seed43",
+          "operation": "regress_uniform"
+        },
+        {
+          "speedup": 0.9177151761611808,
+          "case": "shape_single_8_k5_seed43",
+          "operation": "predict_distance"
+        },
+        {
+          "speedup": 0.514860770933971,
+          "case": "shape_single_8_k5_seed43",
+          "operation": "proba_distance"
+        },
+        {
+          "speedup": 0.8533537438107117,
+          "case": "shape_single_8_k5_seed43",
+          "operation": "regress_distance"
+        },
+        {
+          "speedup": 0.5231084089229179,
+          "case": "shape_single_32_k5_seed51",
+          "operation": "fit_query"
+        },
+        {
+          "speedup": 0.446728726916585,
+          "case": "shape_single_32_k5_seed51",
+          "operation": "kneighbors"
+        },
+        {
+          "speedup": 0.478654438974213,
+          "case": "shape_single_32_k5_seed51",
+          "operation": "indices"
+        },
+        {
+          "speedup": 0.5173904299618113,
+          "case": "shape_single_32_k5_seed51",
+          "operation": "predict_uniform"
+        },
+        {
+          "speedup": 0.44399570388071735,
+          "case": "shape_single_32_k5_seed51",
+          "operation": "proba_uniform"
+        },
+        {
+          "speedup": 0.4641198840317783,
+          "case": "shape_single_32_k5_seed51",
+          "operation": "regress_uniform"
+        },
+        {
+          "speedup": 0.6384588211808674,
+          "case": "shape_single_32_k5_seed51",
+          "operation": "predict_distance"
+        },
+        {
+          "speedup": 0.4935872538439134,
+          "case": "shape_single_32_k5_seed51",
+          "operation": "proba_distance"
+        },
+        {
+          "speedup": 0.4840295515617136,
+          "case": "shape_single_32_k5_seed51",
+          "operation": "regress_distance"
+        },
+        {
+          "speedup": 0.9023041165147082,
+          "case": "real_digits_raw_k5_seed151",
+          "operation": "fit_query"
+        },
+        {
+          "speedup": 0.8858401567719142,
+          "case": "real_digits_raw_k5_seed151",
+          "operation": "kneighbors"
+        },
+        {
+          "speedup": 0.8904874942720504,
+          "case": "real_digits_raw_k5_seed151",
+          "operation": "indices"
+        },
+        {
+          "speedup": 0.9366832660811488,
+          "case": "real_digits_raw_k5_seed151",
+          "operation": "predict_uniform"
+        },
+        {
+          "speedup": 0.9013302062977975,
+          "case": "real_digits_raw_k5_seed151",
+          "operation": "regress_uniform"
+        },
+        {
+          "speedup": 0.9740937238345272,
+          "case": "real_digits_raw_k5_seed151",
+          "operation": "predict_distance"
+        },
+        {
+          "speedup": 0.9293839148728043,
+          "case": "real_digits_raw_k5_seed151",
+          "operation": "proba_distance"
+        },
+        {
+          "speedup": 0.8980502874267551,
+          "case": "real_digits_raw_k5_seed151",
+          "operation": "regress_distance"
+        },
+        {
+          "speedup": 0.7657679872200248,
+          "case": "real_digits_raw_k5_seed251",
+          "operation": "fit_query"
+        },
+        {
+          "speedup": 0.7377539848107844,
+          "case": "real_digits_raw_k5_seed251",
+          "operation": "kneighbors"
+        },
+        {
+          "speedup": 0.7878320540131822,
+          "case": "real_digits_raw_k5_seed251",
+          "operation": "indices"
+        },
+        {
+          "speedup": 0.784093204276728,
+          "case": "real_digits_raw_k5_seed251",
+          "operation": "predict_uniform"
+        },
+        {
+          "speedup": 0.7845687910307361,
+          "case": "real_digits_raw_k5_seed251",
+          "operation": "proba_uniform"
+        },
+        {
+          "speedup": 0.7791966927127789,
+          "case": "real_digits_raw_k5_seed251",
+          "operation": "regress_uniform"
+        },
+        {
+          "speedup": 0.9023687355135482,
+          "case": "real_digits_raw_k5_seed251",
+          "operation": "predict_distance"
+        },
+        {
+          "speedup": 0.828364997838784,
+          "case": "real_digits_raw_k5_seed251",
+          "operation": "proba_distance"
+        },
+        {
+          "speedup": 0.7902866946472217,
+          "case": "real_digits_raw_k5_seed251",
+          "operation": "regress_distance"
+        },
+        {
+          "speedup": 0.8692748949757296,
+          "case": "real_digits_raw_k5_seed252",
+          "operation": "fit_query"
+        },
+        {
+          "speedup": 0.9071211357990101,
+          "case": "real_digits_raw_k5_seed252",
+          "operation": "kneighbors"
+        },
+        {
+          "speedup": 0.9198353138024524,
+          "case": "real_digits_raw_k5_seed252",
+          "operation": "proba_uniform"
+        },
+        {
+          "speedup": 0.8918026421745129,
+          "case": "real_digits_raw_k5_seed252",
+          "operation": "proba_distance"
+        },
+        {
+          "speedup": 0.8787552957257488,
+          "case": "real_digits_raw_k5_seed252",
+          "operation": "regress_distance"
+        },
+        {
+          "speedup": 0.5811351313417841,
+          "case": "real_breast_cancer_raw_k5_seed151",
+          "operation": "fit_query"
+        },
+        {
+          "speedup": 0.520225396636372,
+          "case": "real_breast_cancer_raw_k5_seed151",
+          "operation": "kneighbors"
+        },
+        {
+          "speedup": 0.5232238075354508,
+          "case": "real_breast_cancer_raw_k5_seed151",
+          "operation": "indices"
+        },
+        {
+          "speedup": 0.5799952464517408,
+          "case": "real_breast_cancer_raw_k5_seed151",
+          "operation": "predict_uniform"
+        },
+        {
+          "speedup": 0.551732743785681,
+          "case": "real_breast_cancer_raw_k5_seed151",
+          "operation": "proba_uniform"
+        },
+        {
+          "speedup": 0.9257507901264052,
+          "case": "real_breast_cancer_raw_k5_seed151",
+          "operation": "regress_uniform"
+        },
+        {
+          "speedup": 0.5978860352844195,
+          "case": "real_breast_cancer_raw_k5_seed151",
+          "operation": "predict_distance"
+        },
+        {
+          "speedup": 0.5310159767431955,
+          "case": "real_breast_cancer_raw_k5_seed151",
+          "operation": "proba_distance"
+        },
+        {
+          "speedup": 0.5596253933087525,
+          "case": "real_breast_cancer_raw_k5_seed151",
+          "operation": "regress_distance"
+        },
+        {
+          "speedup": 0.5697059433427283,
+          "case": "real_breast_cancer_raw_k5_seed251",
+          "operation": "fit_query"
+        },
+        {
+          "speedup": 0.5615517132820855,
+          "case": "real_breast_cancer_raw_k5_seed251",
+          "operation": "kneighbors"
+        },
+        {
+          "speedup": 0.4995865496713317,
+          "case": "real_breast_cancer_raw_k5_seed251",
+          "operation": "indices"
+        },
+        {
+          "speedup": 0.581793247513719,
+          "case": "real_breast_cancer_raw_k5_seed251",
+          "operation": "predict_uniform"
+        },
+        {
+          "speedup": 0.5616307430756249,
+          "case": "real_breast_cancer_raw_k5_seed251",
+          "operation": "proba_uniform"
+        },
+        {
+          "speedup": 0.5219513664989303,
+          "case": "real_breast_cancer_raw_k5_seed251",
+          "operation": "regress_uniform"
+        },
+        {
+          "speedup": 0.6145206321402583,
+          "case": "real_breast_cancer_raw_k5_seed251",
+          "operation": "predict_distance"
+        },
+        {
+          "speedup": 0.5591786414511446,
+          "case": "real_breast_cancer_raw_k5_seed251",
+          "operation": "proba_distance"
+        },
+        {
+          "speedup": 0.6154282099212693,
+          "case": "real_breast_cancer_raw_k5_seed251",
+          "operation": "regress_distance"
+        },
+        {
+          "speedup": 0.5895772550205111,
+          "case": "real_breast_cancer_raw_k5_seed252",
+          "operation": "fit_query"
+        },
+        {
+          "speedup": 0.5112891902426797,
+          "case": "real_breast_cancer_raw_k5_seed252",
+          "operation": "kneighbors"
+        },
+        {
+          "speedup": 0.9802802272673071,
+          "case": "real_breast_cancer_raw_k5_seed252",
+          "operation": "indices"
+        },
+        {
+          "speedup": 0.6407065560359939,
+          "case": "real_breast_cancer_raw_k5_seed252",
+          "operation": "predict_uniform"
+        },
+        {
+          "speedup": 0.5840349830690148,
+          "case": "real_breast_cancer_raw_k5_seed252",
+          "operation": "proba_uniform"
+        },
+        {
+          "speedup": 0.5452949206121129,
+          "case": "real_breast_cancer_raw_k5_seed252",
+          "operation": "regress_uniform"
+        },
+        {
+          "speedup": 0.9804513498824694,
+          "case": "real_breast_cancer_raw_k5_seed252",
+          "operation": "predict_distance"
+        },
+        {
+          "speedup": 0.5827844378729687,
+          "case": "real_breast_cancer_raw_k5_seed252",
+          "operation": "proba_distance"
+        },
+        {
+          "speedup": 0.5775984860253466,
+          "case": "real_breast_cancer_raw_k5_seed252",
+          "operation": "regress_distance"
+        },
+        {
+          "speedup": 0.3290092264139028,
+          "case": "real_iris_raw_k5_seed151",
+          "operation": "fit_query"
+        },
+        {
+          "speedup": 0.4411597703156588,
+          "case": "real_iris_raw_k5_seed151",
+          "operation": "kneighbors"
+        },
+        {
+          "speedup": 0.42653522134623256,
+          "case": "real_iris_raw_k5_seed151",
+          "operation": "indices"
+        },
+        {
+          "speedup": 0.32234905966076605,
+          "case": "real_iris_raw_k5_seed151",
+          "operation": "predict_uniform"
+        },
+        {
+          "speedup": 0.4962575292843557,
+          "case": "real_iris_raw_k5_seed151",
+          "operation": "proba_uniform"
+        },
+        {
+          "speedup": 0.4461999777451112,
+          "case": "real_iris_raw_k5_seed151",
+          "operation": "regress_uniform"
+        },
+        {
+          "speedup": 0.5302113031725584,
+          "case": "real_iris_raw_k5_seed151",
+          "operation": "predict_distance"
+        },
+        {
+          "speedup": 0.4477790230314696,
+          "case": "real_iris_raw_k5_seed151",
+          "operation": "proba_distance"
+        },
+        {
+          "speedup": 0.41258550124018156,
+          "case": "real_iris_raw_k5_seed151",
+          "operation": "regress_distance"
+        },
+        {
+          "speedup": 0.3487709926200488,
+          "case": "real_iris_raw_k5_seed251",
+          "operation": "fit_query"
+        },
+        {
+          "speedup": 0.47747000633715025,
+          "case": "real_iris_raw_k5_seed251",
+          "operation": "kneighbors"
+        },
+        {
+          "speedup": 0.4611016065723377,
+          "case": "real_iris_raw_k5_seed251",
+          "operation": "indices"
+        },
+        {
+          "speedup": 0.45894394255607934,
+          "case": "real_iris_raw_k5_seed251",
+          "operation": "predict_uniform"
+        },
+        {
+          "speedup": 0.490674931207066,
+          "case": "real_iris_raw_k5_seed251",
+          "operation": "proba_uniform"
+        },
+        {
+          "speedup": 0.45504502475943065,
+          "case": "real_iris_raw_k5_seed251",
+          "operation": "regress_uniform"
+        },
+        {
+          "speedup": 0.3311329052482085,
+          "case": "real_iris_raw_k5_seed251",
+          "operation": "predict_distance"
+        },
+        {
+          "speedup": 0.5191843391428286,
+          "case": "real_iris_raw_k5_seed251",
+          "operation": "proba_distance"
+        },
+        {
+          "speedup": 0.4495695201966464,
+          "case": "real_iris_raw_k5_seed251",
+          "operation": "regress_distance"
+        },
+        {
+          "speedup": 0.5238039140036392,
+          "case": "real_iris_raw_k5_seed252",
+          "operation": "fit_query"
+        },
+        {
+          "speedup": 0.2563217492678566,
+          "case": "real_iris_raw_k5_seed252",
+          "operation": "kneighbors"
+        },
+        {
+          "speedup": 0.4337577840789942,
+          "case": "real_iris_raw_k5_seed252",
+          "operation": "indices"
+        },
+        {
+          "speedup": 0.5068516754389892,
+          "case": "real_iris_raw_k5_seed252",
+          "operation": "predict_uniform"
+        },
+        {
+          "speedup": 0.49238479971317667,
+          "case": "real_iris_raw_k5_seed252",
+          "operation": "proba_uniform"
+        },
+        {
+          "speedup": 0.4992560272384049,
+          "case": "real_iris_raw_k5_seed252",
+          "operation": "regress_uniform"
+        },
+        {
+          "speedup": 0.5275302146897702,
+          "case": "real_iris_raw_k5_seed252",
+          "operation": "predict_distance"
+        },
+        {
+          "speedup": 0.48810773538697455,
+          "case": "real_iris_raw_k5_seed252",
+          "operation": "proba_distance"
+        },
+        {
+          "speedup": 0.4712057901238916,
+          "case": "real_iris_raw_k5_seed252",
+          "operation": "regress_distance"
+        },
+        {
+          "speedup": 0.3709379784632542,
+          "case": "real_wine_raw_k5_seed151",
+          "operation": "fit_query"
+        },
+        {
+          "speedup": 0.5578900456748067,
+          "case": "real_wine_raw_k5_seed151",
+          "operation": "kneighbors"
+        },
+        {
+          "speedup": 0.615649213661845,
+          "case": "real_wine_raw_k5_seed151",
+          "operation": "indices"
+        },
+        {
+          "speedup": 0.5641364898012425,
+          "case": "real_wine_raw_k5_seed151",
+          "operation": "predict_uniform"
+        },
+        {
+          "speedup": 0.3758097527368913,
+          "case": "real_wine_raw_k5_seed151",
+          "operation": "proba_uniform"
+        },
+        {
+          "speedup": 0.5497008059157998,
+          "case": "real_wine_raw_k5_seed151",
+          "operation": "regress_uniform"
+        },
+        {
+          "speedup": 0.749894165030561,
+          "case": "real_wine_raw_k5_seed151",
+          "operation": "predict_distance"
+        },
+        {
+          "speedup": 0.4835764516802092,
+          "case": "real_wine_raw_k5_seed151",
+          "operation": "proba_distance"
+        },
+        {
+          "speedup": 0.3723458559576638,
+          "case": "real_wine_raw_k5_seed151",
+          "operation": "regress_distance"
+        },
+        {
+          "speedup": 0.3718733393696136,
+          "case": "real_wine_raw_k5_seed251",
+          "operation": "fit_query"
+        },
+        {
+          "speedup": 0.4747717038376148,
+          "case": "real_wine_raw_k5_seed251",
+          "operation": "kneighbors"
+        },
+        {
+          "speedup": 0.5589723646835955,
+          "case": "real_wine_raw_k5_seed251",
+          "operation": "indices"
+        },
+        {
+          "speedup": 0.6103507761397671,
+          "case": "real_wine_raw_k5_seed251",
+          "operation": "predict_uniform"
+        },
+        {
+          "speedup": 0.509139244149071,
+          "case": "real_wine_raw_k5_seed251",
+          "operation": "proba_uniform"
+        },
+        {
+          "speedup": 0.5026333200150629,
+          "case": "real_wine_raw_k5_seed251",
+          "operation": "regress_uniform"
+        },
+        {
+          "speedup": 0.7005012180329565,
+          "case": "real_wine_raw_k5_seed251",
+          "operation": "predict_distance"
+        },
+        {
+          "speedup": 0.3551607923114909,
+          "case": "real_wine_raw_k5_seed251",
+          "operation": "proba_distance"
+        },
+        {
+          "speedup": 0.5619500178735672,
+          "case": "real_wine_raw_k5_seed251",
+          "operation": "regress_distance"
+        },
+        {
+          "speedup": 0.3944948306124539,
+          "case": "real_wine_raw_k5_seed252",
+          "operation": "fit_query"
+        },
+        {
+          "speedup": 0.4416261217729379,
+          "case": "real_wine_raw_k5_seed252",
+          "operation": "kneighbors"
+        },
+        {
+          "speedup": 0.563380850151058,
+          "case": "real_wine_raw_k5_seed252",
+          "operation": "indices"
+        },
+        {
+          "speedup": 0.6230422340095879,
+          "case": "real_wine_raw_k5_seed252",
+          "operation": "predict_uniform"
+        },
+        {
+          "speedup": 0.5734785703391123,
+          "case": "real_wine_raw_k5_seed252",
+          "operation": "proba_uniform"
+        },
+        {
+          "speedup": 0.5944434838783655,
+          "case": "real_wine_raw_k5_seed252",
+          "operation": "regress_uniform"
+        },
+        {
+          "speedup": 0.3904090662085494,
+          "case": "real_wine_raw_k5_seed252",
+          "operation": "predict_distance"
+        },
+        {
+          "speedup": 0.5951770883626578,
+          "case": "real_wine_raw_k5_seed252",
+          "operation": "proba_distance"
+        },
+        {
+          "speedup": 0.4833087695377409,
+          "case": "real_wine_raw_k5_seed252",
+          "operation": "regress_distance"
+        }
+      ]
+    },
+    "sklearn_auto": {
+      "medians_faster_than_sklearn": 91,
+      "median_count": 162,
+      "minimum_speedup": 0.39913547372610175,
+      "maximum_speedup": 6.5028286912228985,
+      "minimum_case_operation": [
+        "shape_single_8_k5_seed43",
+        "proba_distance"
+      ],
+      "medians_at_least_two_x": 78,
+      "slower_cells": [
+        {
+          "speedup": 0.40930015106259565,
+          "case": "shape_single_8_k5_seed41",
+          "operation": "kneighbors"
+        },
+        {
+          "speedup": 0.7058640554322656,
+          "case": "shape_single_8_k5_seed41",
+          "operation": "indices"
+        },
+        {
+          "speedup": 0.7796208419036887,
+          "case": "shape_single_8_k5_seed41",
+          "operation": "predict_uniform"
+        },
+        {
+          "speedup": 0.7330299596015666,
+          "case": "shape_single_8_k5_seed41",
+          "operation": "proba_uniform"
+        },
+        {
+          "speedup": 0.7628741278985866,
+          "case": "shape_single_8_k5_seed41",
+          "operation": "regress_uniform"
+        },
+        {
+          "speedup": 0.7209119765894814,
+          "case": "shape_single_8_k5_seed41",
+          "operation": "predict_distance"
+        },
+        {
+          "speedup": 0.7361350009640959,
+          "case": "shape_single_8_k5_seed41",
+          "operation": "proba_distance"
+        },
+        {
+          "speedup": 0.7482610560735561,
+          "case": "shape_single_8_k5_seed41",
+          "operation": "regress_distance"
+        },
+        {
+          "speedup": 0.40759679790142905,
+          "case": "shape_single_8_k5_seed42",
+          "operation": "kneighbors"
+        },
+        {
+          "speedup": 0.6119108266228189,
+          "case": "shape_single_8_k5_seed42",
+          "operation": "indices"
+        },
+        {
+          "speedup": 0.4987626219603438,
+          "case": "shape_single_8_k5_seed42",
+          "operation": "proba_uniform"
+        },
+        {
+          "speedup": 0.7509075535584424,
+          "case": "shape_single_8_k5_seed42",
+          "operation": "regress_uniform"
+        },
+        {
+          "speedup": 0.45518268532229106,
+          "case": "shape_single_8_k5_seed42",
+          "operation": "predict_distance"
+        },
+        {
+          "speedup": 0.7677891501363779,
+          "case": "shape_single_8_k5_seed42",
+          "operation": "proba_distance"
+        },
+        {
+          "speedup": 0.7556003055400199,
+          "case": "shape_single_8_k5_seed42",
+          "operation": "regress_distance"
+        },
+        {
+          "speedup": 0.40685799549105756,
+          "case": "shape_single_8_k5_seed43",
+          "operation": "kneighbors"
+        },
+        {
+          "speedup": 0.6099347391652226,
+          "case": "shape_single_8_k5_seed43",
+          "operation": "indices"
+        },
+        {
+          "speedup": 0.6759287634659581,
+          "case": "shape_single_8_k5_seed43",
+          "operation": "proba_uniform"
+        },
+        {
+          "speedup": 0.6372019252530599,
+          "case": "shape_single_8_k5_seed43",
+          "operation": "regress_uniform"
+        },
+        {
+          "speedup": 0.7337075527440826,
+          "case": "shape_single_8_k5_seed43",
+          "operation": "predict_distance"
+        },
+        {
+          "speedup": 0.39913547372610175,
+          "case": "shape_single_8_k5_seed43",
+          "operation": "proba_distance"
+        },
+        {
+          "speedup": 0.7018411006538913,
+          "case": "shape_single_8_k5_seed43",
+          "operation": "regress_distance"
+        },
+        {
+          "speedup": 0.5062872717638701,
+          "case": "real_iris_raw_k5_seed151",
+          "operation": "fit_query"
+        },
+        {
+          "speedup": 0.6667588393963418,
+          "case": "real_iris_raw_k5_seed151",
+          "operation": "kneighbors"
+        },
+        {
+          "speedup": 0.6686735787562613,
+          "case": "real_iris_raw_k5_seed151",
+          "operation": "indices"
+        },
+        {
+          "speedup": 0.7971969108072168,
+          "case": "real_iris_raw_k5_seed151",
+          "operation": "predict_uniform"
+        },
+        {
+          "speedup": 0.6934198705330813,
+          "case": "real_iris_raw_k5_seed151",
+          "operation": "proba_uniform"
+        },
+        {
+          "speedup": 0.6908881848014727,
+          "case": "real_iris_raw_k5_seed151",
+          "operation": "regress_uniform"
+        },
+        {
+          "speedup": 0.7553241737414901,
+          "case": "real_iris_raw_k5_seed151",
+          "operation": "predict_distance"
+        },
+        {
+          "speedup": 0.625295416196032,
+          "case": "real_iris_raw_k5_seed151",
+          "operation": "proba_distance"
+        },
+        {
+          "speedup": 0.6080096004981825,
+          "case": "real_iris_raw_k5_seed151",
+          "operation": "regress_distance"
+        },
+        {
+          "speedup": 0.5272869911285529,
+          "case": "real_iris_raw_k5_seed251",
+          "operation": "fit_query"
+        },
+        {
+          "speedup": 0.7104884841736795,
+          "case": "real_iris_raw_k5_seed251",
+          "operation": "kneighbors"
+        },
+        {
+          "speedup": 0.7332480977693437,
+          "case": "real_iris_raw_k5_seed251",
+          "operation": "indices"
+        },
+        {
+          "speedup": 0.7155993082683896,
+          "case": "real_iris_raw_k5_seed251",
+          "operation": "proba_uniform"
+        },
+        {
+          "speedup": 0.7052088780377058,
+          "case": "real_iris_raw_k5_seed251",
+          "operation": "regress_uniform"
+        },
+        {
+          "speedup": 0.4655017269965059,
+          "case": "real_iris_raw_k5_seed251",
+          "operation": "predict_distance"
+        },
+        {
+          "speedup": 0.7263803335963628,
+          "case": "real_iris_raw_k5_seed251",
+          "operation": "proba_distance"
+        },
+        {
+          "speedup": 0.6298391931771032,
+          "case": "real_iris_raw_k5_seed251",
+          "operation": "regress_distance"
+        },
+        {
+          "speedup": 0.7959392789001246,
+          "case": "real_iris_raw_k5_seed252",
+          "operation": "fit_query"
+        },
+        {
+          "speedup": 0.423373162348818,
+          "case": "real_iris_raw_k5_seed252",
+          "operation": "kneighbors"
+        },
+        {
+          "speedup": 0.6809825034874497,
+          "case": "real_iris_raw_k5_seed252",
+          "operation": "indices"
+        },
+        {
+          "speedup": 0.6824559046244862,
+          "case": "real_iris_raw_k5_seed252",
+          "operation": "proba_uniform"
+        },
+        {
+          "speedup": 0.7201841663533686,
+          "case": "real_iris_raw_k5_seed252",
+          "operation": "regress_uniform"
+        },
+        {
+          "speedup": 0.7712011498424053,
+          "case": "real_iris_raw_k5_seed252",
+          "operation": "predict_distance"
+        },
+        {
+          "speedup": 0.7029606320653223,
+          "case": "real_iris_raw_k5_seed252",
+          "operation": "proba_distance"
+        },
+        {
+          "speedup": 0.665471324564729,
+          "case": "real_iris_raw_k5_seed252",
+          "operation": "regress_distance"
+        },
+        {
+          "speedup": 0.5519301911332171,
+          "case": "real_wine_raw_k5_seed151",
+          "operation": "fit_query"
+        },
+        {
+          "speedup": 0.8412699378900892,
+          "case": "real_wine_raw_k5_seed151",
+          "operation": "kneighbors"
+        },
+        {
+          "speedup": 0.8765859845821202,
+          "case": "real_wine_raw_k5_seed151",
+          "operation": "indices"
+        },
+        {
+          "speedup": 0.5223175447683511,
+          "case": "real_wine_raw_k5_seed151",
+          "operation": "proba_uniform"
+        },
+        {
+          "speedup": 0.7915651715448143,
+          "case": "real_wine_raw_k5_seed151",
+          "operation": "regress_uniform"
+        },
+        {
+          "speedup": 0.9137364791424902,
+          "case": "real_wine_raw_k5_seed151",
+          "operation": "predict_distance"
+        },
+        {
+          "speedup": 0.6819785082781975,
+          "case": "real_wine_raw_k5_seed151",
+          "operation": "proba_distance"
+        },
+        {
+          "speedup": 0.5642816901408451,
+          "case": "real_wine_raw_k5_seed151",
+          "operation": "regress_distance"
+        },
+        {
+          "speedup": 0.5916836102522562,
+          "case": "real_wine_raw_k5_seed251",
+          "operation": "fit_query"
+        },
+        {
+          "speedup": 0.6625517830858759,
+          "case": "real_wine_raw_k5_seed251",
+          "operation": "kneighbors"
+        },
+        {
+          "speedup": 0.82735866648182,
+          "case": "real_wine_raw_k5_seed251",
+          "operation": "indices"
+        },
+        {
+          "speedup": 0.6916016303779923,
+          "case": "real_wine_raw_k5_seed251",
+          "operation": "proba_uniform"
+        },
+        {
+          "speedup": 0.709111025194506,
+          "case": "real_wine_raw_k5_seed251",
+          "operation": "regress_uniform"
+        },
+        {
+          "speedup": 0.9544698424998969,
+          "case": "real_wine_raw_k5_seed251",
+          "operation": "predict_distance"
+        },
+        {
+          "speedup": 0.4893926010043837,
+          "case": "real_wine_raw_k5_seed251",
+          "operation": "proba_distance"
+        },
+        {
+          "speedup": 0.8312178402344513,
+          "case": "real_wine_raw_k5_seed251",
+          "operation": "regress_distance"
+        },
+        {
+          "speedup": 0.5777654058504015,
+          "case": "real_wine_raw_k5_seed252",
+          "operation": "fit_query"
+        },
+        {
+          "speedup": 0.672262359910821,
+          "case": "real_wine_raw_k5_seed252",
+          "operation": "kneighbors"
+        },
+        {
+          "speedup": 0.8303838259609254,
+          "case": "real_wine_raw_k5_seed252",
+          "operation": "indices"
+        },
+        {
+          "speedup": 0.8258889161070259,
+          "case": "real_wine_raw_k5_seed252",
+          "operation": "proba_uniform"
+        },
+        {
+          "speedup": 0.8817260755468418,
+          "case": "real_wine_raw_k5_seed252",
+          "operation": "regress_uniform"
+        },
+        {
+          "speedup": 0.5313517382349998,
+          "case": "real_wine_raw_k5_seed252",
+          "operation": "predict_distance"
+        },
+        {
+          "speedup": 0.8219695863883556,
+          "case": "real_wine_raw_k5_seed252",
+          "operation": "proba_distance"
+        },
+        {
+          "speedup": 0.7572890107883665,
+          "case": "real_wine_raw_k5_seed252",
+          "operation": "regress_distance"
+        }
+      ]
+    }
+  },
+  "controlled_comparison": {
+    "small_single": {
+      "case_operation_count": 162,
+      "comparators": {
+        "previous": {
+          "paired_ratio_median": {
+            "minimum": 1.0809795419606607,
+            "maximum": 1.4832953129557085,
+            "above_parity": 162,
+            "below_parity": []
+          },
+          "ratio_of_medians": {
+            "minimum": 1.000587859152877,
+            "maximum": 1.56343003961032,
+            "above_parity": 162,
+            "below_parity": []
+          }
+        },
+        "current_b": {
+          "paired_ratio_median": {
+            "minimum": 0.8762508361794495,
+            "maximum": 1.1179365044370386,
+            "above_parity": 62,
+            "below_parity": [
+              {
+                "ratio": 0.9761989636538733,
+                "case": "shape_single_8_k5_seed41",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9342745631083861,
+                "case": "shape_single_8_k5_seed41",
+                "operation": "indices"
+              },
+              {
+                "ratio": 0.9738330404517394,
+                "case": "shape_single_8_k5_seed41",
+                "operation": "predict_uniform"
+              },
+              {
+                "ratio": 0.9494212092555666,
+                "case": "shape_single_8_k5_seed41",
+                "operation": "regress_uniform"
+              },
+              {
+                "ratio": 0.9305364534805077,
+                "case": "shape_single_8_k5_seed41",
+                "operation": "regress_distance"
+              },
+              {
+                "ratio": 0.9585298878770123,
+                "case": "shape_single_32_k5_seed49",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9849883575890035,
+                "case": "shape_single_32_k5_seed49",
+                "operation": "indices"
+              },
+              {
+                "ratio": 0.9344276292910726,
+                "case": "shape_single_32_k5_seed49",
+                "operation": "proba_uniform"
+              },
+              {
+                "ratio": 0.9650834946656417,
+                "case": "shape_single_32_k5_seed49",
+                "operation": "regress_uniform"
+              },
+              {
+                "ratio": 0.9297478581854666,
+                "case": "shape_single_32_k5_seed49",
+                "operation": "proba_distance"
+              },
+              {
+                "ratio": 0.9764940559148823,
+                "case": "shape_single_32_k5_seed49",
+                "operation": "regress_distance"
+              },
+              {
+                "ratio": 0.906859595128312,
+                "case": "shape_single_8_k5_seed42",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9914830151927111,
+                "case": "shape_single_8_k5_seed42",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.8762508361794495,
+                "case": "shape_single_8_k5_seed42",
+                "operation": "predict_uniform"
+              },
+              {
+                "ratio": 0.9955150244860991,
+                "case": "shape_single_8_k5_seed42",
+                "operation": "proba_uniform"
+              },
+              {
+                "ratio": 0.9586925307661434,
+                "case": "shape_single_8_k5_seed42",
+                "operation": "predict_distance"
+              },
+              {
+                "ratio": 0.9681556640922667,
+                "case": "shape_single_8_k5_seed42",
+                "operation": "proba_distance"
+              },
+              {
+                "ratio": 0.9452069206835569,
+                "case": "shape_single_32_k5_seed50",
+                "operation": "indices"
+              },
+              {
+                "ratio": 0.9725122822266368,
+                "case": "shape_single_32_k5_seed50",
+                "operation": "predict_uniform"
+              },
+              {
+                "ratio": 0.950885127821523,
+                "case": "shape_single_32_k5_seed50",
+                "operation": "regress_uniform"
+              },
+              {
+                "ratio": 0.9742974173723637,
+                "case": "shape_single_32_k5_seed50",
+                "operation": "predict_distance"
+              },
+              {
+                "ratio": 0.9290349637428224,
+                "case": "shape_single_32_k5_seed50",
+                "operation": "regress_distance"
+              },
+              {
+                "ratio": 0.9268611965533197,
+                "case": "shape_single_8_k5_seed43",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9681917421139972,
+                "case": "shape_single_8_k5_seed43",
+                "operation": "indices"
+              },
+              {
+                "ratio": 0.9362056241521766,
+                "case": "shape_single_8_k5_seed43",
+                "operation": "proba_uniform"
+              },
+              {
+                "ratio": 0.9574086226603543,
+                "case": "shape_single_8_k5_seed43",
+                "operation": "regress_uniform"
+              },
+              {
+                "ratio": 0.9234058728902194,
+                "case": "shape_single_8_k5_seed43",
+                "operation": "proba_distance"
+              },
+              {
+                "ratio": 0.9955554063395248,
+                "case": "shape_single_8_k5_seed43",
+                "operation": "regress_distance"
+              },
+              {
+                "ratio": 0.9502382009206675,
+                "case": "shape_single_32_k5_seed51",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9176963945702251,
+                "case": "shape_single_32_k5_seed51",
+                "operation": "predict_uniform"
+              },
+              {
+                "ratio": 0.9471465129418305,
+                "case": "shape_single_32_k5_seed51",
+                "operation": "proba_uniform"
+              },
+              {
+                "ratio": 0.9376191477243122,
+                "case": "shape_single_32_k5_seed51",
+                "operation": "predict_distance"
+              },
+              {
+                "ratio": 0.9851144310591647,
+                "case": "shape_single_32_k5_seed51",
+                "operation": "proba_distance"
+              },
+              {
+                "ratio": 0.9545604169492696,
+                "case": "real_digits_raw_k5_seed151",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.991113987272364,
+                "case": "real_digits_raw_k5_seed151",
+                "operation": "indices"
+              },
+              {
+                "ratio": 0.969927809880748,
+                "case": "real_digits_raw_k5_seed151",
+                "operation": "regress_uniform"
+              },
+              {
+                "ratio": 0.9941822369020528,
+                "case": "real_digits_raw_k5_seed151",
+                "operation": "predict_distance"
+              },
+              {
+                "ratio": 0.985200568966348,
+                "case": "real_digits_raw_k5_seed151",
+                "operation": "regress_distance"
+              },
+              {
+                "ratio": 0.944395003645367,
+                "case": "real_digits_raw_k5_seed251",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9907215144882803,
+                "case": "real_digits_raw_k5_seed251",
+                "operation": "indices"
+              },
+              {
+                "ratio": 0.9562743783166066,
+                "case": "real_digits_raw_k5_seed251",
+                "operation": "proba_uniform"
+              },
+              {
+                "ratio": 0.9780332991942873,
+                "case": "real_digits_raw_k5_seed251",
+                "operation": "regress_uniform"
+              },
+              {
+                "ratio": 0.9746515549582042,
+                "case": "real_digits_raw_k5_seed251",
+                "operation": "proba_distance"
+              },
+              {
+                "ratio": 0.984015821994191,
+                "case": "real_digits_raw_k5_seed251",
+                "operation": "regress_distance"
+              },
+              {
+                "ratio": 0.9653656064681532,
+                "case": "real_digits_raw_k5_seed252",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9642035464818511,
+                "case": "real_digits_raw_k5_seed252",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9756391252907407,
+                "case": "real_digits_raw_k5_seed252",
+                "operation": "predict_uniform"
+              },
+              {
+                "ratio": 0.979310997466658,
+                "case": "real_digits_raw_k5_seed252",
+                "operation": "proba_uniform"
+              },
+              {
+                "ratio": 0.983963517811686,
+                "case": "real_digits_raw_k5_seed252",
+                "operation": "predict_distance"
+              },
+              {
+                "ratio": 0.9568183837617069,
+                "case": "real_digits_raw_k5_seed252",
+                "operation": "proba_distance"
+              },
+              {
+                "ratio": 0.9883514191815373,
+                "case": "real_digits_raw_k5_seed252",
+                "operation": "regress_distance"
+              },
+              {
+                "ratio": 0.8945975726913292,
+                "case": "real_breast_cancer_raw_k5_seed151",
+                "operation": "indices"
+              },
+              {
+                "ratio": 0.9544090125258515,
+                "case": "real_breast_cancer_raw_k5_seed151",
+                "operation": "predict_uniform"
+              },
+              {
+                "ratio": 0.9488510940784766,
+                "case": "real_breast_cancer_raw_k5_seed151",
+                "operation": "regress_uniform"
+              },
+              {
+                "ratio": 0.9711099562115904,
+                "case": "real_breast_cancer_raw_k5_seed151",
+                "operation": "predict_distance"
+              },
+              {
+                "ratio": 0.9327217367772063,
+                "case": "real_breast_cancer_raw_k5_seed151",
+                "operation": "regress_distance"
+              },
+              {
+                "ratio": 0.9073844738001823,
+                "case": "real_breast_cancer_raw_k5_seed251",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9446603062734324,
+                "case": "real_breast_cancer_raw_k5_seed251",
+                "operation": "indices"
+              },
+              {
+                "ratio": 0.958686200416648,
+                "case": "real_breast_cancer_raw_k5_seed251",
+                "operation": "proba_uniform"
+              },
+              {
+                "ratio": 0.9262343052885887,
+                "case": "real_breast_cancer_raw_k5_seed251",
+                "operation": "proba_distance"
+              },
+              {
+                "ratio": 0.9688748991018987,
+                "case": "real_breast_cancer_raw_k5_seed251",
+                "operation": "regress_distance"
+              },
+              {
+                "ratio": 0.9776035082616429,
+                "case": "real_breast_cancer_raw_k5_seed252",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9560292448858596,
+                "case": "real_breast_cancer_raw_k5_seed252",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9275850937550042,
+                "case": "real_breast_cancer_raw_k5_seed252",
+                "operation": "predict_uniform"
+              },
+              {
+                "ratio": 0.9790945773684662,
+                "case": "real_breast_cancer_raw_k5_seed252",
+                "operation": "proba_uniform"
+              },
+              {
+                "ratio": 0.9354660974135193,
+                "case": "real_breast_cancer_raw_k5_seed252",
+                "operation": "predict_distance"
+              },
+              {
+                "ratio": 0.9851762692725007,
+                "case": "real_breast_cancer_raw_k5_seed252",
+                "operation": "proba_distance"
+              },
+              {
+                "ratio": 0.9758400372487649,
+                "case": "real_iris_raw_k5_seed151",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9508700374278343,
+                "case": "real_iris_raw_k5_seed151",
+                "operation": "indices"
+              },
+              {
+                "ratio": 0.9921365962405634,
+                "case": "real_iris_raw_k5_seed151",
+                "operation": "predict_uniform"
+              },
+              {
+                "ratio": 0.9216220272005247,
+                "case": "real_iris_raw_k5_seed151",
+                "operation": "regress_uniform"
+              },
+              {
+                "ratio": 0.9627995286405565,
+                "case": "real_iris_raw_k5_seed151",
+                "operation": "predict_distance"
+              },
+              {
+                "ratio": 0.9314939647031357,
+                "case": "real_iris_raw_k5_seed151",
+                "operation": "regress_distance"
+              },
+              {
+                "ratio": 0.9176863943043244,
+                "case": "real_iris_raw_k5_seed251",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9757504636217097,
+                "case": "real_iris_raw_k5_seed251",
+                "operation": "indices"
+              },
+              {
+                "ratio": 0.9117114784847101,
+                "case": "real_iris_raw_k5_seed251",
+                "operation": "proba_uniform"
+              },
+              {
+                "ratio": 0.9696028877127202,
+                "case": "real_iris_raw_k5_seed251",
+                "operation": "regress_uniform"
+              },
+              {
+                "ratio": 0.9557979691399373,
+                "case": "real_iris_raw_k5_seed251",
+                "operation": "proba_distance"
+              },
+              {
+                "ratio": 0.9430863020560765,
+                "case": "real_iris_raw_k5_seed252",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9717676870633051,
+                "case": "real_iris_raw_k5_seed252",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.967717733374007,
+                "case": "real_iris_raw_k5_seed252",
+                "operation": "predict_uniform"
+              },
+              {
+                "ratio": 0.9732237770438716,
+                "case": "real_iris_raw_k5_seed252",
+                "operation": "proba_uniform"
+              },
+              {
+                "ratio": 0.9367645863787725,
+                "case": "real_iris_raw_k5_seed252",
+                "operation": "predict_distance"
+              },
+              {
+                "ratio": 0.9937337125355502,
+                "case": "real_iris_raw_k5_seed252",
+                "operation": "proba_distance"
+              },
+              {
+                "ratio": 0.9589018151292448,
+                "case": "real_wine_raw_k5_seed151",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9009972689515825,
+                "case": "real_wine_raw_k5_seed151",
+                "operation": "indices"
+              },
+              {
+                "ratio": 0.9753952493558286,
+                "case": "real_wine_raw_k5_seed151",
+                "operation": "predict_uniform"
+              },
+              {
+                "ratio": 0.9171143691870595,
+                "case": "real_wine_raw_k5_seed151",
+                "operation": "regress_uniform"
+              },
+              {
+                "ratio": 0.9825242882313973,
+                "case": "real_wine_raw_k5_seed151",
+                "operation": "predict_distance"
+              },
+              {
+                "ratio": 0.9434894174997882,
+                "case": "real_wine_raw_k5_seed151",
+                "operation": "regress_distance"
+              },
+              {
+                "ratio": 0.9188030657904602,
+                "case": "real_wine_raw_k5_seed251",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9776172335437144,
+                "case": "real_wine_raw_k5_seed251",
+                "operation": "indices"
+              },
+              {
+                "ratio": 0.9691179059196289,
+                "case": "real_wine_raw_k5_seed251",
+                "operation": "proba_uniform"
+              },
+              {
+                "ratio": 0.9562656041420686,
+                "case": "real_wine_raw_k5_seed251",
+                "operation": "regress_uniform"
+              },
+              {
+                "ratio": 0.9415137362435938,
+                "case": "real_wine_raw_k5_seed251",
+                "operation": "proba_distance"
+              },
+              {
+                "ratio": 0.8820106918636788,
+                "case": "real_wine_raw_k5_seed252",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9842544612445047,
+                "case": "real_wine_raw_k5_seed252",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9334760472896003,
+                "case": "real_wine_raw_k5_seed252",
+                "operation": "predict_uniform"
+              },
+              {
+                "ratio": 0.973904088962787,
+                "case": "real_wine_raw_k5_seed252",
+                "operation": "proba_uniform"
+              },
+              {
+                "ratio": 0.9233115689396383,
+                "case": "real_wine_raw_k5_seed252",
+                "operation": "predict_distance"
+              }
+            ]
+          },
+          "ratio_of_medians": {
+            "minimum": 0.8600584006386213,
+            "maximum": 1.1656694669939387,
+            "above_parity": 66,
+            "below_parity": [
+              {
+                "ratio": 0.9901633813230681,
+                "case": "shape_single_8_k5_seed41",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9415642211785121,
+                "case": "shape_single_8_k5_seed41",
+                "operation": "indices"
+              },
+              {
+                "ratio": 0.996942234110538,
+                "case": "shape_single_8_k5_seed41",
+                "operation": "predict_uniform"
+              },
+              {
+                "ratio": 0.8946553512577509,
+                "case": "shape_single_8_k5_seed41",
+                "operation": "regress_uniform"
+              },
+              {
+                "ratio": 0.9511695628958473,
+                "case": "shape_single_8_k5_seed41",
+                "operation": "predict_distance"
+              },
+              {
+                "ratio": 0.9525299858330996,
+                "case": "shape_single_8_k5_seed41",
+                "operation": "regress_distance"
+              },
+              {
+                "ratio": 0.9404460832912992,
+                "case": "shape_single_32_k5_seed49",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9514148640172113,
+                "case": "shape_single_32_k5_seed49",
+                "operation": "proba_uniform"
+              },
+              {
+                "ratio": 0.9843973147995171,
+                "case": "shape_single_32_k5_seed49",
+                "operation": "regress_uniform"
+              },
+              {
+                "ratio": 0.8600584006386213,
+                "case": "shape_single_32_k5_seed49",
+                "operation": "proba_distance"
+              },
+              {
+                "ratio": 0.9894872605222877,
+                "case": "shape_single_32_k5_seed49",
+                "operation": "regress_distance"
+              },
+              {
+                "ratio": 0.9018440449646088,
+                "case": "shape_single_8_k5_seed42",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9255072597150916,
+                "case": "shape_single_8_k5_seed42",
+                "operation": "predict_uniform"
+              },
+              {
+                "ratio": 0.9707787496953636,
+                "case": "shape_single_8_k5_seed42",
+                "operation": "proba_uniform"
+              },
+              {
+                "ratio": 0.995096312455454,
+                "case": "shape_single_8_k5_seed42",
+                "operation": "regress_uniform"
+              },
+              {
+                "ratio": 0.9417456372552089,
+                "case": "shape_single_8_k5_seed42",
+                "operation": "predict_distance"
+              },
+              {
+                "ratio": 0.9159485388277098,
+                "case": "shape_single_8_k5_seed42",
+                "operation": "proba_distance"
+              },
+              {
+                "ratio": 0.9290287323726586,
+                "case": "shape_single_32_k5_seed50",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9418674805300425,
+                "case": "shape_single_32_k5_seed50",
+                "operation": "indices"
+              },
+              {
+                "ratio": 0.9767100008133178,
+                "case": "shape_single_32_k5_seed50",
+                "operation": "predict_uniform"
+              },
+              {
+                "ratio": 0.9365340473770212,
+                "case": "shape_single_32_k5_seed50",
+                "operation": "regress_uniform"
+              },
+              {
+                "ratio": 0.9497540447539187,
+                "case": "shape_single_32_k5_seed50",
+                "operation": "regress_distance"
+              },
+              {
+                "ratio": 0.9241644716096331,
+                "case": "shape_single_8_k5_seed43",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9895738680790997,
+                "case": "shape_single_8_k5_seed43",
+                "operation": "indices"
+              },
+              {
+                "ratio": 0.9076842928572125,
+                "case": "shape_single_8_k5_seed43",
+                "operation": "proba_uniform"
+              },
+              {
+                "ratio": 0.9802602395735175,
+                "case": "shape_single_8_k5_seed43",
+                "operation": "regress_uniform"
+              },
+              {
+                "ratio": 0.9183836310361382,
+                "case": "shape_single_8_k5_seed43",
+                "operation": "proba_distance"
+              },
+              {
+                "ratio": 0.9886091342405597,
+                "case": "shape_single_8_k5_seed43",
+                "operation": "regress_distance"
+              },
+              {
+                "ratio": 0.9407598145005137,
+                "case": "shape_single_32_k5_seed51",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9857238201796201,
+                "case": "shape_single_32_k5_seed51",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9405322999272544,
+                "case": "shape_single_32_k5_seed51",
+                "operation": "predict_uniform"
+              },
+              {
+                "ratio": 0.9825473508054635,
+                "case": "shape_single_32_k5_seed51",
+                "operation": "proba_uniform"
+              },
+              {
+                "ratio": 0.9302223312257325,
+                "case": "shape_single_32_k5_seed51",
+                "operation": "predict_distance"
+              },
+              {
+                "ratio": 0.9710079798618916,
+                "case": "shape_single_32_k5_seed51",
+                "operation": "proba_distance"
+              },
+              {
+                "ratio": 0.9556919183693451,
+                "case": "real_digits_raw_k5_seed151",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9803335192155629,
+                "case": "real_digits_raw_k5_seed151",
+                "operation": "regress_uniform"
+              },
+              {
+                "ratio": 0.9966473530779348,
+                "case": "real_digits_raw_k5_seed151",
+                "operation": "predict_distance"
+              },
+              {
+                "ratio": 0.9933602740404945,
+                "case": "real_digits_raw_k5_seed151",
+                "operation": "proba_distance"
+              },
+              {
+                "ratio": 0.9866822951486278,
+                "case": "real_digits_raw_k5_seed151",
+                "operation": "regress_distance"
+              },
+              {
+                "ratio": 0.9370708440933146,
+                "case": "real_digits_raw_k5_seed251",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9611852255243001,
+                "case": "real_digits_raw_k5_seed251",
+                "operation": "proba_uniform"
+              },
+              {
+                "ratio": 0.9814911715934858,
+                "case": "real_digits_raw_k5_seed251",
+                "operation": "regress_uniform"
+              },
+              {
+                "ratio": 0.9717350736543614,
+                "case": "real_digits_raw_k5_seed251",
+                "operation": "proba_distance"
+              },
+              {
+                "ratio": 0.9920135642515334,
+                "case": "real_digits_raw_k5_seed251",
+                "operation": "regress_distance"
+              },
+              {
+                "ratio": 0.9580876142968593,
+                "case": "real_digits_raw_k5_seed252",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9810890681224139,
+                "case": "real_digits_raw_k5_seed252",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9812479631346991,
+                "case": "real_digits_raw_k5_seed252",
+                "operation": "predict_uniform"
+              },
+              {
+                "ratio": 0.9861119174938179,
+                "case": "real_digits_raw_k5_seed252",
+                "operation": "predict_distance"
+              },
+              {
+                "ratio": 0.9526598960086363,
+                "case": "real_digits_raw_k5_seed252",
+                "operation": "proba_distance"
+              },
+              {
+                "ratio": 0.998453205719203,
+                "case": "real_digits_raw_k5_seed252",
+                "operation": "regress_distance"
+              },
+              {
+                "ratio": 0.8771522687214589,
+                "case": "real_breast_cancer_raw_k5_seed151",
+                "operation": "indices"
+              },
+              {
+                "ratio": 0.9283018489103617,
+                "case": "real_breast_cancer_raw_k5_seed151",
+                "operation": "predict_uniform"
+              },
+              {
+                "ratio": 0.9474695279374761,
+                "case": "real_breast_cancer_raw_k5_seed151",
+                "operation": "regress_uniform"
+              },
+              {
+                "ratio": 0.9734596680245812,
+                "case": "real_breast_cancer_raw_k5_seed151",
+                "operation": "predict_distance"
+              },
+              {
+                "ratio": 0.9333582252641338,
+                "case": "real_breast_cancer_raw_k5_seed151",
+                "operation": "regress_distance"
+              },
+              {
+                "ratio": 0.9113479664255394,
+                "case": "real_breast_cancer_raw_k5_seed251",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9522918150991586,
+                "case": "real_breast_cancer_raw_k5_seed251",
+                "operation": "indices"
+              },
+              {
+                "ratio": 0.9122562695479538,
+                "case": "real_breast_cancer_raw_k5_seed251",
+                "operation": "proba_uniform"
+              },
+              {
+                "ratio": 0.8752389863502584,
+                "case": "real_breast_cancer_raw_k5_seed251",
+                "operation": "proba_distance"
+              },
+              {
+                "ratio": 0.9776614607713804,
+                "case": "real_breast_cancer_raw_k5_seed251",
+                "operation": "regress_distance"
+              },
+              {
+                "ratio": 0.9478660008168418,
+                "case": "real_breast_cancer_raw_k5_seed252",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9516872815240282,
+                "case": "real_breast_cancer_raw_k5_seed252",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9167687642038472,
+                "case": "real_breast_cancer_raw_k5_seed252",
+                "operation": "predict_uniform"
+              },
+              {
+                "ratio": 0.916882967343718,
+                "case": "real_breast_cancer_raw_k5_seed252",
+                "operation": "predict_distance"
+              },
+              {
+                "ratio": 0.9515474362216176,
+                "case": "real_iris_raw_k5_seed151",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9489931045173907,
+                "case": "real_iris_raw_k5_seed151",
+                "operation": "indices"
+              },
+              {
+                "ratio": 0.9783391863199816,
+                "case": "real_iris_raw_k5_seed151",
+                "operation": "predict_uniform"
+              },
+              {
+                "ratio": 0.9104092004969684,
+                "case": "real_iris_raw_k5_seed151",
+                "operation": "regress_uniform"
+              },
+              {
+                "ratio": 0.943079506094725,
+                "case": "real_iris_raw_k5_seed151",
+                "operation": "regress_distance"
+              },
+              {
+                "ratio": 0.8677096639908246,
+                "case": "real_iris_raw_k5_seed251",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9911015768620653,
+                "case": "real_iris_raw_k5_seed251",
+                "operation": "indices"
+              },
+              {
+                "ratio": 0.9249943910600658,
+                "case": "real_iris_raw_k5_seed251",
+                "operation": "proba_uniform"
+              },
+              {
+                "ratio": 0.945176799398645,
+                "case": "real_iris_raw_k5_seed251",
+                "operation": "regress_uniform"
+              },
+              {
+                "ratio": 0.9411960198203883,
+                "case": "real_iris_raw_k5_seed251",
+                "operation": "proba_distance"
+              },
+              {
+                "ratio": 0.9542861727831037,
+                "case": "real_iris_raw_k5_seed251",
+                "operation": "regress_distance"
+              },
+              {
+                "ratio": 0.9324685586569116,
+                "case": "real_iris_raw_k5_seed252",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9407959973533224,
+                "case": "real_iris_raw_k5_seed252",
+                "operation": "predict_uniform"
+              },
+              {
+                "ratio": 0.9647215247940397,
+                "case": "real_iris_raw_k5_seed252",
+                "operation": "proba_uniform"
+              },
+              {
+                "ratio": 0.9442754109683723,
+                "case": "real_iris_raw_k5_seed252",
+                "operation": "predict_distance"
+              },
+              {
+                "ratio": 0.9325126433289997,
+                "case": "real_iris_raw_k5_seed252",
+                "operation": "proba_distance"
+              },
+              {
+                "ratio": 0.9952614379084967,
+                "case": "real_wine_raw_k5_seed151",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9199160598653013,
+                "case": "real_wine_raw_k5_seed151",
+                "operation": "indices"
+              },
+              {
+                "ratio": 0.989728536427569,
+                "case": "real_wine_raw_k5_seed151",
+                "operation": "predict_uniform"
+              },
+              {
+                "ratio": 0.9155335529903338,
+                "case": "real_wine_raw_k5_seed151",
+                "operation": "regress_uniform"
+              },
+              {
+                "ratio": 0.9776157007943116,
+                "case": "real_wine_raw_k5_seed151",
+                "operation": "predict_distance"
+              },
+              {
+                "ratio": 0.9631694488931732,
+                "case": "real_wine_raw_k5_seed151",
+                "operation": "regress_distance"
+              },
+              {
+                "ratio": 0.9652040675550457,
+                "case": "real_wine_raw_k5_seed251",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9355185471532087,
+                "case": "real_wine_raw_k5_seed251",
+                "operation": "proba_uniform"
+              },
+              {
+                "ratio": 0.9713089205711574,
+                "case": "real_wine_raw_k5_seed251",
+                "operation": "regress_uniform"
+              },
+              {
+                "ratio": 0.8947780399943627,
+                "case": "real_wine_raw_k5_seed251",
+                "operation": "proba_distance"
+              },
+              {
+                "ratio": 0.9788693589650637,
+                "case": "real_wine_raw_k5_seed251",
+                "operation": "regress_distance"
+              },
+              {
+                "ratio": 0.8615667840354608,
+                "case": "real_wine_raw_k5_seed252",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9690317543739758,
+                "case": "real_wine_raw_k5_seed252",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9031284052163521,
+                "case": "real_wine_raw_k5_seed252",
+                "operation": "predict_uniform"
+              },
+              {
+                "ratio": 0.9878341761684604,
+                "case": "real_wine_raw_k5_seed252",
+                "operation": "proba_uniform"
+              },
+              {
+                "ratio": 0.9504106984272145,
+                "case": "real_wine_raw_k5_seed252",
+                "operation": "predict_distance"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "preservation": {
+      "case_operation_count": 60,
+      "comparators": {
+        "previous": {
+          "paired_ratio_median": {
+            "minimum": 0.9590326437575956,
+            "maximum": 1.189490646584107,
+            "above_parity": 52,
+            "below_parity": [
+              {
+                "ratio": 0.9985499149318152,
+                "case": "distribution_clusters_50000x32_k5_seed252",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9652172836604201,
+                "case": "distribution_offset_1e4_50000x32_k5_seed252",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9848191527974324,
+                "case": "distribution_gaussian_4096x128_k5_seed252",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9624817270380959,
+                "case": "distribution_gaussian_4096x128_k5_seed552",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9883639392161196,
+                "case": "distribution_clusters_4096x128_k5_seed151",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9590326437575956,
+                "case": "distribution_clusters_4096x128_k5_seed252",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9972120269551062,
+                "case": "distribution_offset_1e4_4096x128_k5_seed151",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.994884090921913,
+                "case": "distribution_anisotropic_4096x128_k5_seed252",
+                "operation": "fit_query"
+              }
+            ]
+          },
+          "ratio_of_medians": {
+            "minimum": 0.9606193963457572,
+            "maximum": 1.1621129165364994,
+            "above_parity": 51,
+            "below_parity": [
+              {
+                "ratio": 0.9922171758969832,
+                "case": "distribution_gaussian_50000x32_k5_seed252",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9909664909298879,
+                "case": "distribution_anisotropic_50000x32_k5_seed252",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9984852702571327,
+                "case": "distribution_gaussian_4096x128_k5_seed151",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9606193963457572,
+                "case": "distribution_gaussian_4096x128_k5_seed252",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9837922725293993,
+                "case": "distribution_gaussian_4096x128_k5_seed351",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9787833781697355,
+                "case": "distribution_gaussian_4096x128_k5_seed552",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9911546029305445,
+                "case": "distribution_clusters_4096x128_k5_seed151",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9613427603122116,
+                "case": "distribution_clusters_4096x128_k5_seed252",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9876864829740696,
+                "case": "distribution_offset_1e4_4096x128_k5_seed252",
+                "operation": "fit_query"
+              }
+            ]
+          }
+        },
+        "current_b": {
+          "paired_ratio_median": {
+            "minimum": 0.924617534792797,
+            "maximum": 1.0811423543381495,
+            "above_parity": 19,
+            "below_parity": [
+              {
+                "ratio": 0.9609536755398154,
+                "case": "distribution_gaussian_50000x32_k5_seed251",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9736145871581574,
+                "case": "distribution_gaussian_50000x32_k5_seed252",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9965444968057334,
+                "case": "distribution_gaussian_50000x32_k5_seed252",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9691769855930603,
+                "case": "distribution_gaussian_50000x32_k5_seed351",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9963009269051288,
+                "case": "distribution_gaussian_50000x32_k5_seed451",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9722512419600299,
+                "case": "distribution_gaussian_50000x32_k5_seed451",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9525813103345805,
+                "case": "distribution_gaussian_50000x32_k5_seed552",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9920983620065658,
+                "case": "distribution_gaussian_50000x32_k5_seed552",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9980657382040541,
+                "case": "distribution_clusters_50000x32_k5_seed151",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9988449082251291,
+                "case": "distribution_clusters_50000x32_k5_seed151",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9710935819437572,
+                "case": "distribution_clusters_50000x32_k5_seed251",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9763266476511735,
+                "case": "distribution_clusters_50000x32_k5_seed252",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9763321896225754,
+                "case": "distribution_clusters_50000x32_k5_seed252",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9690041662245271,
+                "case": "distribution_offset_1e4_50000x32_k5_seed151",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9852945588670645,
+                "case": "distribution_offset_1e4_50000x32_k5_seed251",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9819000442818883,
+                "case": "distribution_offset_1e4_50000x32_k5_seed252",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9887306589592444,
+                "case": "distribution_offset_1e4_50000x32_k5_seed252",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9757308651224417,
+                "case": "distribution_anisotropic_50000x32_k5_seed151",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9810554790490493,
+                "case": "distribution_anisotropic_50000x32_k5_seed251",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9880440080853438,
+                "case": "distribution_anisotropic_50000x32_k5_seed252",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9911298544303648,
+                "case": "distribution_anisotropic_50000x32_k5_seed252",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9679889899681836,
+                "case": "distribution_gaussian_4096x128_k5_seed151",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9249489402380934,
+                "case": "distribution_gaussian_4096x128_k5_seed251",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9421205560795548,
+                "case": "distribution_gaussian_4096x128_k5_seed252",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.960032693743134,
+                "case": "distribution_gaussian_4096x128_k5_seed252",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9935351360487354,
+                "case": "distribution_gaussian_4096x128_k5_seed351",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9306459452192677,
+                "case": "distribution_gaussian_4096x128_k5_seed451",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9424283830319805,
+                "case": "distribution_gaussian_4096x128_k5_seed552",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9663801105525041,
+                "case": "distribution_gaussian_4096x128_k5_seed552",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9757287634850794,
+                "case": "distribution_clusters_4096x128_k5_seed151",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.973576777467884,
+                "case": "distribution_clusters_4096x128_k5_seed251",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9472149707454078,
+                "case": "distribution_clusters_4096x128_k5_seed252",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9679152946461846,
+                "case": "distribution_clusters_4096x128_k5_seed252",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9549019184302628,
+                "case": "distribution_offset_1e4_4096x128_k5_seed151",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.924617534792797,
+                "case": "distribution_offset_1e4_4096x128_k5_seed251",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.944000094756109,
+                "case": "distribution_offset_1e4_4096x128_k5_seed252",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9698938828078725,
+                "case": "distribution_offset_1e4_4096x128_k5_seed252",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9701377913760577,
+                "case": "distribution_anisotropic_4096x128_k5_seed151",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9686453053146011,
+                "case": "distribution_anisotropic_4096x128_k5_seed151",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9268062065534631,
+                "case": "distribution_anisotropic_4096x128_k5_seed252",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9661538624318564,
+                "case": "distribution_anisotropic_4096x128_k5_seed252",
+                "operation": "fit_query"
+              }
+            ]
+          },
+          "ratio_of_medians": {
+            "minimum": 0.8862774240390873,
+            "maximum": 1.0722118568424104,
+            "above_parity": 23,
+            "below_parity": [
+              {
+                "ratio": 0.993278479896784,
+                "case": "distribution_gaussian_50000x32_k5_seed251",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9825313564787026,
+                "case": "distribution_gaussian_50000x32_k5_seed252",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9807312084783463,
+                "case": "distribution_gaussian_50000x32_k5_seed252",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9879753381380418,
+                "case": "distribution_gaussian_50000x32_k5_seed351",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.989319029732576,
+                "case": "distribution_gaussian_50000x32_k5_seed451",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9948792810128062,
+                "case": "distribution_gaussian_50000x32_k5_seed451",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9989999741114607,
+                "case": "distribution_gaussian_50000x32_k5_seed552",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9984281631307339,
+                "case": "distribution_gaussian_50000x32_k5_seed552",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9681646488665013,
+                "case": "distribution_clusters_50000x32_k5_seed251",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9664492104424454,
+                "case": "distribution_clusters_50000x32_k5_seed252",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9744462716923349,
+                "case": "distribution_clusters_50000x32_k5_seed252",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9781741641852418,
+                "case": "distribution_offset_1e4_50000x32_k5_seed151",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9902980383562908,
+                "case": "distribution_offset_1e4_50000x32_k5_seed251",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9866173650139155,
+                "case": "distribution_offset_1e4_50000x32_k5_seed252",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9839371626392358,
+                "case": "distribution_anisotropic_50000x32_k5_seed151",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9781710646687138,
+                "case": "distribution_anisotropic_50000x32_k5_seed251",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9820418766187595,
+                "case": "distribution_anisotropic_50000x32_k5_seed252",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9966056015174466,
+                "case": "distribution_anisotropic_50000x32_k5_seed252",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9551534928152235,
+                "case": "distribution_gaussian_4096x128_k5_seed151",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.8862774240390873,
+                "case": "distribution_gaussian_4096x128_k5_seed251",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9469718290758421,
+                "case": "distribution_gaussian_4096x128_k5_seed252",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9884675145239173,
+                "case": "distribution_gaussian_4096x128_k5_seed252",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9643434825844213,
+                "case": "distribution_gaussian_4096x128_k5_seed351",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.994112711092846,
+                "case": "distribution_gaussian_4096x128_k5_seed451",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9411973949900577,
+                "case": "distribution_gaussian_4096x128_k5_seed552",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9874083973218832,
+                "case": "distribution_gaussian_4096x128_k5_seed552",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9485465563947932,
+                "case": "distribution_clusters_4096x128_k5_seed151",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9258677621996485,
+                "case": "distribution_clusters_4096x128_k5_seed251",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9493377529317586,
+                "case": "distribution_clusters_4096x128_k5_seed252",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9927057609190842,
+                "case": "distribution_clusters_4096x128_k5_seed252",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9742847630632908,
+                "case": "distribution_offset_1e4_4096x128_k5_seed151",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9346515554744909,
+                "case": "distribution_offset_1e4_4096x128_k5_seed251",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9615667554207982,
+                "case": "distribution_offset_1e4_4096x128_k5_seed252",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9804657459427724,
+                "case": "distribution_offset_1e4_4096x128_k5_seed252",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9963627294606219,
+                "case": "distribution_anisotropic_4096x128_k5_seed251",
+                "operation": "fit_query"
+              },
+              {
+                "ratio": 0.9265713350084205,
+                "case": "distribution_anisotropic_4096x128_k5_seed252",
+                "operation": "kneighbors"
+              },
+              {
+                "ratio": 0.9705616855551781,
+                "case": "distribution_anisotropic_4096x128_k5_seed252",
+                "operation": "fit_query"
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  "control_acceptance_pass": true,
+  "broad_accuracy_and_integrity_pass": true,
+  "integrity": {
+    "initial_worker_source_integrity_pass": true,
+    "worker_source_integrity_pass": true,
+    "fixture_integrity_pass": true,
+    "source_integrity_pass": true,
+    "harness_integrity_pass": true
+  },
+  "gate_by_comparator": {
+    "sklearn_default": {
+      "median_cells_meeting_target": 526,
+      "median_cell_count": 648,
+      "paired_calls_meeting_target": 7810,
+      "paired_call_count": 9720,
+      "all_medians_meet_target": false,
+      "every_pair_meets_target": false
+    },
+    "sklearn_1": {
+      "median_cells_meeting_target": 252,
+      "median_cell_count": 648,
+      "paired_calls_meeting_target": 4200,
+      "paired_call_count": 9720,
+      "all_medians_meet_target": false,
+      "every_pair_meets_target": false
+    },
+    "sklearn_auto": {
+      "median_cells_meeting_target": 551,
+      "median_cell_count": 648,
+      "paired_calls_meeting_target": 8117,
+      "paired_call_count": 9720,
+      "all_medians_meet_target": false,
+      "every_pair_meets_target": false
+    }
+  },
+  "tests": {
+    "passed": 775,
+    "full_suite_passed": 754,
+    "full_command": "python3 -m pytest -q tests/unit/test_*neighbors*.py tests/unit/test_validation_range.py tests/unit/test_knn_acceleration_benchmark.py tests/unit/test_knn_warmed_benchmark.py tests/parity/test_neighbors.py tests/parity/test_neighbors_fp32.py tests/patching tests/test_sklearn_compliance.py -k 'not LogisticRegression and not SVC'",
+    "full_log": "benchmarks/results/knn-small-full-tests-2026-10-30.log",
+    "additional_passed": 21,
+    "additional_command": "python3 -m pytest -q tests/unit/test_neighbors_small_dispatch.py::test_equal_shaped_small_fits_keep_independent_compiled_inputs tests/unit/test_neighbors_small_routing.py",
+    "additional_log": "benchmarks/results/knn-small-additional-tests-2026-10-30.log",
+    "deselected": 5,
+    "exit_codes": [
+      0,
+      0
+    ],
+    "ruff_pass": true,
+    "git_diff_check_pass": true
+  },
+  "heatmap_visual_check_pass": true,
+  "report_links_pass": true,
+  "post_benchmark_boundary_checks": {
+    "cases": [
+      {
+        "n_train": 2048,
+        "features": 64,
+        "n_query": 256,
+        "k": 8,
+        "self_excluded": false,
+        "strided_native_inputs": false,
+        "original_coordinate_dyadic_oracle_pass": true
+      },
+      {
+        "n_train": 16384,
+        "features": 32,
+        "n_query": 4,
+        "k": 8,
+        "self_excluded": false,
+        "strided_native_inputs": false,
+        "original_coordinate_dyadic_oracle_pass": true
+      },
+      {
+        "n_train": 1,
+        "features": 1,
+        "n_query": 1,
+        "k": 1,
+        "self_excluded": false,
+        "strided_native_inputs": false,
+        "original_coordinate_dyadic_oracle_pass": true
+      },
+      {
+        "n_train": 9,
+        "features": 64,
+        "n_query": 9,
+        "k": 8,
+        "self_excluded": true,
+        "strided_native_inputs": false,
+        "original_coordinate_dyadic_oracle_pass": true
+      },
+      {
+        "n_train": 129,
+        "features": 64,
+        "n_query": 17,
+        "k": 8,
+        "self_excluded": false,
+        "strided_native_inputs": true,
+        "original_coordinate_dyadic_oracle_pass": true
+      }
+    ],
+    "all_pass": true,
+    "note": "Additional post-benchmark boundary checks; no timed comparison or source changes. Bounded dyadic squared-distance sums are exact in float64."
+  },
+  "independent_control_audit": "benchmarks/results/knn-small-independent-control-audit-2026-10-30.json",
+  "final_source_harness_and_links_check_pass": true,
+  "remaining_small_workload_slowdowns": true,
+  "all_requested_sklearn_comparisons_completed": true
+}

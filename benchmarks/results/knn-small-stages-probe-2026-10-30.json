@@ -1,0 +1,16 @@
+{
+  "kind": "diagnostic stdout medians; not acceptance evidence",
+  "source_sha256": "d955febcd52d437537a4b7df80c70010d6d3b80774198e69c489983b23b5437e",
+  "source_text": "import time,statistics,numpy as np,mlx.core as mx\nfrom sklearn.datasets import load_iris\nfrom sklearn.neighbors import NearestNeighbors as Sk\nfrom mlxlearn.neighbors import NearestNeighbors\nfrom mlxlearn._common.config import tuning_context\nX=load_iris().data.astype('f');Q=X[120:].copy();X=X[:120].copy()\nwith tuning_context(force_backend='mlx'):\n model=NearestNeighbors(n_neighbors=5).fit(X); index=model._index_; device=index.device_index\n qm=mx.array(Q)\n for name,call in [('native',lambda:device.query(qm,5,_validated=True,_squared=True)),('boundary',lambda:index.query(Q,5)),('public',lambda:model.kneighbors(Q)),('sklearn_brute',lambda:sk.kneighbors(Q)),('sklearn_auto',lambda:sk.kneighbors(Q))]:\n  if name.startswith('sklearn'):sk=Sk(n_neighbors=5,algorithm=name.split('_')[1],n_jobs=1).fit(X)\n  end=time.perf_counter()+.7\n  while time.perf_counter()<end:\n   val=call()\n   if name=='native':mx.eval(*val)\n  total=[]\n  for _ in range(100):\n   start=time.perf_counter();val=call()\n   if name=='native':mx.eval(*val)\n   total.append((time.perf_counter()-start)*1e6)\n  print(name,statistics.median(total),flush=True)\n",
+  "dataset": "bundled raw Iris, float32, first120 training / last30 query; diagnostic split only",
+  "warmup_seconds": 0.7,
+  "retained_calls": 100,
+  "median_microseconds": {
+    "native_device_query": 135.99952217191458,
+    "numpy_boundary": 144.93748312816024,
+    "public_mlx": 179.895490873605,
+    "sklearn_brute_default_threads_n_jobs1": 564.4165212288499,
+    "sklearn_auto_default_threads_n_jobs1": 101.37498611584306
+  },
+  "note": "Values retained from earlier execution stdout. Individual timings were not saved by this diagnostic. Final full benchmark uses unchanged stratified fixtures and its own protocol."
+}

@@ -8,8 +8,9 @@ so ``clone``, ``Pipeline``, ``GridSearchCV`` and ``isinstance`` keep working, an
 to. Layer 1 never calls that fallback — ``_mlxlearn_allow_fallback`` is ``False``,
 so a capability mismatch raises.
 
-What is actually solved here is LIBSVM's C-SVC dual, exactly, by the SMO in
-``_solvers/smo.py``. There is no random-feature approximation, no subsampled
+What is actually solved here is LIBSVM's C-SVC dual, exactly, by the native SMO
+in ``_solvers/native_smo.py`` (with ``_solvers/smo.py`` as a portable fallback).
+There is no random-feature approximation, no subsampled
 training set and no ridge surrogate anywhere in this path. Those things make a
 different classifier; shipping one under this class's name would mean every
 accuracy number a user measured was measured on something other than what the
@@ -64,21 +65,37 @@ from .._common.validation import (
     require_supported_params,
     validate_data,
 )
+from .._kernels import svc_cpu
 from .._kernels.kernels import (
     SUPPORTED_KERNELS,
     KernelSpec,
     build_kernel_rows,
-    kernel_combine,
     kernel_diagonal,
     kernel_matrix,
     resolve_gamma,
 )
+from .._kernels.svc_predict import PreparedKernel
+from .._solvers import block_smo, native_smo
 from .._solvers.smo import SMOConfig, solve_c_svc
 from ..exceptions import UnsupportedParameterError
 
 __all__ = ["SVC", "MLXSVCMixin"]
 
 _SUPPORTED_SHAPES = ("ovo", "ovr")
+
+
+def _working_set_size(spec, n_samples, cache_rows):
+    """Use decomposition on sufficiently large positive-semidefinite problems."""
+    if n_samples < 256 or spec.kernel not in ("linear", "rbf", "poly"):
+        return 0
+    if spec.kernel == "poly" and spec.coef0 < 0:
+        return 0
+    # The bounded path owns cached rows plus a temporary missing-row batch.
+    # Budget both; very small caches keep the two-row sequential optimizer.
+    available = cache_rows if cache_rows >= n_samples else cache_rows // 2
+    if spec.kernel == "linear" and available < 32:
+        return 0
+    return min(64, n_samples, available) if available >= 4 else 0
 
 
 def _safe_shape(X) -> tuple[int, ...] | None:
@@ -134,6 +151,9 @@ def ovo_vote(decision: np.ndarray, n_classes: int) -> np.ndarray:
     ``classes_[1]``. Ties in the vote count go to the lowest class index, matching
     LIBSVM's strict ``>`` scan and :func:`numpy.argmax`.
     """
+    native = svc_cpu.ovo_vote(decision, n_classes)
+    if native is not None:
+        return native
     n_samples = decision.shape[0]
     votes = np.zeros((n_samples, n_classes), dtype=np.int64)
     k = 0
@@ -228,39 +248,19 @@ class MLXSVCMixin(BackendMixin):
     def _below_crossover(self, n_samples: int, n_features: int) -> tuple[bool, str]:
         """Whether stock scikit-learn is expected to win at this size.
 
-        The thresholds here are **high**, and the linear kernel is excluded
-        outright, because the measurements are unflattering and pretending
-        otherwise would put the slower path in front of users.
-
-        SMO is sequential: each iteration picks a working pair from the current
-        gradient, so it cannot start before the previous one finished. The device
-        can accelerate the kernel *rows* an iteration needs, but not the
-        iterations, and LIBSVM's inner loop over a cache-resident row is hard to
-        beat per iteration. So what decides the outcome is whether a kernel row is
-        expensive enough to be worth dispatching — which is about **width**, not
-        the number of samples.
-
-        Measured: over a 64-configuration grid at ``d ∈ {10, 20}`` mlxlearn was
-        slower in **58 of 64**, worst 0.013×. But rbf at 4 000 × 32 is 0.47× and
-        the *same sample count* at 4 000 × 256 is **2.93×**. Hence both a sample
-        floor and a work floor, with work the one that actually discriminates.
-
-        The linear kernel is excluded at every size — 0.01×–0.06× throughout, and
-        it degrades with C. Its iterations are the cheapest of any kernel, so
-        per-iteration dispatch is almost the whole cost, and no threshold fixes
-        that.
-
-        None of this is a property of the objective, which is solved correctly:
-        the primal agrees with LIBSVM to 5.2e-07 relative and the KKT conditions
-        hold on an independent check. See ``docs/benchmarks.md``.
+        Keep the conservative pre-native sample/work floors and linear-kernel
+        exclusion. Native SMO removes Python iteration overhead, but the initial
+        acceleration panel is not a broad crossover study across distributions,
+        cache budgets and hardware. Changing patched routing needs that evidence.
+        Direct estimators still use the accelerated native optimizer below these
+        floors, with MLX CPU kernel evaluation.
         """
         tuning = get_tuning()
 
         if self.kernel == "linear":
             return True, (
-                "the linear kernel is never faster on the MLX path (measured "
-                "0.01x-0.06x across every size tested), so it is always handed to "
-                "scikit-learn"
+                "linear SVC remains outside the automatic GPU crossover pending "
+                "a broader native-solver crossover benchmark"
             )
 
         work = n_samples * n_features
@@ -357,6 +357,8 @@ class MLXSVCMixin(BackendMixin):
         n_pair = int(X_pair.shape[0])
         cache_rows = self._kernel_cache_rows(n_pair)
         k_diag = kernel_diagonal(spec, X_pair)
+        gram = None
+        fetch_rows = None
 
         if cache_rows >= n_pair:
             gram = kernel_matrix(spec, X_pair, backend=backend, center=center)
@@ -365,12 +367,29 @@ class MLXSVCMixin(BackendMixin):
         else:
             rows = build_kernel_rows(X_pair, spec, backend=backend, center=center)
             fetch = rows.row
+            fetch_rows = rows.rows
 
         config = SMOConfig(
             tol=float(self.tol),
             max_iter=self._resolve_max_iter(n_pair),
             cache_rows=max(2, min(cache_rows, n_pair)),
+            shrinking=bool(self.shrinking and gram is not None and spec.kernel != "sigmoid"
+                           and (spec.kernel != "poly" or spec.coef0 >= 0)),
         )
+        width = _working_set_size(spec, n_pair, cache_rows)
+        if width:
+            state = block_smo.solve_c_svc(
+                y_pair, C_pair, k_diag, fetch_rows, config,
+                gram=gram, working_set_size=width,
+            )
+            if state is not None:
+                self._last_pair_solver_ = "native_working_set"
+                return state
+        state = native_smo.solve_c_svc(y_pair, C_pair, k_diag, fetch, config, gram=gram)
+        if state is not None:
+            self._last_pair_solver_ = "native_shrinking" if config.shrinking else "native_pair"
+            return state
+        self._last_pair_solver_ = "portable"
         return solve_c_svc(y_pair, C_pair, k_diag, fetch, config)
 
     def _fit_ovo(self, X64, y_encoded, sample_weight, backend) -> None:
@@ -390,11 +409,12 @@ class MLXSVCMixin(BackendMixin):
         # Translating both sides of the RBF squared distance is exact and is what
         # keeps float32 cancellation at the variance scale rather than the
         # coordinate scale; see docs/fp32_policy.md §2.1.
-        center = (
-            X32.mean(axis=0, dtype=np.float64).astype(NUMPY_FLOAT)
-            if spec.uses_center
-            else None
-        )
+        center = None
+        if spec.uses_center:
+            center = svc_cpu.column_mean(X32)
+            if center is None:
+                center = X32.mean(axis=0, dtype=np.float64)
+            center = center.astype(NUMPY_FLOAT)
 
         # C_t = C * class_weight[class(t)] * sample_weight[t], which is exactly
         # how scikit-learn's LIBSVM builds its per-sample box.
@@ -431,6 +451,7 @@ class MLXSVCMixin(BackendMixin):
 
         pair_rows: list[np.ndarray] = []
         pair_coef: list[np.ndarray] = []
+        pair_solvers: list[str] = []
         rho = np.empty(n_pairs, dtype=np.float64)
         n_iter = np.empty(n_pairs, dtype=np.int32)
         violation = np.empty(n_pairs, dtype=np.float64)
@@ -452,6 +473,7 @@ class MLXSVCMixin(BackendMixin):
                 backend,
             )
             pair_rows.append(index)
+            pair_solvers.append(self._last_pair_solver_)
             # LIBSVM folds the label into the dual coefficient before storing it.
             pair_coef.append(state.alpha * y_pair)
             rho[k] = state.rho
@@ -513,6 +535,7 @@ class MLXSVCMixin(BackendMixin):
         self._pair_weights_ = pair_weights
         self._pair_rho_ = rho
         self._pair_kkt_violation_ = violation
+        self._pair_solver_ = tuple(pair_solvers)
         self._kernel_spec_ = spec
         self._kernel_center_ = center
 
@@ -524,6 +547,10 @@ class MLXSVCMixin(BackendMixin):
         else:
             self.dual_coef_ = dual_coef
             self.intercept_ = -rho
+
+        self._prepared_kernel_ = PreparedKernel(
+            self.support_vectors_, spec, backend=backend, center=center
+        )
 
         if fit_status:
             warnings.warn(
@@ -551,15 +578,17 @@ class MLXSVCMixin(BackendMixin):
         if Xv.shape[0] == 0:
             return np.empty((0, n_pairs), dtype=np.float64)
         with mlx_guard(type(self).__name__, operation):
-            decision = kernel_combine(
-                self._kernel_spec_,
-                Xv,
-                self.support_vectors_,
-                self._pair_weights_,
-                backend=backend,
-                center=self._kernel_center_,
-            )
-        return decision - self._pair_rho_
+            prepared = getattr(self, "_prepared_kernel_", None)
+            if prepared is None or not prepared.matches(
+                self.support_vectors_, self._kernel_spec_, self._kernel_center_, backend
+            ):
+                prepared = PreparedKernel(
+                    self.support_vectors_, self._kernel_spec_, backend=backend,
+                    center=self._kernel_center_,
+                )
+                self._prepared_kernel_ = prepared
+            decision = prepared.combine(Xv, self._pair_weights_, bias=self._pair_rho_)
+        return decision
 
 
 class SVC(MLXSVCMixin, _SkSVC):
@@ -587,10 +616,10 @@ class SVC(MLXSVCMixin, _SkSVC):
         ``1 / n_features``, both resolved exactly as scikit-learn resolves them.
     coef0 : float, default=0.0
     shrinking : bool, default=True
-        **Accepted and ignored.** Shrinking is a pure speed heuristic that
-        provably does not change the optimum; mlxlearn 0.1.0 does not implement
-        it, and passing ``shrinking=False`` therefore also changes nothing. It is
-        not raised on because doing so would reject the scikit-learn default.
+        Enable active-set shrinking on eligible native pair-solver fits. Large
+        positive-semidefinite problems use hierarchical working sets instead.
+        The bounded pair path, indefinite kernels and portable solver do not
+        shrink. Every accelerated convergence check covers the full problem.
     probability : bool, default=False
         ``True`` is not implemented; see Notes.
     tol : float, default=1e-3
@@ -659,6 +688,15 @@ class SVC(MLXSVCMixin, _SkSVC):
     against float64 coefficients in float64, so the only float32 error that
     reaches the output is the kernel's own rounding. See ``docs/fp32_policy.md``.
 
+    **Execution.** Optional native C++ optimizers use hierarchical working sets
+    or fused pairwise scans with active-set shrinking. GPU kernel transforms
+    and requested row batches use fused Metal kernels; double-precision
+    reductions and multiclass votes run in native CPU code. Prepared support
+    vectors and RBF norms are reused for inference, with exact float32 mutation
+    checks against owned snapshots. NumPy remains the validation and public
+    model-array boundary. Source-only installs retain portable numerical
+    fallbacks when the optional native modules are unavailable.
+
     **Zero-weight samples, and where ``support_`` then differs.** A sample whose
     effective ``C`` is zero — from ``sample_weight=0`` or a zero ``class_weight``
     — is dropped from the optimization, which is what scikit-learn's LIBSVM does
@@ -704,6 +742,7 @@ class SVC(MLXSVCMixin, _SkSVC):
         # or C=-1 would reach the solver instead of raising InvalidParameterError.
         self._validate_params()
         self._clear_backend()
+        self.__dict__.pop("_prepared_kernel_", None)
 
         backend = self._select_backend(
             "fit",
@@ -781,6 +820,9 @@ class SVC(MLXSVCMixin, _SkSVC):
             # LIBSVM's, so that a positive value means classes_[1].
             return -decision[:, 0]
         if self.decision_function_shape == "ovr":
+            native = svc_cpu.ovr_decision(decision, n_classes)
+            if native is not None:
+                return native
             return ovr_decision_function(decision < 0, -decision, n_classes)
         return decision
 
@@ -813,8 +855,13 @@ class SVC(MLXSVCMixin, _SkSVC):
                 "break_ties must be False when decision_function_shape is 'ovo'"
             )
         n_classes = len(self.classes_)
+        decision = self._pairwise_decision(X, "predict")
         if self.break_ties and self.decision_function_shape == "ovr" and n_classes > 2:
-            indices = np.argmax(self.decision_function(X), axis=1)
+            indices = svc_cpu.ovo_vote(decision, n_classes, break_ties=True)
+            if indices is None:
+                indices = np.argmax(
+                    ovr_decision_function(decision < 0, -decision, n_classes), axis=1
+                )
         else:
-            indices = ovo_vote(self._pairwise_decision(X, "predict"), n_classes)
+            indices = ovo_vote(decision, n_classes)
         return self.classes_.take(np.asarray(indices, dtype=np.intp))

@@ -18,7 +18,6 @@ from __future__ import annotations
 import numpy as np
 from sklearn.linear_model import LinearRegression as _SkLinearRegression
 
-from .._common.arrays import NUMPY_FLOAT
 from .._common.base import BackendMixin, mlx_guard
 from .._common.config import get_tuning
 from .._common.validation import (
@@ -74,10 +73,10 @@ class LinearRegression(BackendMixin, _SkLinearRegression):
 
     Notes
     -----
-    **Precision.** Computation is float32 (``docs/fp32_policy.md``); ``coef_``
-    and ``intercept_`` are float64 containers. The device computes the Gram
-    products of the (centered, weighted) design; the small factorization that
-    follows is host-side, because MLX's SVD is not implemented on the GPU.
+    **Precision.** The device computes the float32 Gram product of the
+    (centered, weighted) design. The small factorization that follows is
+    host-side, because MLX's SVD is not implemented on the GPU, and float64
+    iterative refinement against the input removes the float32 rounding.
 
     **No caches.** ``fit`` is a pure function of ``(X, y, sample_weight, params)``.
 
@@ -160,7 +159,7 @@ class LinearRegression(BackendMixin, _SkLinearRegression):
             X,
             y,
             accept_sparse=False,
-            dtype=NUMPY_FLOAT,
+            dtype=np.float64,
             order="C",
             y_numeric=True,
             multi_output=True,

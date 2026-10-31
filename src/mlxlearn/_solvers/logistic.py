@@ -687,6 +687,30 @@ def _multinomial_objective(
 # ------------------------------------------------------------------------- solve
 
 
+def sketch_supported(config, n_targets, n_features, initial_parts):
+    """Whether a Hessian-sketch warm start can seed this fit.
+
+    The sketch seeds the history of the native command loop, so it needs
+    everything that loop needs: prepared native initial statistics, a binary
+    fit with an intercept, the loop's width band, its fixed history size and
+    minimum search batch, and the Metal extension on an MLX release with
+    verified buffer export. The estimator uses this to drop an opted-in
+    sketch that cannot be built; a direct caller asking for one is an error.
+    """
+    from . import native_command
+
+    return (
+        initial_parts is not None
+        and n_targets == 1
+        and config.fit_intercept
+        and 512 <= n_features <= 4096
+        and config.history_size == 10
+        and config.max_line_search >= 8
+        and native_command._metal_loop is not None
+        and native_command._supports_metal_dlpack()
+    )
+
+
 def _use_native_solver(config, n_targets, n_features):
     """Bound the register workspace of the binary Metal optimizer.
 
@@ -923,16 +947,7 @@ def solve_logistic(
                     initial_metric_from_parts,
                 )
 
-                from . import native_command
-
-                if (
-                    initial_parts is None or not config.fit_intercept
-                    or not 512 <= n_features <= 4096
-                    or optimizer_config.history_size != 10
-                    or optimizer_config.max_line_search < 8
-                    or native_command._metal_loop is None
-                    or not native_command._supports_metal_dlpack()
-                ):
+                if not sketch_supported(config, n_targets, n_features, initial_parts):
                     raise ValueError("Hessian sketch requires the native GPU binary solver with prepared inputs")
                 reg = mx.concatenate([mx.full(n_features, l2, dtype=Xm.dtype), mx.zeros(1, dtype=Xm.dtype)])
                 _, h0inv = initial_metric_from_parts(initial_parts, reg, mx.array(sw_sum, dtype=Xm.dtype))
@@ -948,6 +963,10 @@ def solve_logistic(
 
             used_newton = bool(
                 config.fit_intercept and config.max_iter > 0
+                # minimize_newton validates its tolerance as a normal positive
+                # float32; L-BFGS accepts any finite nonnegative tolerance.
+                and float(np.finfo(np.float32).tiny) <= optimizer_config.tol
+                <= float(np.finfo(np.float32).max)
                 and use_newton_for_curvature(initial_parts, n_samples, n_features, sw_sum, l2)
             )
             # On very wide, scale-skewed inputs, the strict unseeded native

@@ -2,19 +2,22 @@
 
 from __future__ import annotations
 
-from sklearn.neighbors import NearestNeighbors as _SkNearestNeighbors
+from sklearn.base import BaseEstimator
 
+from .._common.validation import check_is_fitted
 from ._base import MLXNeighborsMixin
 
 __all__ = ["NearestNeighbors"]
 
 
-class NearestNeighbors(MLXNeighborsMixin, _SkNearestNeighbors):
+class NearestNeighbors(MLXNeighborsMixin, BaseEstimator):
     """Unsupervised nearest-neighbor search, accelerated with MLX.
 
     A drop-in replacement for :class:`sklearn.neighbors.NearestNeighbors` for
     exact brute-force Euclidean search. Parameters, fitted attributes and error
-    messages follow scikit-learn.
+    messages follow scikit-learn. Concrete sklearn neighbor subclass identity
+    is preserved only by patched variants; direct instances expose their own
+    ``kneighbors_graph`` and ``radius_neighbors_graph`` methods.
 
     Parameters
     ----------
@@ -42,15 +45,20 @@ class NearestNeighbors(MLXNeighborsMixin, _SkNearestNeighbors):
     n_features_in_ : int
     effective_metric_ : str
     execution_backend_ : {"mlx", "cpu", "sklearn"}
-        Which backend fitted this estimator. Every subsequent query uses it.
+        Which backend initially stored the fitted training data.
+    execution_policy_ : {"auto", "fixed"}
+        The policy captured at fit. ``"auto"`` selects the owned CPU or GPU
+        search for each query batch; explicit device choices are ``"fixed"``.
+    last_query_backend_ : {"mlx", "cpu", "sklearn"}
+        Backend used by the most recent :meth:`kneighbors` call. Defined after
+        the first completed query. Delegated radius queries are not included.
 
     Notes
     -----
-    :meth:`radius_neighbors` is inherited from scikit-learn and is **not**
-    accelerated. It is correct — mlxlearn keeps the fitted attributes
-    scikit-learn's implementation needs — but it runs in float64 on the CPU. This
-    is stated rather than left for a user to discover from a profiler; the
-    ancestor inherited the same method and never mentioned it.
+    :meth:`radius_neighbors` delegates to scikit-learn and is **not**
+    accelerated. It uses the fitted float32 compatibility data on the CPU,
+    as the preceding inherited implementation did. ``sklearn.neighbors`` is
+    loaded only when that optional operation is requested.
 
     Examples
     --------
@@ -62,6 +70,19 @@ class NearestNeighbors(MLXNeighborsMixin, _SkNearestNeighbors):
     >>> ind
     array([[0, 1]])
     """
+
+    _sklearn_class_name = "NearestNeighbors"
+
+    def __init__(self, *, n_neighbors=5, radius=1.0, algorithm="auto", leaf_size=30,
+                 metric="minkowski", p=2, metric_params=None, n_jobs=None):
+        self.n_neighbors = n_neighbors
+        self.radius = radius
+        self.algorithm = algorithm
+        self.leaf_size = leaf_size
+        self.metric = metric
+        self.p = p
+        self.metric_params = metric_params
+        self.n_jobs = n_jobs
 
     def fit(self, X, y=None):
         """Fit the index.
@@ -76,6 +97,15 @@ class NearestNeighbors(MLXNeighborsMixin, _SkNearestNeighbors):
         self : NearestNeighbors
         """
         if self._fit_neighbors(X, None) == "sklearn":
-            super().fit(X, y)
-            self._set_backend("sklearn")
+            self._fit_sklearn(X, y)
         return self
+
+    def radius_neighbors(self, X=None, radius=None, return_distance=True, sort_results=False):
+        """Find points within radius using sklearn's public CPU implementation."""
+        check_is_fitted(self)
+        return self._radius_delegate().radius_neighbors(X, radius, return_distance, sort_results)
+
+    def radius_neighbors_graph(self, X=None, radius=None, mode="connectivity", sort_results=False):
+        """Return sklearn's CSR radius graph, preserving self-query exclusion."""
+        check_is_fitted(self)
+        return self._radius_delegate().radius_neighbors_graph(X, radius, mode, sort_results)

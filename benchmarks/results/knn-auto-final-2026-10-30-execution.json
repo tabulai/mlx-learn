@@ -1,0 +1,180 @@
+{
+  "recorded_at": "2026-10-30T20:16:50.340835+00:00",
+  "source_archive": {
+    "path": "benchmarks/reference/knn-auto-final-2026-10-30.zip",
+    "sha256": "5805fe856856b07e451d807cab936db6f7a36f7b9b2cb8c228676f28bc66b2f6"
+  },
+  "runtime_archive": {
+    "path": "benchmarks/reference/knn-auto-final-2026-10-30-runtime.zip",
+    "sha256": "abffcafa4e291371f6437ebdf04dc88826a758ad1353fb71da4e77cf52971b12"
+  },
+  "harness_archive": {
+    "path": "benchmarks/reference/knn-auto-final-2026-10-30-harnesses.zip",
+    "sha256": "d375af836e48c0a613388cfd3b32874824c5c77d3c0b128574f2811560b9d082"
+  },
+  "native_binary": {
+    "archive_member": "src/mlxlearn/_kernels/_neighbors_cpu_native.cpython-313-darwin.so",
+    "sha256": "1b8008e5ff10a4503c3e71f2e74636a313d2135ac9f7223aaaad004d6a5e030d"
+  },
+  "changed_source_files_vs_previous_small_gpu": [
+    "mlxlearn/_common/base.py",
+    "mlxlearn/_common/config.py",
+    "mlxlearn/_kernels/_neighbors_cpu_native.cpp",
+    "mlxlearn/_kernels/distance.py",
+    "mlxlearn/_kernels/neighbors_cpu.py",
+    "mlxlearn/neighbors/_base.py",
+    "mlxlearn/neighbors/_classification.py",
+    "mlxlearn/neighbors/_regression.py",
+    "mlxlearn/neighbors/_unsupervised.py"
+  ],
+  "all_gpu_device_source_hashes_unchanged": true,
+  "source_and_harness_live_hashes_match_frozen_after_benchmarks": true,
+  "source_file_count": 63,
+  "harness_test_build_file_count": 128,
+  "commands": {
+    "build_native": "python3 setup.py build_ext --inplace > benchmarks/results/knn-auto-native-build3-2026-10-30.log 2>&1",
+    "broad": "python3 -m benchmarks.knn_broad --current-mode auto --source-manifest benchmarks/reference/knn-auto-final-2026-10-30.manifest.json --repeats 15 --warmup 5 --target 2 --output benchmarks/results/knn-auto-final-2026-10-30-broad.json",
+    "control": "python3 -m benchmarks.knn_auto_control --source-manifest benchmarks/reference/knn-auto-final-2026-10-30.manifest.json --previous-archive benchmarks/reference/knn-small-final-2026-10-30.zip --pairs 31 --warmup-seconds .25 --output benchmarks/results/knn-auto-final-2026-10-30-control.json",
+    "tests": "python3 -m pytest -q tests/unit/test_*neighbors*.py tests/unit/test_validation_range.py tests/unit/test_knn_acceleration_benchmark.py tests/unit/test_knn_warmed_benchmark.py tests/parity/test_neighbors.py tests/parity/test_neighbors_fp32.py tests/patching tests/test_sklearn_compliance.py benchmarks/test_knn_auto_harness.py benchmarks/test_knn_auto_verify.py benchmarks/test_knn_freeze_runtime.py -k 'not LogisticRegression and not SVC'",
+    "package": "python3 -m build --wheel --sdist --no-isolation --outdir /tmp/mlxlearn-knn-auto-final-build-validation",
+    "independent_verifier": "python3 -m benchmarks.knn_auto_verify --broad benchmarks/results/knn-auto-final-2026-10-30-broad.json --control benchmarks/results/knn-auto-final-2026-10-30-control.json --previous-broad benchmarks/results/knn-small-final-2026-10-30-broad.json --runtime-archive benchmarks/reference/knn-auto-final-2026-10-30-runtime.zip --output benchmarks/results/knn-auto-final-2026-10-30-independent-audit.json"
+  },
+  "timing_serial": true,
+  "validation": {
+    "relevant_tests_passed": 1025,
+    "deselected_unrelated_cases": 5,
+    "warnings": 14,
+    "broad_current_accuracy_audits": 14472,
+    "control_accuracy_counts": {
+      "current": {
+        "cold": {
+          "audits": 48,
+          "strict_passes": 48
+        },
+        "warmup": {
+          "audits": 247589,
+          "strict_passes": 247589
+        },
+        "probe": {
+          "audits": 222,
+          "strict_passes": 222
+        },
+        "retained": {
+          "audits": 6882,
+          "strict_passes": 6882
+        }
+      },
+      "current_b": {
+        "cold": {
+          "audits": 48,
+          "strict_passes": 48
+        },
+        "warmup": {
+          "audits": 244893,
+          "strict_passes": 244893
+        },
+        "probe": {
+          "audits": 222,
+          "strict_passes": 222
+        },
+        "retained": {
+          "audits": 6882,
+          "strict_passes": 6882
+        }
+      },
+      "current_gpu": {
+        "cold": {
+          "audits": 48,
+          "strict_passes": 48
+        },
+        "warmup": {
+          "audits": 160799,
+          "strict_passes": 160799
+        },
+        "probe": {
+          "audits": 222,
+          "strict_passes": 222
+        },
+        "retained": {
+          "audits": 6882,
+          "strict_passes": 6882
+        }
+      },
+      "previous_gpu": {
+        "cold": {
+          "audits": 48,
+          "strict_passes": 48
+        },
+        "warmup": {
+          "audits": 167423,
+          "strict_passes": 167423
+        },
+        "probe": {
+          "audits": 222,
+          "strict_passes": 222
+        },
+        "retained": {
+          "audits": 6882,
+          "strict_passes": 6882
+        }
+      }
+    },
+    "independent_evidence_validation_pass": true,
+    "independent_accuracy_and_integrity_pass": true,
+    "harness_archive_integrity_pass": true,
+    "package_validation": {
+      "pass": true,
+      "wheel": {
+        "path": "/tmp/mlxlearn-knn-auto-final-build-validation/mlx_learn-0.1.0a2-cp313-cp313-macosx_11_0_arm64.whl",
+        "sha256": "02b44696001b460a4b007b023191e1c05c3c0275127131ef0d1807b8ad9292b0",
+        "source_files_verified": 63,
+        "native_binary_sha256": "1b8008e5ff10a4503c3e71f2e74636a313d2135ac9f7223aaaad004d6a5e030d",
+        "tag": "cp313-cp313-macosx_11_0_arm64",
+        "scipy_direct_dependency": true
+      },
+      "sdist": {
+        "path": "/tmp/mlxlearn-knn-auto-final-build-validation/mlx_learn-0.1.0a2.tar.gz",
+        "sha256": "d001ad8b492e5785c590ab3ea1633b5f25779e125a53eb39da731b6e2cfd834c",
+        "source_files_verified": 63,
+        "build_files_verified": true
+      },
+      "build_log": "benchmarks/results/knn-auto-package-build-final-2026-10-30.log"
+    },
+    "production_and_targeted_test_ruff_pass": true,
+    "git_diff_check_pass": true,
+    "broader_harness_lint_pass": false,
+    "broader_harness_lint_note": "Nine nonfunctional style findings retained in frozen benchmark helpers (import ordering, dict construction, local immediately invoked closure binding, and lambda style). No benchmark or production source changed after timing.",
+    "post_benchmark_native_endpoints": {
+      "path": "benchmarks/results/knn-auto-native-endpoints-final-2026-10-30.json",
+      "fixtures": 6,
+      "checks_passed": 48,
+      "exact_tie_pairs": 133,
+      "max_distance_error_ulp": 0,
+      "frozen_files_unchanged": true
+    },
+    "benchmark_chart_visually_reviewed": true,
+    "report_local_links_pass": true,
+    "independent_report_review_pass": true
+  },
+  "artifact_sha256": {
+    "benchmarks/results/knn-auto-final-2026-10-30-broad.json": "a77e0d32319e342d6066242ad959dabc93c78aa6967ae771ac7238ae0d745df1",
+    "benchmarks/results/knn-auto-final-2026-10-30-control.json": "6caf1e937417d6690f084e5faabd8d3bb33f0010becb520e1791f333b20f41af",
+    "benchmarks/results/knn-auto-final-2026-10-30-summary.json": "ba2505d9869520e49ede93b32306643aa4f58666fad9b3cacf225c426eb12ef9",
+    "benchmarks/results/knn-auto-final-2026-10-30-independent-audit.json": "91b5ad2d6ee3f22d62cbb0440b0914f73d424c2fa752121518961f7ca9e746da",
+    "benchmarks/results/knn-auto-final-2026-10-30-additional-audit.json": "e23f54c84359599977b95d11114a724e9fe2e3a646850d0a84a038b77a817cbb",
+    "benchmarks/results/knn-auto-full-tests-final-2026-10-30.log": "105dcf126c4370cd36eba31f353c2dc5540508a96934e0d5ce439882e69e87e2",
+    "benchmarks/results/knn-auto-package-build-final-2026-10-30.log": "f13602a6d5469e846b9381eedbaa10c0a5bc4a85a329abee0dd4ec502bc5a54a",
+    "benchmarks/results/knn-auto-package-validation-final-2026-10-30.json": "754b0ad7ddbbe5114666ade23cee8d49b86b5147922bb4667927013834c6a633",
+    "benchmarks/results/knn-auto-final-2026-10-30-production-lint.log": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+    "benchmarks/results/knn-auto-final-2026-10-30-lint.log": "96c70b2aefc065930eb1d9eee3731950de713bdbcb488e378778c564f0676dc5",
+    "benchmarks/results/knn-auto-native-endpoints-final-2026-10-30.json": "6a63bfe2c641091544c898af48c19cd4ee7aad61d7074ca2da2dddf9f0f013d2",
+    "README.md": "d900bfbfed8a2aee38ecfec1f474302895ec508f88b740fb64d57e4705e53f49",
+    "CHANGELOG.md": "d075fa0c130a5478d9dfa626346f9a56d6925c460dd1c6147650c967839e24a7",
+    "docs/fp32_policy.md": "303295d32bfdab4d44d7d8ad108fe7d88f9338f6123a01a889b090e6e29c78cc",
+    "docs/knn-auto-dispatch-2026-10-30.md": "1da27fb9d0d1d7b119d82f1812217bc77ab5badfec36e4943bc5cd9797d2cbbb",
+    "docs/knn-auto-benchmarks-2026-10-30.md": "a808b8cdda7734c35290948fa39a60555c4b1a07e8444160b5afed10f7f65a78",
+    "docs/knn-auto-control-2026-10-30.md": "b8de9be1f5ca2366cfaad8297199fbf252acd131081f67aeac45664aaac4dfa6",
+    "docs/assets/knn-auto-benchmarks-2026-10-30.png": "f3b0e3528d90800d48d1cf91d3edb9ef3340b7963c69785899a1420ecbc84b3d"
+  },
+  "scope": "Float32 Euclidean public NumPy KNN on Apple M4 Max,128 GiB; Python3.13.3,MLX0.32.2,NumPy2.5.2,sklearn1.9.0. Native arm64 CPython3.13 binary installed. Cold excludes process startup. Performance counts include all baseline precision failures; see full reports and raw evidence."
+}

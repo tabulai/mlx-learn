@@ -85,6 +85,10 @@ BRANDING_EXEMPT = {
     "docs/provenance.md",
     # Read-only predecessor/source comparison, retained as investigation evidence.
     "docs/performance-investigation-2026-10-26.md",
+    # Immutable import-time traces record modules in the benchmark environment,
+    # including a dependency's compatibility probe; this is measured evidence.
+    "benchmarks/results/knn-startup-2026-10-30-importtime-current.log",
+    "benchmarks/results/knn-startup-2026-10-30-importtime-sklearn.log",
 }
 
 #: The only private scikit-learn imports mlxlearn may use, and only from ``patching/``.
@@ -104,7 +108,7 @@ ALLOWED_LICENSES = (
     "public domain",
 )
 
-RUNTIME_DEPENDENCIES = ("numpy", "scikit-learn", "mlx")
+RUNTIME_DEPENDENCIES = ("numpy", "scipy", "scikit-learn", "mlx")
 
 #: Upstream copyright signatures that would require an entry in THIRD_PARTY_NOTICES.md.
 UPSTREAM_HEADER_PATTERNS = (

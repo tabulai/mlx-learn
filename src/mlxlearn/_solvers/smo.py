@@ -77,12 +77,17 @@ class SMOConfig:
         its rows alive within one iteration.
     tau : float
         Floor for a non-positive quadratic coefficient.
+    shrinking : bool
+        Enable active-set shrinking in the native pair solver. The portable
+        implementation and the hierarchical working-set solver ignore this
+        speed heuristic; all paths retain a full-problem stopping criterion.
     """
 
     tol: float = 1e-3
     max_iter: int = 10_000_000
     cache_rows: int = 256
     tau: float = _TAU
+    shrinking: bool = False
 
     def __post_init__(self) -> None:
         if not self.tol > 0.0:
@@ -118,9 +123,8 @@ class SMOState:
     converged : bool
         Whether the loop ended on the KKT test rather than on the budget.
     max_kkt_violation : float
-        The violation measured at the final selection, i.e. what the stopping test
-        saw. Reported rather than discarded because it is the only honest evidence
-        of how well an unconverged fit did.
+        The violation of the returned iterate, including after an exhausted or
+        zero iteration budget. This measures how well an unconverged fit did.
     """
 
     alpha: np.ndarray
@@ -384,6 +388,14 @@ def solve_c_svc(
                 up_set[t] = not is_lower
                 low_set[t] = not is_upper
 
+    # Report the returned iterate, including after the last permitted update
+    # and when no updates were permitted. The last selection's gap is stale
+    # after an exhausted budget (and was zero for max_iter=0).
+    violation = (
+        float(-yg[up_set].min() + yg[low_set].max())
+        if up_set.any() and low_set.any()
+        else 0.0
+    )
     rho = _calculate_rho(alpha, C, yg, positive)
     return SMOState(
         alpha=alpha,

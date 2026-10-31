@@ -1,0 +1,173 @@
+I001 [*] Import block is un-sorted or un-formatted
+  --> benchmarks/knn_auto_control.py:7:1
+   |
+ 5 |   """
+ 6 |
+ 7 | / from __future__ import annotations
+ 8 | |
+ 9 | | import argparse
+10 | | import json
+11 | | import math
+12 | | import platform
+13 | | import statistics
+14 | | import tempfile
+15 | | import traceback
+16 | | from collections import defaultdict
+17 | | from datetime import datetime, timezone
+18 | | from pathlib import Path
+19 | |
+20 | | from .knn_128_control import _hash_files, _valid_time
+21 | | from .knn_acceleration import TARGET_OPERATIONS
+22 | | from .knn_broad import BroadWorker, request, rotate, save
+23 | | from .knn_broad_fixtures import make_fixture, workload_specs
+24 | | from .knn_backend_audit import backend_counts, validate_record_backend
+25 | | from .knn_gaussian_fresh_control import select_specs as preservation_specs
+26 | | from .knn_pipeline import ROOT, extract_reference, sha256, source_hashes
+   | |________________________________________________________________________^
+27 |
+28 |   VARIANTS = ("current", "current_b", "current_gpu", "previous_gpu")
+   |
+help: Organize imports
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> benchmarks/knn_auto_control_tables.py:3:1
+   |
+ 1 |   """Render and independently validate the complete automatic CPU/GPU control."""
+ 2 |
+ 3 | / from __future__ import annotations
+ 4 | |
+ 5 | | import argparse
+ 6 | | import json
+ 7 | | import math
+ 8 | | import os
+ 9 | | from pathlib import Path
+10 | |
+11 | | from .knn_pipeline import sha256
+12 | | from .knn_backend_audit import validate_record_backend
+13 | | from .knn_auto_control import (
+14 | |     _paired_ratios, _sample_pass, _summarize, _warmup_pass,
+15 | |     TARGET_FAMILIES,
+16 | |     VARIANTS,
+17 | |     WORKER_MODES,
+18 | |     routing_summary,
+19 | |     family_summary,
+20 | |     operations_for,
+21 | |     select_specs,
+22 | | )
+   | |_^
+   |
+help: Organize imports
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> benchmarks/knn_auto_verify.py:9:1
+   |
+ 7 |   """
+ 8 |
+ 9 | / from __future__ import annotations
+10 | |
+11 | | import argparse
+12 | | import hashlib
+13 | | import json
+14 | | import statistics
+15 | | import zipfile
+16 | | from collections import Counter
+17 | | from pathlib import Path
+18 | |
+19 | | from .knn_auto_control import TARGET_FAMILIES, VARIANTS as CONTROL_VARIANTS
+20 | | from .knn_auto_control_tables import validate as validate_control
+21 | | from .knn_broad_summary import summarize_report, valid_time
+22 | | from .knn_freeze_runtime import verify_runtime_archive
+23 | | from .knn_pipeline import ROOT
+   | |______________________________^
+24 |
+25 |   COMPARATORS = ("sklearn_default", "sklearn_1", "sklearn_auto")
+   |
+help: Organize imports
+
+C420 [*] Unnecessary dict comprehension for iterable; use `dict.fromkeys` instead
+  --> benchmarks/knn_auto_verify.py:65:16
+   |
+63 |         require(report[f"{stem}_hashes_before"] == report[f"{stem}_hashes_after"],
+64 |                 f"{stem} changed during timing")
+65 |     expected = {v: report["source_hashes_before"] for v in report["variants"]}
+   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+66 |     if control:
+67 |         require(report["archive_hashes_before"] == report["archive_hashes_after"],
+   |
+help: Replace with `dict.fromkeys(iterable)`)
+
+B023 Function definition does not bind loop variable `counts`
+   --> benchmarks/knn_auto_verify.py:277:13
+    |
+276 |         def add(phase, audits):
+277 |             counts[phase]["audits"] += len(audits)
+    |             ^^^^^^
+278 |             counts[phase]["strict_passes"] += sum(bool(a.get("pass")) for a in audits)
+    |
+
+B023 Function definition does not bind loop variable `counts`
+   --> benchmarks/knn_auto_verify.py:278:13
+    |
+276 |         def add(phase, audits):
+277 |             counts[phase]["audits"] += len(audits)
+278 |             counts[phase]["strict_passes"] += sum(bool(a.get("pass")) for a in audits)
+    |             ^^^^^^
+279 |
+280 |         for case in report["cases"]:
+    |
+
+E731 Do not assign a `lambda` expression, use a `def`
+   --> benchmarks/knn_freeze_runtime.py:138:5
+    |
+136 |             saved.writestr(entry, data)
+137 |     archive_bytes = buffer.getvalue()
+138 |     stored_path = lambda path: str(path.relative_to(ROOT) if path.is_relative_to(ROOT) else path)
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+139 |     manifest = {
+140 |         "schema_version": 1, "kind": "knn_native_runtime",
+    |
+help: Rewrite `stored_path` as a `def`
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> benchmarks/test_knn_auto_harness.py:3:1
+   |
+ 1 |   """CPU-only evidence-contract tests; no estimator or benchmark runtime is loaded."""
+ 2 |
+ 3 | / import copy
+ 4 | | from types import SimpleNamespace
+ 5 | |
+ 6 | | import pytest
+ 7 | |
+ 8 | | from benchmarks.knn_auto_control import (
+ 9 | |     VARIANTS, WORKER_MODES, _paired_ratios, _summarize, family_summary,
+10 | |     operations_for, routing_summary, select_specs,
+11 | | )
+12 | | from benchmarks.knn_auto_control_tables import validate
+13 | | from benchmarks.knn_backend_audit import validate_record_backend
+14 | | from benchmarks.knn_broad_worker import backend_metadata
+15 | | from benchmarks.knn_freeze import freeze_source, verify_source
+16 | | from benchmarks.knn_small_control import select_specs as previous_specs
+   | |_______________________________________________________________________^
+   |
+help: Organize imports
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> benchmarks/test_knn_auto_verify.py:3:1
+   |
+ 1 |   """Small CPU-only tests for report verification, with fabricated evidence."""
+ 2 |
+ 3 | / import copy
+ 4 | |
+ 5 | | import pytest
+ 6 | |
+ 7 | | from benchmarks.knn_auto_verify import (
+ 8 | |     COMPARATORS, control_audit_counts, control_cells, fixture_inventory,
+ 9 | |     paired_ratio, threshold_counts,
+10 | | )
+11 | | from benchmarks.test_knn_auto_harness import fake_control
+   | |_________________________________________________________^
+   |
+help: Organize imports
+
+Found 9 errors.
+[*] 6 fixable with the `--fix` option (1 hidden fix can be enabled with the `--unsafe-fixes` option).

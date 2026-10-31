@@ -155,9 +155,11 @@ def _native_loop_tol(requested, weighted):
     their rounding difference without relaxing the final acceptance check.
     Never increase a subnormal requested tolerance to the normal minimum.
     """
-    minimum_normal = np.finfo(np.float32).tiny
+    minimum_normal = float(np.finfo(np.float32).tiny)
     target = max(min(requested, minimum_normal), 0.95 * requested) if weighted else requested
-    rounded = np.float32(target)
+    # Larger finite host tolerances use the largest representable threshold;
+    # clamping before conversion avoids a spurious overflow warning.
+    rounded = np.float32(min(target, float(np.finfo(np.float32).max)))
     if float(rounded) > target:
         rounded = np.nextafter(rounded, np.float32(0))
     return float(rounded)

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
-from sklearn.neighbors import KNeighborsRegressor as _SkKNeighborsRegressor
+from sklearn.base import BaseEstimator, RegressorMixin
 
 from .._common.validation import check_is_fitted
 from ._base import MLXNeighborsMixin, compute_weights
@@ -11,11 +11,13 @@ from ._base import MLXNeighborsMixin, compute_weights
 __all__ = ["KNeighborsRegressor"]
 
 
-class KNeighborsRegressor(MLXNeighborsMixin, _SkKNeighborsRegressor):
+class KNeighborsRegressor(MLXNeighborsMixin, RegressorMixin, BaseEstimator):
     """k-nearest-neighbors regressor, accelerated with MLX.
 
     A drop-in replacement for :class:`sklearn.neighbors.KNeighborsRegressor` for
     exact brute-force Euclidean search on dense, single-output data.
+    Concrete sklearn neighbor subclass identity is preserved only by patched
+    variants; direct instances expose their own ``kneighbors_graph`` method.
 
     Parameters
     ----------
@@ -45,6 +47,19 @@ class KNeighborsRegressor(MLXNeighborsMixin, _SkKNeighborsRegressor):
     array([1.5])
     """
 
+    _sklearn_class_name = "KNeighborsRegressor"
+
+    def __init__(self, n_neighbors=5, *, weights="uniform", algorithm="auto", leaf_size=30,
+                 p=2, metric="minkowski", metric_params=None, n_jobs=None):
+        self.n_neighbors = n_neighbors
+        self.weights = weights
+        self.algorithm = algorithm
+        self.leaf_size = leaf_size
+        self.p = p
+        self.metric = metric
+        self.metric_params = metric_params
+        self.n_jobs = n_jobs
+
     def fit(self, X, y):
         """Fit the regressor.
 
@@ -58,11 +73,13 @@ class KNeighborsRegressor(MLXNeighborsMixin, _SkKNeighborsRegressor):
         self : KNeighborsRegressor
         """
         if self._fit_neighbors(X, y, target="regression") == "sklearn":
-            super().fit(X, y)
-            self._set_backend("sklearn")
-            return self
+            return self._fit_sklearn(X, y)
 
-        self._y = np.asarray(self._y_checked_, dtype=np.float64)
+        # Keep the sklearn target contract, including values outside float32's
+        # range and cancellation-sensitive float64 targets. The device search
+        # stays shared; only this final small gather/reduction remains on host.
+        self._y = np.array(self._y_checked_, dtype=np.float64, copy=True)
+        del self._y_checked_
         return self
 
     def predict(self, X):
@@ -80,7 +97,8 @@ class KNeighborsRegressor(MLXNeighborsMixin, _SkKNeighborsRegressor):
         check_is_fitted(self)
         if self._fitted_backend("predict") == "sklearn":
             self._note_inference("predict")
-            return super().predict(X)
+            self._set_query_backend("sklearn")
+            return self._sklearn_delegate().predict(X)
 
         dist, idx = self._query_indices(X, need_distance=self.weights == "distance")
         neighbors = self._y[idx]

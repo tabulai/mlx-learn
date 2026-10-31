@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "status": "prepared_not_executed",
+  "prefix": "knn-digits-final-2026-10-30",
+  "predeclaration": "benchmarks/results/knn-digits-final-predeclaration-2026-10-30.json",
+  "required_frozen_archives": [
+    "benchmarks/reference/knn-digits-final-2026-10-30.zip",
+    "benchmarks/reference/knn-digits-final-2026-10-30-runtime.zip",
+    "benchmarks/reference/knn-digits-final-2026-10-30-harnesses.zip",
+    "benchmarks/reference/knn-startup-final2-2026-10-30.zip",
+    "benchmarks/reference/knn-startup-final2-2026-10-30-runtime.zip",
+    "benchmarks/reference/knn-small-final-2026-10-30.zip"
+  ],
+  "current_runtime_manifest": "benchmarks/reference/knn-digits-final-2026-10-30-runtime.manifest.json",
+  "source_manifest": "benchmarks/reference/knn-digits-final-2026-10-30.manifest.json",
+  "panels": [
+    {
+      "name": "cold",
+      "output": "benchmarks/results/knn-digits-final-2026-10-30-cold.json",
+      "log": "benchmarks/results/knn-digits-final-2026-10-30-cold.log",
+      "argv": ["python3", "-m", "benchmarks.knn_cold", "--source-manifest", "benchmarks/reference/knn-digits-final-2026-10-30.manifest.json", "--previous-auto-archive", "benchmarks/reference/knn-startup-final2-2026-10-30.zip", "--previous-auto-runtime", "benchmarks/reference/knn-startup-final2-2026-10-30-runtime.zip", "--repeats", "5", "--output", "benchmarks/results/knn-digits-final-2026-10-30-cold.json"]
+    },
+    {
+      "name": "broad",
+      "output": "benchmarks/results/knn-digits-final-2026-10-30-broad.json",
+      "log": "benchmarks/results/knn-digits-final-2026-10-30-broad.log",
+      "argv": ["python3", "-m", "benchmarks.knn_broad", "--source-manifest", "benchmarks/reference/knn-digits-final-2026-10-30.manifest.json", "--current-mode", "auto", "--repeats", "15", "--warmup", "5", "--output", "benchmarks/results/knn-digits-final-2026-10-30-broad.json"]
+    },
+    {
+      "name": "control",
+      "output": "benchmarks/results/knn-digits-final-2026-10-30-control.json",
+      "log": "benchmarks/results/knn-digits-final-2026-10-30-control.log",
+      "argv": ["python3", "-m", "benchmarks.knn_auto_control", "--source-manifest", "benchmarks/reference/knn-digits-final-2026-10-30.manifest.json", "--previous-archive", "benchmarks/reference/knn-small-final-2026-10-30.zip", "--previous-auto-archive", "benchmarks/reference/knn-startup-final2-2026-10-30.zip", "--previous-auto-runtime", "benchmarks/reference/knn-startup-final2-2026-10-30-runtime.zip", "--pairs", "31", "--warmup-seconds", "0.25", "--order", "balanced", "--output", "benchmarks/results/knn-digits-final-2026-10-30-control.json"]
+    },
+    {
+      "name": "legacy-control",
+      "output": "benchmarks/results/knn-digits-final-2026-10-30-legacy-control.json",
+      "log": "benchmarks/results/knn-digits-final-2026-10-30-legacy-control.log",
+      "argv": ["python3", "-m", "benchmarks.knn_auto_control", "--source-manifest", "benchmarks/reference/knn-digits-final-2026-10-30.manifest.json", "--previous-archive", "benchmarks/reference/knn-small-final-2026-10-30.zip", "--previous-auto-archive", "benchmarks/reference/knn-startup-final2-2026-10-30.zip", "--previous-auto-runtime", "benchmarks/reference/knn-startup-final2-2026-10-30-runtime.zip", "--pairs", "31", "--warmup-seconds", "1", "--order", "legacy", "--case", "real_digits_raw_k5_seed151", "--case", "real_digits_raw_k5_seed251", "--case", "real_digits_raw_k5_seed252", "--case", "real_breast_cancer_raw_k5_seed151", "--case", "real_breast_cancer_raw_k5_seed251", "--case", "real_breast_cancer_raw_k5_seed252", "--case", "distribution_offset_1e4_4096x128_k5_seed151", "--case", "distribution_offset_1e4_4096x128_k5_seed251", "--case", "distribution_offset_1e4_4096x128_k5_seed252", "--output", "benchmarks/results/knn-digits-final-2026-10-30-legacy-control.json"]
+    },
+    {
+      "name": "preservation-repeat",
+      "output": "benchmarks/results/knn-digits-final-2026-10-30-preservation-repeat.json",
+      "log": "benchmarks/results/knn-digits-final-2026-10-30-preservation-repeat.log",
+      "argv": ["python3", "-m", "benchmarks.knn_auto_control", "--source-manifest", "benchmarks/reference/knn-digits-final-2026-10-30.manifest.json", "--previous-archive", "benchmarks/reference/knn-small-final-2026-10-30.zip", "--previous-auto-archive", "benchmarks/reference/knn-startup-final2-2026-10-30.zip", "--previous-auto-runtime", "benchmarks/reference/knn-startup-final2-2026-10-30-runtime.zip", "--pairs", "31", "--warmup-seconds", "1", "--order", "legacy", "--case", "distribution_gaussian_4096x128_k5_seed151", "--case", "distribution_gaussian_4096x128_k5_seed251", "--case", "distribution_gaussian_4096x128_k5_seed252", "--case", "distribution_gaussian_4096x128_k5_seed351", "--case", "distribution_gaussian_4096x128_k5_seed451", "--case", "distribution_gaussian_4096x128_k5_seed552", "--case", "distribution_clusters_4096x128_k5_seed151", "--case", "distribution_clusters_4096x128_k5_seed251", "--case", "distribution_clusters_4096x128_k5_seed252", "--output", "benchmarks/results/knn-digits-final-2026-10-30-preservation-repeat.json"]
+    },
+    {
+      "name": "first-query",
+      "output": "benchmarks/results/knn-digits-final-2026-10-30-first-query.json",
+      "log": "benchmarks/results/knn-digits-final-2026-10-30-first-query.log",
+      "argv": ["python3", "-m", "benchmarks.knn_first_query", "--source-manifest", "benchmarks/reference/knn-digits-final-2026-10-30.manifest.json", "--previous-auto-archive", "benchmarks/reference/knn-startup-final2-2026-10-30.zip", "--previous-auto-runtime", "benchmarks/reference/knn-startup-final2-2026-10-30-runtime.zip", "--repeats", "30", "--output", "benchmarks/results/knn-digits-final-2026-10-30-first-query.json"]
+    }
+  ]
+}

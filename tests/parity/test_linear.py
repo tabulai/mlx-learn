@@ -133,6 +133,21 @@ def test_centering_absorbs_a_constant_offset(offset):
     np.testing.assert_allclose(mlx.predict(X), ref.predict(X), atol=COEF_ATOL, rtol=COEF_RTOL)
 
 
+@pytest.mark.parametrize("n_samples, n_features", [(2000, 12), (40, 120)])
+@pytest.mark.parametrize("backend", ["mlx", "cpu"])
+def test_refinement_survives_an_ill_conditioned_gram(backend, n_samples, n_features):
+    rng = np.random.default_rng(3)
+    X = rng.normal(size=(n_samples, n_features))
+    X[:, 1] = X[:, 0] + 1e-4 * X[:, 1]
+    y = X @ rng.normal(size=n_features) + rng.normal(scale=0.1, size=n_samples)
+    with tuning_context(force_backend=backend):
+        mlx = LinearRegression().fit(X, y)
+    ref = SkLinearRegression().fit(X, y)
+    j_mlx = reference_objective(mlx.coef_, mlx.intercept_, X, y)
+    j_ref = reference_objective(ref.coef_, ref.intercept_, X, y)
+    assert j_mlx == pytest.approx(j_ref, rel=OBJECTIVE_RTOL, abs=1e-8)
+
+
 def test_no_centering_without_an_intercept():
     X, y = _data(n_samples=2000, n_features=8)
     X = X + 5.0

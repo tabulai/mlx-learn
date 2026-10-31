@@ -19,13 +19,18 @@ How the system is solved
 ------------------------
 scikit-learn's dense path calls ``linalg.lstsq`` (an SVD of the design). MLX's
 SVD is CPU-only — ``mx.linalg.svd`` on the GPU raises ``Metal SVD NYI`` — so the
-device does the work SVD would have spent on a tall matrix anyway: the products
-``XᵀX`` and ``Xᵀy`` (or ``XXᵀ`` when there are more features than rows). The
-small Gram matrix is then factored on the host. In exact arithmetic this is the
-same min-norm least-squares solution lstsq returns; in float32 the Gram has a
-squared condition number, which is why coefficient parity lives at the
-tolerances in ``docs/fp32_policy.md`` §3 and the objective is the strong
-assertion.
+device does the work SVD would have spent on a tall matrix anyway: the product
+``XᵀX`` (or ``XXᵀ`` when there are more features than rows). The small Gram
+matrix is then factored on the host. In exact arithmetic this is the same
+min-norm least-squares solution lstsq returns.
+
+The float32 Gram has a squared condition number, and Metal's float32 products
+round well past float32 epsilon, so that factorization alone leaves an error a
+caller can see. It is used as a preconditioner instead: float64 iterative
+refinement against the original design recovers the solution, and each step
+costs only host matrix-vector products. A step that stops reducing the residual
+ends the refinement. If the normal equations still do not hold, the Gram was too
+ill-conditioned to precondition and the host runs the float64 ``lstsq``.
 
 A fit is a pure function of its arguments. Nothing about a previous fit in the
 same process can reach this one.
@@ -47,6 +52,15 @@ __all__ = [
     "solve_ols",
     "reference_objective",
 ]
+
+
+#: Enough for any Gram worth keeping as a preconditioner. Refinement converges
+#: geometrically and stops early once the float64 residual stops falling.
+_MAX_REFINEMENT_STEPS = 8
+
+#: ``‖Xᵀr‖ / (σ_max ‖y‖)`` a refined solution must reach. Larger means the normal
+#: equations do not hold and the float32 Gram was not a usable preconditioner.
+_STATIONARITY_TOL = 1e-9
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,7 +130,8 @@ def solve_ols(
     Parameters
     ----------
     X : ndarray of shape (n_samples, n_features)
-        Dense and finite. Converted to float32 for the device products.
+        Dense and finite. Converted to float32 for the device Gram only;
+        refinement reads these values in float64.
     y : ndarray of shape (n_samples,) or (n_samples, n_targets)
         Numeric target. A one-dimensional ``y`` is treated as a single target
         internally; the returned ``coef`` is still ``(1, n_features)``.
@@ -180,10 +195,9 @@ def solve_ols(
         X_work = X_work * scale[:, None]
         y_work = y_work * scale[:, None]
 
-    X32 = np.ascontiguousarray(X_work, dtype=NUMPY_FLOAT)
-    y32 = np.ascontiguousarray(y_work, dtype=NUMPY_FLOAT)
-
-    coef_T, rank, singular = _lstsq_products(X32, y32, rcond=float(config.rcond), device=config.device)
+    coef_T, rank, singular = _lstsq_products(
+        X_work, y_work, rcond=float(config.rcond), device=config.device
+    )
     coef = np.ascontiguousarray(coef_T.T, dtype=np.float64)
 
     if config.fit_intercept:
@@ -208,10 +222,10 @@ def _lstsq_products(
     rcond: float,
     device: str,
 ) -> tuple[np.ndarray, int, np.ndarray]:
-    """Min-norm least squares from device GEMMs of the Gram and the right-hand side.
+    """Min-norm least squares from a device GEMM of the Gram, refined in float64.
 
-    ``X`` is ``(n, p)``, ``y`` is ``(n, k)``. Returns ``coef.T`` as ``(p, k)``,
-    the rank, and the singular values of ``X`` implied by the Gram.
+    ``X`` is ``(n, p)``, ``y`` is ``(n, k)``, both float64. Returns ``coef.T`` as
+    ``(p, k)``, the rank, and the singular values of ``X`` implied by the Gram.
     """
     import mlx.core as mx
 
@@ -220,37 +234,48 @@ def _lstsq_products(
         coef = np.zeros((n_features, y.shape[1]), dtype=np.float64)
         return coef, 0, np.zeros(0, dtype=np.float64)
 
+    tall = n_samples >= n_features
     with use_device(device):
-        Xm = mx.array(X, dtype=mx.float32)
-        Ym = mx.array(y, dtype=mx.float32)
-        if n_samples >= n_features:
-            gram = Xm.T @ Xm
-            rhs = Xm.T @ Ym
-            mx.eval(gram, rhs)
-            gram_np = np.asarray(gram, dtype=np.float64)
-            rhs_np = np.asarray(rhs, dtype=np.float64)
-            coef, rank, singular = _solve_gram(gram_np, rhs_np, rcond=rcond)
-            return coef, rank, singular
-
-        gram = Xm @ Xm.T
+        Xm = mx.array(np.ascontiguousarray(X, dtype=NUMPY_FLOAT), dtype=mx.float32)
+        gram = Xm.T @ Xm if tall else Xm @ Xm.T
         mx.eval(gram)
         gram_np = np.asarray(gram, dtype=np.float64)
-        y64 = np.asarray(y, dtype=np.float64)
-        if y64.ndim == 1:
-            y64 = y64.reshape(-1, 1)
-        dual, rank, singular = _solve_gram(gram_np, y64, rcond=rcond)
-        coef = np.asarray(X, dtype=np.float64).T @ dual
-        return coef, rank, singular
+
+    apply_inverse, rank, singular = _factor_gram(gram_np, rcond=rcond)
+
+    def step(residual):
+        # The dual solve keeps every iterate in the row space: the minimum norm.
+        return apply_inverse(X.T @ residual) if tall else X.T @ apply_inverse(residual)
+
+    coef, residual = _refine(X, y, step)
+    limit = _STATIONARITY_TOL * float(singular[0]) * float(np.linalg.norm(y))
+    if np.linalg.norm(X.T @ residual) > limit:
+        coef, _, rank, singular = np.linalg.lstsq(X, y, rcond=rcond)
+    return coef, int(rank), singular
 
 
-def _solve_gram(
-    gram: np.ndarray, rhs: np.ndarray, *, rcond: float
-) -> tuple[np.ndarray, int, np.ndarray]:
-    """Solve ``gram @ x = rhs`` as a truncated SVD of a Gram matrix.
+def _refine(X: np.ndarray, y: np.ndarray, step) -> tuple[np.ndarray, np.ndarray]:
+    """Iterate ``coef += step(residual)`` until the float64 residual stops falling."""
+    coef = np.zeros((X.shape[1], y.shape[1]), dtype=np.float64)
+    residual = np.array(y, dtype=np.float64, copy=True)
+    best = float(np.sum(residual * residual))
+    for _ in range(_MAX_REFINEMENT_STEPS):
+        candidate = coef + step(residual)
+        residual_next = y - X @ candidate
+        norm = float(np.sum(residual_next * residual_next))
+        if not norm < best:
+            break
+        coef, residual, best = candidate, residual_next, norm
+    return coef, residual
+
+
+def _factor_gram(gram: np.ndarray, *, rcond: float):
+    """Pseudoinvert a Gram matrix as a truncated SVD.
 
     ``gram`` is ``AᵀA`` or ``AAᵀ``. Its eigenvalues are the squares of ``A``'s
     singular values, so ``rcond`` is applied to ``√λ`` the way ``lstsq`` applies
-    it to ``σ``.
+    it to ``σ``. Returns a function applying the pseudoinverse, the rank, and
+    the singular values of ``A``.
     """
     gram = 0.5 * (gram + gram.T)
     u, s_gram, vt = np.linalg.svd(gram, full_matrices=False)
@@ -261,13 +286,23 @@ def _solve_gram(
     inv = np.zeros_like(s_gram)
     positive = keep & (s_gram > 0)
     inv[positive] = 1.0 / s_gram[positive]
+
+    def apply_inverse(rhs: np.ndarray) -> np.ndarray:
+        # gram = U Σ Vᵀ, so gram⁺ = V Σ⁺ Uᵀ.
+        return vt.T @ (inv[:, None] * (u.T @ rhs))
+
+    return apply_inverse, int(keep.sum()), singular.astype(np.float64, copy=False)
+
+
+def _solve_gram(
+    gram: np.ndarray, rhs: np.ndarray, *, rcond: float
+) -> tuple[np.ndarray, int, np.ndarray]:
+    """Solve ``gram @ x = rhs`` as a truncated SVD of a Gram matrix."""
+    apply_inverse, rank, singular = _factor_gram(gram, rcond=rcond)
     rhs_2d = np.asarray(rhs, dtype=np.float64)
     if rhs_2d.ndim == 1:
         rhs_2d = rhs_2d.reshape(-1, 1)
-    # gram = U Σ Vᵀ, so gram⁺ = V Σ⁺ Uᵀ.
-    tmp = u.T @ rhs_2d
-    solution = vt.T @ (inv[:, None] * tmp)
-    return solution, int(keep.sum()), singular.astype(np.float64, copy=False)
+    return apply_inverse(rhs_2d), rank, singular
 
 
 def _residual_sum_of_squares(

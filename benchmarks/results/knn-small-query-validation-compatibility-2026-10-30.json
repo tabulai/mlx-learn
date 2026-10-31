@@ -1,0 +1,98 @@
+{
+  "reviewed_at": "2026-10-30T17:31:46.316447+00:00",
+  "scope": "Host-only review and validation; no index fit, device query or GPU workload. Production/test files unmodified by this review.",
+  "source_review": [
+    {
+      "version": "1.7.0",
+      "source_path": "/Users/tunguz/.cache/uv/archive-v0/53HHdvOtmhOAJkBuT3aDL/sklearn/utils/validation.py",
+      "source_sha256": "ae3c972e645e2d0ba00459e8f82ac540f0a670f474cc293875a95f4d63f0ccc2",
+      "executable_ast_sha256": {
+        "validate_data": "1f16655a7d4b9eeee21ce797bfd67af984277890cc4673df623f5dc20c0ba3a4",
+        "_check_n_features": "f0f75ca9a6fd142fa83a9be600f12b32ffe7426510307abb43f2305ee157197b",
+        "_check_feature_names": "9b56fb4d3d329ecc6d8afff7ba6d08c8d47dec36c9521f3e0fe2406fbb7d1769"
+      }
+    },
+    {
+      "version": "1.7.2",
+      "source_path": "/Users/tunguz/.cache/uv/archive-v0/k8X_h0u3DUhYk5IJcx1Eo/sklearn/utils/validation.py",
+      "source_sha256": "ae3c972e645e2d0ba00459e8f82ac540f0a670f474cc293875a95f4d63f0ccc2",
+      "executable_ast_sha256": {
+        "validate_data": "1f16655a7d4b9eeee21ce797bfd67af984277890cc4673df623f5dc20c0ba3a4",
+        "_check_n_features": "f0f75ca9a6fd142fa83a9be600f12b32ffe7426510307abb43f2305ee157197b",
+        "_check_feature_names": "9b56fb4d3d329ecc6d8afff7ba6d08c8d47dec36c9521f3e0fe2406fbb7d1769"
+      }
+    },
+    {
+      "version": "1.8.0",
+      "source_path": "/Users/tunguz/.cache/uv/archive-v0/HeGdvm7r24ba_TXIlHLhx/sklearn/utils/validation.py",
+      "source_sha256": "7620cc11944cfe8285510eee64391189db8169e0fe2a9709f7348da5fdd05a1c",
+      "executable_ast_sha256": {
+        "validate_data": "1f16655a7d4b9eeee21ce797bfd67af984277890cc4673df623f5dc20c0ba3a4",
+        "_check_n_features": "f0f75ca9a6fd142fa83a9be600f12b32ffe7426510307abb43f2305ee157197b",
+        "_check_feature_names": "9b56fb4d3d329ecc6d8afff7ba6d08c8d47dec36c9521f3e0fe2406fbb7d1769"
+      }
+    },
+    {
+      "version": "1.9.0",
+      "source_path": "/Users/tunguz/.cache/uv/archive-v0/yr2mVwugez8b5UZqnMnS0/sklearn/utils/validation.py",
+      "source_sha256": "5d5e8fb7e61ab3bc8e354a21bcd7dd7f8d5fc04b0e6f060076c2303e5ebcc9b1",
+      "executable_ast_sha256": {
+        "validate_data": "1f16655a7d4b9eeee21ce797bfd67af984277890cc4673df623f5dc20c0ba3a4",
+        "_check_n_features": "f0f75ca9a6fd142fa83a9be600f12b32ffe7426510307abb43f2305ee157197b",
+        "_check_feature_names": "9b56fb4d3d329ecc6d8afff7ba6d08c8d47dec36c9521f3e0fe2406fbb7d1769"
+      }
+    }
+  ],
+  "same_executable_validation_and_feature_check_bodies_across_versions": true,
+  "runtime_version_verification": {
+    "1.7.2": [
+      "1.7.2",
+      "/Users/tunguz/.cache/uv/archive-v0/k8X_h0u3DUhYk5IJcx1Eo/sklearn/__init__.py"
+    ],
+    "1.8.0": [
+      "1.8.0",
+      "/Users/tunguz/.cache/uv/archive-v0/HeGdvm7r24ba_TXIlHLhx/sklearn/__init__.py"
+    ]
+  },
+  "host_validation_test_runs": [
+    {
+      "version": "1.7.2",
+      "python": "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3",
+      "PYTHONPATH": "/Users/tunguz/.cache/uv/archive-v0/k8X_h0u3DUhYk5IJcx1Eo:/Users/tunguz/Programming/mlxlearn/src",
+      "command": "python3 -B -m pytest -q tests/unit/test_neighbors_query_validation.py",
+      "exit_code": 0,
+      "passed": 25,
+      "pytest_stdout": "25 passed in 0.95s"
+    },
+    {
+      "version": "1.8.0",
+      "python": "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3",
+      "PYTHONPATH": "/Users/tunguz/.cache/uv/archive-v0/HeGdvm7r24ba_TXIlHLhx:/Users/tunguz/Programming/mlxlearn/src",
+      "command": "python3 -B -m pytest -q tests/unit/test_neighbors_query_validation.py",
+      "exit_code": 0,
+      "passed": 25,
+      "pytest_stdout": "25 passed in 6.87s"
+    }
+  ],
+  "conclusion": "No unsafe validation bypass identified. Predicate proves exact ndarray, native float32, nonempty 2D, C layout and finiteness; public validate_data retains feature-name and fitted-feature-count checks. Other inputs retain ordinary validation.",
+  "additional_edge_observations": {
+    "unaligned_contiguous_float32": "Shortcut and ordinary validation retain the identical ndarray with exact same bits; ordinary sklearn does not require aligned=True here.",
+    "dtype_metadata_float32": "Numeric bits and buffer format match, but initial shortcut retains custom dtype metadata while ordinary dtype conversion strips it into a sharing ndarray view. Reported to root as a compatibility refinement: use ordinary fallback when dtype.metadata is not None. No numerical failure demonstrated."
+  },
+  "run_provenance_plan": [
+    "Freeze all current source files and all knn benchmark/test Python files into separate source and harness archives; record per-file and archive SHA-256 manifests.",
+    "Record test commands, counts, logs, environment and serial GPU protocol in an execution JSON. Freeze source before acceptance timings; stop if source/harness hashes change.",
+    "Run knn_small_control (48 cases,222 case-operations,3 isolated workers,31 pairs,1-second continuous warmup), then unchanged knn_broad (72 cases,15 retained calls,5 warmups,all3 sklearn configurations) serially.",
+    "Retain all cold,warmup,probe,retained outputs and failures; independently validate current accuracy, unchanged fixture arrays, workers and source archives, paired medians and ratios of medians, A/A variation, and per-target misses.",
+    "Generate standalone small-control tables plus full broad summary/tables/heatmap. Compare full72 input/oracle array hashes with preceding Gaussian-fresh full run. Report source effects from contemporaneous control rather than historical wall-clock changes."
+  ],
+  "metadata_refinement_resolution": {
+    "implemented": true,
+    "predicate": "X.dtype.metadata is None",
+    "behavior": "metadata-bearing native float32 arrays use unchanged ordinary conversion",
+    "local_validation_tests_passed": 26,
+    "old_version_test_counts_remain": 25,
+    "final_source_manifest": "benchmarks/reference/knn-small-final-2026-10-30.manifest.json",
+    "full_test_log": "benchmarks/results/knn-small-full-tests-2026-10-30.log"
+  }
+}

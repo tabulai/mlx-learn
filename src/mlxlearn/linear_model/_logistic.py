@@ -19,6 +19,7 @@ from __future__ import annotations
 import math
 import warnings
 from contextlib import ExitStack, contextmanager
+from dataclasses import replace
 
 import numpy as np
 from sklearn.exceptions import ConvergenceWarning
@@ -41,7 +42,12 @@ from .._common.validation import (
     type_of_target,
     validate_data,
 )
-from .._solvers.logistic import LogisticConfig, _use_native_solver, solve_logistic
+from .._solvers.logistic import (
+    LogisticConfig,
+    _use_native_solver,
+    sketch_supported,
+    solve_logistic,
+)
 from ..exceptions import UnsupportedInputError, UnsupportedParameterError
 
 __all__ = ["LogisticRegression", "MLXLogisticMixin"]
@@ -399,6 +405,13 @@ class LogisticRegression(MLXLogisticMixin, _SkLogisticRegression):
                     # mlx_guard passes normal validation errors through intact.
                     check_array(X_checked, dtype=NUMPY_FLOAT, input_name="X", estimator=self)
 
+            if config.sketch_size and not sketch_supported(
+                config, 1 if n_classes == 2 else n_classes, X_checked.shape[1], initial_parts
+            ):
+                # The opt-in sketch is a capability of the prepared native
+                # loop, not a requirement: fits it cannot seed run unsketched
+                # at the requested tolerance.
+                config = replace(config, sketch_size=0)
             solution = solve_logistic(
                 X_checked,
                 y_encoded.astype(np.int32, copy=False),

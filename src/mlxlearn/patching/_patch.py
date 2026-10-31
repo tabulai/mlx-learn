@@ -129,6 +129,10 @@ def _patch_one(spec: EstimatorSpec) -> None:
         )
         return
 
+    if spec.sklearn_module == "sklearn.neighbors":
+        from ..neighbors._base import _register_sklearn_neighbor_class
+
+        _register_sklearn_neighbor_class(spec.attribute, current)
     _INSTALLED[spec.name] = (sk_module, spec.attribute, current, replacement)
     setattr(sk_module, spec.attribute, replacement)
     record_event(

@@ -46,7 +46,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 __all__ = ["LBFGSConfig", "LBFGSState", "minimize"]
@@ -76,15 +76,18 @@ class LBFGSConfig:
         reliably reduce iteration count on these objectives.
     max_line_search : int, default=32
         Objective evaluations the line search may spend per iteration, across both
-        the bracketing and the zoom phase.
+        the bracketing and the zoom phase, including any gradient-direction retry.
     c1 : float, default=1e-4
         Sufficient-decrease (Armijo) constant.
     c2 : float, default=0.9
         Curvature constant. Must satisfy ``0 < c1 < c2 < 1``.
     min_curvature : float, default=1e-12
-        Relative floor on ``sᵀy`` below which the curvature pair is skipped rather
-        than stored. Storing a pair with ``sᵀy ≤ 0`` makes the two-loop recursion
-        produce an ascent direction.
+        Relative floor on ``sᵀy``: a curvature pair is stored only when
+        ``sᵀy > min_curvature · yᵀy`` (``yᵀH₀y`` in the native solver's metric),
+        otherwise it is skipped. Storing a pair with ``sᵀy ≤ 0`` makes the
+        two-loop recursion produce an ascent direction. The floor scales with
+        the pair itself; an absolute floor would reject every valid pair on
+        designs whose feature scales make ``yᵀy`` small.
     """
 
     max_iter: int = 100
@@ -115,6 +118,18 @@ class LBFGSConfig:
             raise ValueError(
                 f"min_curvature must be non-negative, got {self.min_curvature}"
             )
+
+
+def curvature_pair_accepted(ys: float, yy: float, min_curvature: float) -> bool:
+    """Whether an ``(s, y)`` pair carries usable positive curvature.
+
+    The floor on ``sᵀy`` is relative to ``yᵀy`` (``yᵀH₀y`` in the native
+    solver's metric). An absolute floor rejected every valid pair on designs
+    where one feature's scale makes ``y`` small, froze the history, and left
+    the optimizer at the null model. ``sᵀy`` must also be positive in float32,
+    so a pair with ``y = 0`` is never stored.
+    """
+    return yy > 0.0 and ys > min_curvature * yy
 
 
 @dataclass(frozen=True, slots=True)
@@ -426,11 +441,13 @@ def minimize(fun: ObjectiveGradient, x0: Any, config: LBFGSConfig) -> LBFGSState
         accepted, step, x_new, f_new, g_new, _strong = search.run(t_init)
         n_fev += search.n_fev
 
-        if (not accepted or not (f_new < objective)) and s_history:
+        remaining = config.max_line_search - search.n_fev
+        if (not accepted or not (f_new < objective)) and s_history and remaining > 0:
             # A failed search along a quasi-Newton direction usually indicts a
             # stale history rather than the point. Retry once along the
-            # gradient from a cleared history; only a failure there says the
-            # objective has stopped decreasing along any direction.
+            # gradient from a cleared history using only this iteration's
+            # remaining evaluations. A failed retry remains a line-search
+            # failure; it does not prove the point is optimal.
             s_history.clear()
             y_history.clear()
             rho_history.clear()
@@ -438,7 +455,10 @@ def minimize(fun: ObjectiveGradient, x0: Any, config: LBFGSConfig) -> LBFGSState
             gtd = -_dot(grad, grad)
             g_l1 = float(mx.sum(mx.abs(grad)))
             t_init = min(1.0, 1.0 / g_l1) if g_l1 > 0.0 else 1.0
-            search = _LineSearch(make_probe(direction), objective, gtd, config)
+            search = _LineSearch(
+                make_probe(direction), objective, gtd,
+                replace(config, max_line_search=remaining),
+            )
             accepted, step, x_new, f_new, g_new, _strong = search.run(t_init)
             n_fev += search.n_fev
 
@@ -456,7 +476,7 @@ def minimize(fun: ObjectiveGradient, x0: Any, config: LBFGSConfig) -> LBFGSState
         mx.eval(s, y)
         ys = _dot(y, s)
         yy = _dot(y, y)
-        if ys > config.min_curvature * max(yy, 1.0):
+        if curvature_pair_accepted(ys, yy, config.min_curvature):
             s_history.append(s)
             y_history.append(y)
             rho_history.append(1.0 / ys)

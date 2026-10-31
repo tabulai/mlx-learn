@@ -101,11 +101,14 @@ def test_recording_is_shared_across_threads():
     assert any(e.estimator == "Worker" for e in mlxlearn.get_backend_diagnostics())
 
 
-def test_event_carries_shape_for_auditing_a_threshold(small_classification_data):
+def test_event_carries_shape_for_auditing_automatic_fit(small_classification_data):
     from mlxlearn.neighbors import KNeighborsClassifier
 
     X, y = small_classification_data
-    KNeighborsClassifier(n_neighbors=3).fit(X, y)
+    with mlxlearn.config_context(device="auto"):
+        KNeighborsClassifier(n_neighbors=3).fit(X, y)
     fit_events = [e for e in mlxlearn.get_backend_diagnostics() if e.operation == "fit"]
     assert fit_events[-1].shape == X.shape
-    assert "below the measured KNN crossover" in fit_events[-1].detail
+    assert fit_events[-1].backend == "cpu"
+    assert fit_events[-1].reason == "auto-fit-storage"
+    assert fit_events[-1].fallback is False

@@ -1,0 +1,100 @@
+{
+  "protocol": "All GPU/performance workloads run sequentially. Every per-variant failure and nonzero exit is retained. No oracle/tolerance changes.",
+  "source_archive": {
+    "path": "benchmarks/reference/knn-precision-final-2026-10-30.zip",
+    "sha256": "7732a7b71af91b755bf14ed20ba621cfb4c75cc0e91d942fee2b13f9897b268b"
+  },
+  "runs": [
+    {
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3",
+        "-m",
+        "benchmarks.knn_fresh_dispatch",
+        "--output",
+        "benchmarks/results/knn-precision-final-dispatch-vs-v3-2026-10-30.json"
+      ],
+      "started_at": "2026-10-30T11:10:22.528916+00:00",
+      "elapsed_seconds": 113.29173633409664,
+      "exit_code": 0,
+      "log": "benchmarks/results/knn-precision-final-dispatch-vs-v3-2026-10-30.log"
+    },
+    {
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3",
+        "-m",
+        "benchmarks.knn_acceleration",
+        "--reference-archive",
+        "benchmarks/reference/knn-pre-v4-2026-10-28.zip",
+        "--output",
+        "benchmarks/results/knn-precision-final-original-vs-v3-2026-10-30.json"
+      ],
+      "started_at": "2026-10-30T11:12:15.821376+00:00",
+      "elapsed_seconds": 28.46439749991987,
+      "exit_code": 0,
+      "log": "benchmarks/results/knn-precision-final-original-vs-v3-2026-10-30.log"
+    },
+    {
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3",
+        "-m",
+        "benchmarks.knn_review_distributions",
+        "--seed",
+        "151",
+        "--output",
+        "benchmarks/results/knn-precision-final-distributions-seed151-2026-10-30.json"
+      ],
+      "started_at": "2026-10-30T11:12:44.286181+00:00",
+      "elapsed_seconds": 8.725822207983583,
+      "exit_code": 0,
+      "log": "benchmarks/results/knn-precision-final-distributions-seed151-2026-10-30.log"
+    },
+    {
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3",
+        "-m",
+        "benchmarks.knn_review_distributions",
+        "--seed",
+        "251",
+        "--output",
+        "benchmarks/results/knn-precision-final-distributions-seed251-2026-10-30.json"
+      ],
+      "started_at": "2026-10-30T11:12:53.012366+00:00",
+      "elapsed_seconds": 8.648641958017834,
+      "exit_code": 1,
+      "log": "benchmarks/results/knn-precision-final-distributions-seed251-2026-10-30.log"
+    },
+    {
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3",
+        "-m",
+        "benchmarks.knn_review_distributions",
+        "--seed",
+        "252",
+        "--output",
+        "benchmarks/results/knn-precision-final-distributions-seed252-2026-10-30.json"
+      ],
+      "started_at": "2026-10-30T11:13:01.661346+00:00",
+      "elapsed_seconds": 8.552590416977182,
+      "exit_code": 0,
+      "log": "benchmarks/results/knn-precision-final-distributions-seed252-2026-10-30.log"
+    },
+    {
+      "command": [
+        "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3",
+        "-m",
+        "benchmarks.knn_pipeline",
+        "--profile",
+        "full",
+        "--resident",
+        "--reference-archive",
+        "benchmarks/reference/knn-pre-v4-2026-10-28.zip",
+        "--output",
+        "benchmarks/results/knn-precision-final-panel-vs-v3-2026-10-30.json"
+      ],
+      "started_at": "2026-10-30T11:13:10.214266+00:00",
+      "elapsed_seconds": 17.13925820798613,
+      "exit_code": 0,
+      "log": "benchmarks/results/knn-precision-final-panel-vs-v3-2026-10-30.log"
+    }
+  ]
+}
