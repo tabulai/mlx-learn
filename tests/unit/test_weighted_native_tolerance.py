@@ -22,6 +22,15 @@ def test_weighted_loop_tolerance_never_exceeds_requested(tol):
     assert math.isfinite(weighted)
 
 
+@pytest.mark.parametrize("weighted", [False, True])
+@pytest.mark.parametrize("tol", [1e40, float(np.finfo(np.float64).max)])
+def test_large_finite_tolerance_clamps_without_overflow(tol, weighted):
+    with np.errstate(over="raise"):
+        actual = _native_loop_tol(tol, weighted)
+    assert actual == float(np.finfo(np.float32).max)
+    assert actual <= (0.95 * tol if weighted else tol)
+
+
 @pytest.mark.parametrize("sketch_size", [0, 1])
 @pytest.mark.gpu
 def test_device_weighted_reserve_is_applied_once(monkeypatch, sketch_size):

@@ -133,18 +133,20 @@ def test_failed_quasi_newton_search_retries_along_the_gradient(monkeypatch, modu
     module = fused_lbfgs if module_name == "fused_lbfgs" else lbfgs
     original = lbfgs._LineSearch
     searches = []
+    budgets = []
 
     class FailingOnce(original):
         def __init__(self, probe, f0, gtd0, config):
             super().__init__(probe, f0, gtd0, config)
             searches.append(gtd0)
+            budgets.append(config.max_line_search)
 
         def run(self, t_init):
             # The fourth search of the run follows three accepted steps, so it
-            # carries a quasi-Newton direction; report it as a failure without
-            # evaluating, then let every later search behave normally.
+            # carries a quasi-Newton direction. Spend one evaluation before
+            # failing, then let every later search behave normally.
             if len(searches) == 4:
-                x_t, f_t, g_t, _ = self._probe(0.0)
+                x_t, f_t, g_t, _ = self._evaluate(0.0)
                 return False, 0.0, x_t, f_t, g_t, False
             return super().run(t_init)
 
@@ -162,7 +164,37 @@ def test_failed_quasi_newton_search_retries_along_the_gradient(monkeypatch, modu
     # searches of the remaining accepted steps: exactly one extra construction.
     assert len(searches) == state.n_iter + 1
     assert searches[4] < 0.0  # the retry descends along the gradient
+    assert budgets[4] == config.max_line_search - 1
+    assert all(budget == config.max_line_search for i, budget in enumerate(budgets) if i != 4)
     np.testing.assert_allclose(np.asarray(state.x), 0.0, atol=1e-3, rtol=0)
+
+
+@pytest.mark.parametrize("module_name", ["fused_lbfgs", "lbfgs"])
+def test_failed_search_cannot_exceed_the_iteration_evaluation_budget(module_name):
+    """A real failed quasi-Newton search must not buy a second trial allowance."""
+    from mlxlearn._solvers import fused_lbfgs, lbfgs
+
+    module = fused_lbfgs if module_name == "fused_lbfgs" else lbfgs
+    rng = np.random.default_rng(86)
+    matrix = rng.normal(size=(4, 4))
+    hessian = mx.array((100.0 * (matrix.T @ matrix + 1e-5 * np.eye(4))).astype(np.float32))
+    x0 = mx.array(rng.normal(size=4).astype(np.float32))
+    calls = 0
+
+    def objective(x):
+        nonlocal calls
+        calls += 1
+        gradient = hessian @ x
+        return float(0.5 * mx.sum(x * gradient)), gradient
+
+    config = LBFGSConfig(max_iter=2, max_line_search=1, tol=0)
+    state = module.minimize(objective, x0, config)
+
+    assert state.n_fev == calls
+    assert calls <= 1 + config.max_iter * config.max_line_search
+    assert state.stop_reason == "line-search-failure"
+    assert state.n_iter == 1
+    assert not state.converged
 
 
 def test_float32_function_plateau_is_not_reported_as_convergence():
