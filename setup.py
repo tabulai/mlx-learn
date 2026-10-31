@@ -56,6 +56,22 @@ if sys.platform == "darwin" and platform.machine() == "arm64":
             optional=True,
         )
     )
+    for module, source in (
+        ("mlxlearn._solvers._smo_native", "src/mlxlearn/_solvers/_smo_native.cpp"),
+        ("mlxlearn._solvers._smo_block_native", "src/mlxlearn/_solvers/_smo_block_native.cpp"),
+        ("mlxlearn._kernels._svc_cpu_native", "src/mlxlearn/_kernels/_svc_cpu_native.cpp"),
+    ):
+        extensions.append(
+            Extension(
+                module,
+                [source],
+                language="c++",
+                extra_compile_args=["-O3", "-std=c++17", "-fno-fast-math", "-ffp-contract=off"],
+                extra_link_args=["-framework", "Accelerate"]
+                if module == "mlxlearn._kernels._svc_cpu_native" else [],
+                optional=True,
+            )
+        )
     # The CPU module uses Py_buffer, including on Python 3.10. Its wheel must
     # carry the actual CPython ABI tag, even though the Metal module is abi3.
 

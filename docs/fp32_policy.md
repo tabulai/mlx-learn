@@ -170,6 +170,15 @@ no worse." Both are tested.
 | SVM **support-vector sets** | ≤ 5% symmetric difference | Measured: counts agree essentially exactly (1311 vs 1311, 827 vs 827; worst disagreement one point out of 548). Which points sit exactly on the margin is genuinely ill-conditioned, so exact set equality is not something either solver promises |
 | SVM **KKT conditions** | must hold at mlxlearn's own solution | The assertion that does not appeal to scikit-learn at all, and the one that catches a solver agreeing with LIBSVM for the wrong reason |
 
+SVM numerical decision tolerances apply to the continuous binary or one-vs-one
+margins. Multiclass one-vs-rest scores add integer pair votes to bounded confidence
+corrections. Two valid near-zero margins can straddle zero and change two OVR
+columns by one while leaving the predicted class unchanged. OVR parity therefore
+checks every pair margin at the unchanged tolerance, verifies each model's OVR
+conversion from its own margins, and compares the confidence scores after removing
+only the explicitly recomputed vote difference. Prediction, support-set and KKT
+checks remain independent requirements.
+
 **Coefficients are the weak assertion; objective value is the strong one.** For an
 ill-conditioned problem two solvers can reach very different coefficients that are equally
 optimal. A test that only compares `coef_` therefore fails for a correct implementation and
