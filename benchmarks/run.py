@@ -63,6 +63,8 @@ PROFILES: dict[str, list[Case]] = {
         *_knn_grid([1_000, 8_000, 50_000], [32], [256]),
         Case("logreg", "fit", 5_000, 32),
         Case("logreg", "fit", 50_000, 64),
+        Case("linreg", "fit", 8_000, 64),
+        Case("linreg", "fit", 50_000, 128),
         Case("svc", "fit", 1_000, 32),
         Case("svc", "fit", 4_000, 32),
     ],
@@ -74,6 +76,7 @@ PROFILES: dict[str, list[Case]] = {
             [1, 256, 4_096],
         ),
         *[Case("logreg", "fit", n, d) for n in (1_000, 10_000, 100_000, 500_000) for d in (16, 128, 1_024)],
+        *[Case("linreg", "fit", n, d) for n in (2_000, 16_000, 64_000, 256_000) for d in (16, 128, 1_024)],
         *[Case("svc", "fit", n, d) for n in (500, 2_000, 8_000, 32_000) for d in (16, 128)],
         *[Case("svc", "predict", n, d) for n in (2_000, 8_000) for d in (16, 128)],
     ],
@@ -84,6 +87,9 @@ def _make_data(case: Case, rng: np.random.Generator):
     X = rng.normal(size=(case.n_samples, case.n_features))
     if case.algorithm == "knn":
         return X, None, rng.normal(size=(case.n_queries, case.n_features))
+    if case.algorithm == "linreg":
+        y = X @ rng.normal(size=case.n_features) + rng.normal(scale=0.1, size=case.n_samples)
+        return X, y, X[: min(1_000, case.n_samples)]
     y = (X[:, 0] + rng.normal(scale=0.5, size=case.n_samples) > 0).astype(int)
     return X, y, X[: min(1_000, case.n_samples)]
 
@@ -137,6 +143,17 @@ def _runner(
             lambda: sklearn.linear_model.LogisticRegression(max_iter=200).fit(X, y),
             shape,
         )
+
+    if case.algorithm == "linreg":
+        if case.operation == "fit":
+            return (
+                lambda: mlx_linear.LinearRegression().fit(X, y),
+                lambda: sklearn.linear_model.LinearRegression().fit(X, y),
+                shape,
+            )
+        mlx_model = mlx_linear.LinearRegression().fit(X, y)
+        sk_model = sklearn.linear_model.LinearRegression().fit(X, y)
+        return (lambda: mlx_model.predict(Q), lambda: sk_model.predict(Q), shape)
 
     if case.algorithm == "svc":
         if case.operation == "fit":
