@@ -45,7 +45,7 @@ class BackendEvent:
     estimator : str
         Class name, e.g. ``"KNeighborsClassifier"``.
     operation : str
-        ``"fit"``, ``"predict"``, ``"kneighbors"``, and so on.
+        ``"fit"``, ``"predict"``, ``"kneighbors"``, ``"radius_neighbors"``, and so on.
     backend : {"mlx", "cpu", "sklearn"}
         What actually ran the work.
     reason : str

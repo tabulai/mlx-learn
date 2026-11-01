@@ -26,7 +26,13 @@ import pytest
 from sklearn.utils.estimator_checks import check_estimator
 
 from mlxlearn.linear_model import LogisticRegression
-from mlxlearn.neighbors import KNeighborsClassifier, KNeighborsRegressor, NearestNeighbors
+from mlxlearn.neighbors import (
+    KNeighborsClassifier,
+    KNeighborsRegressor,
+    NearestNeighbors,
+    RadiusNeighborsClassifier,
+    RadiusNeighborsRegressor,
+)
 from mlxlearn.patching import _estimators as patched
 from mlxlearn.svm import SVC
 
@@ -58,11 +64,21 @@ INHERITED_FAILURES: dict[str, set[str]] = {
 #:   C -- the check asserts random_state=None varies, which deterministic=True denies
 EXPECTED_XFAILS: dict[tuple[str, str], str] = {}
 
-LAYER1 = [NearestNeighbors, KNeighborsClassifier, KNeighborsRegressor, LogisticRegression, SVC]
+LAYER1 = [
+    NearestNeighbors,
+    KNeighborsClassifier,
+    KNeighborsRegressor,
+    RadiusNeighborsClassifier,
+    RadiusNeighborsRegressor,
+    LogisticRegression,
+    SVC,
+]
 LAYER2 = [
     patched.NearestNeighbors,
     patched.KNeighborsClassifier,
     patched.KNeighborsRegressor,
+    patched.RadiusNeighborsClassifier,
+    patched.RadiusNeighborsRegressor,
     patched.LogisticRegression,
     patched.SVC,
 ]

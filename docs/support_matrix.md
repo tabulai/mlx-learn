@@ -66,16 +66,14 @@ Development is on MLX 0.31.2.
 | `linear_model.LogisticRegression` | 0.1.0 | L-BFGS, L2 / unpenalized | `l1`/`elasticnet`, non-`lbfgs` solvers, `dual=True`, sparse, `warm_start` |
 | `svm.SVC` | 0.1.0 | exact SMO, linear/poly/rbf/sigmoid | `kernel="precomputed"`, callable kernels, `probability=True`, sparse |
 
-`radius_neighbors` and `radius_neighbors_graph` delegate lazily to scikit-learn and run
-unaccelerated on the CPU in float32. Correct, but not fast — stated here rather than left
-for a profiler to reveal.
+`radius_neighbors` and `radius_neighbors_graph` run on the same fitted backend as
+`kneighbors`, in tiled direct-difference scans. Neighborhoods are ragged object arrays of 1-d rows, matching scikit-learn.
 
 Direct KNN classes use public sklearn estimator mixins without inheriting stock
 `sklearn.neighbors` classes. They preserve the estimator API, but an `isinstance`
 check against a stock neighbor class captured before patching is false. This
 startup-focused compatibility change avoids loading sklearn's neighbor stack
-for owned Euclidean search; radius operations and permitted fallback still load
-it when needed.
+for owned Euclidean search; permitted fallback still loads it when needed.
 
 This also affects APIs that identify a fitted neighbor object by concrete class:
 use `model.kneighbors_graph(...)` or `model.radius_neighbors_graph(...)` on a

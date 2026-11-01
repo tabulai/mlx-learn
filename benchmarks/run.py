@@ -61,6 +61,8 @@ PROFILES: dict[str, list[Case]] = {
     # Fast enough to run on a laptop while iterating; enough points to see a crossover.
     "smoke": [
         *_knn_grid([1_000, 8_000, 50_000], [32], [256]),
+        Case("knn", "radius_neighbors", 1_000, 32, 256),
+        Case("knn", "radius_neighbors", 8_000, 32, 256),
         Case("logreg", "fit", 5_000, 32),
         Case("logreg", "fit", 50_000, 64),
         Case("svc", "fit", 1_000, 32),
@@ -73,6 +75,11 @@ PROFILES: dict[str, list[Case]] = {
             [8, 64, 768],
             [1, 256, 4_096],
         ),
+        *[
+            Case("knn", "radius_neighbors", n, d, 256)
+            for n in (500, 8_000, 32_000)
+            for d in (8, 64)
+        ],
         *[Case("logreg", "fit", n, d) for n in (1_000, 10_000, 100_000, 500_000) for d in (16, 128, 1_024)],
         *[Case("svc", "fit", n, d) for n in (500, 2_000, 8_000, 32_000) for d in (16, 128)],
         *[Case("svc", "predict", n, d) for n in (2_000, 8_000) for d in (16, 128)],
@@ -125,6 +132,16 @@ def _runner(
             return (
                 lambda: mlx_neighbors.NearestNeighbors(n_neighbors=10).fit(X),
                 lambda: sklearn.neighbors.NearestNeighbors(n_neighbors=10, algorithm="brute").fit(X),
+                shape,
+            )
+        if case.operation == "radius_neighbors":
+            mlx_model = mlx_neighbors.NearestNeighbors(radius=5.0).fit(X)
+            sk_model = sklearn.neighbors.NearestNeighbors(
+                radius=5.0, algorithm="brute"
+            ).fit(X)
+            return (
+                lambda: mlx_model.radius_neighbors(Q),
+                lambda: sk_model.radius_neighbors(Q),
                 shape,
             )
         mlx_model = mlx_neighbors.NearestNeighbors(n_neighbors=10).fit(X)

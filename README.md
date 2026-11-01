@@ -45,6 +45,8 @@ stock inheritance. See the [compatibility details](docs/support_matrix.md).
 | `mlxlearn.neighbors.NearestNeighbors` | 0.1.0 |
 | `mlxlearn.neighbors.KNeighborsClassifier` | 0.1.0 |
 | `mlxlearn.neighbors.KNeighborsRegressor` | 0.1.0 |
+| `mlxlearn.neighbors.RadiusNeighborsClassifier` | 0.1.0 |
+| `mlxlearn.neighbors.RadiusNeighborsRegressor` | 0.1.0 |
 | `mlxlearn.linear_model.LogisticRegression` | 0.1.0 |
 | `mlxlearn.svm.SVC` (exact) | 0.1.0 |
 | `LinearRegression`, `Ridge`, `PCA`, `KMeans`, `DBSCAN`, `TSNE` | planned, 0.2.x |

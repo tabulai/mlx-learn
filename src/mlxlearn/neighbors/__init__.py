@@ -9,7 +9,14 @@ from the class it claims to replace.
 from __future__ import annotations
 
 from ._classification import KNeighborsClassifier
+from ._radius import RadiusNeighborsClassifier, RadiusNeighborsRegressor
 from ._regression import KNeighborsRegressor
 from ._unsupervised import NearestNeighbors
 
-__all__ = ["KNeighborsClassifier", "KNeighborsRegressor", "NearestNeighbors"]
+__all__ = [
+    "KNeighborsClassifier",
+    "KNeighborsRegressor",
+    "NearestNeighbors",
+    "RadiusNeighborsClassifier",
+    "RadiusNeighborsRegressor",
+]
