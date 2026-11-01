@@ -1,0 +1,87 @@
+{
+  "scope": "Full current performance suites, confirmed by user; historical solver ablations and old-version controls are not the requested headline comparison.",
+  "source_commit": "d81c994e9e714301e6116d6a71fecd66aa87caed",
+  "serial_timing": true,
+  "panels": [
+    {
+      "name": "SVC kernel/cache panel",
+      "cases": 8,
+      "seeds": [
+        41,
+        42
+      ],
+      "repeats": 7,
+      "policy": "Forced matching CPU/GPU kernels; requested CPU thread limit1; current vs sklearn; historical native control recorded separately."
+    },
+    {
+      "name": "KNN broad",
+      "fixtures": 72,
+      "operations": 10,
+      "repeats": 15,
+      "warmup": 5,
+      "policy": "Current automatic vs sklearn brute/default, brute/threadpoolctl-limited, auto/default."
+    },
+    {
+      "name": "KNN first query",
+      "fixtures": 18,
+      "fresh_models_per_variant": 30
+    },
+    {
+      "name": "KNN process startup",
+      "fixtures": 18,
+      "fresh_processes_per_variant": 5
+    },
+    {
+      "name": "LR current refresh",
+      "unique_fixtures": 25,
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "repeats": 7,
+      "warmup": 1,
+      "policies": [
+        "default",
+        "requested1"
+      ],
+      "variants": [
+        "direct_auto",
+        "patched_auto",
+        "forced_gpu",
+        "sklearn"
+      ],
+      "operations": [
+        "fit",
+        "predict",
+        "predict_proba"
+      ],
+      "note": "Includes all12 generic LR grid shapes plus native/wide/weighted/multiclass fixtures. Strict4096 supplement remains separate."
+    },
+    {
+      "name": "General full shape grid, KNN/SVC",
+      "operation_cases": 84,
+      "repeats": 7,
+      "warmup": 1,
+      "policy": "Default threads;18 unique KNN fits represent54 repeated fit rows,54 KNN query shapes,12 SVC operations; direct and patched reported separately."
+    }
+  ],
+  "reporting": "Speedup=sklearn median/current median. Separate fit,predict,first call,and process startup; quality failures retained and excluded from qualified speed claims. No across-operation average.",
+  "accuracy_supplement": {
+    "cases": [
+      "grid_1000_1024",
+      "multiclass_weighted_wide",
+      "wide_20k_4096"
+    ],
+    "tol": 1e-06,
+    "dtypes": [
+      "float32",
+      "float64"
+    ],
+    "policies": [
+      "default",
+      "requested1"
+    ],
+    "repeats": 7,
+    "reason": "Primary fitting/probability gates expose stopping-accuracy differences. Supplemental matched tolerance does not replace primary measurements."
+  }
+}
