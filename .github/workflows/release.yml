@@ -47,6 +47,9 @@ jobs:
               assert any(n.endswith("/_metal_loop.abi3.so") for n in wheel.namelist())
               cpu = "mlxlearn/_kernels/_neighbors_cpu_native" + sysconfig.get_config_var("EXT_SUFFIX")
               assert cpu in wheel.namelist(), cpu
+              for module in ("_solvers/_smo_native", "_solvers/_smo_block_native", "_kernels/_svc_cpu_native"):
+                  native = "mlxlearn/" + module + sysconfig.get_config_var("EXT_SUFFIX")
+                  assert native in wheel.namelist(), native
           PY
       - name: Tag matches package version
         if: startsWith(github.ref, 'refs/tags/')
