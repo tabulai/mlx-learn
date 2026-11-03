@@ -436,13 +436,14 @@ float64 input, its faster setting here.
 - **Fit:** fitting stores the training data and takes 8–13 ms in both libraries.
 
 **`SVC`** (RBF kernel, `C=1`, `gamma="scale"`). mlxlearn times are medians of 3 fits and
-scikit-learn times are single fits.
+scikit-learn times are single fits. Each fit speedup compares the two libraries at the same
+cache size.
 
-| Dataset | mlxlearn fit, 200 MB / 2,000 MB cache | sklearn fit | Fit speedup | mlxlearn predict | sklearn predict | Predict speedup | Test accuracy, mlxlearn / sklearn | Support vectors, mlxlearn / sklearn |
+| Dataset | mlxlearn fit, 200 MB / 2,000 MB cache | sklearn fit | Fit speedup, 200 MB / 2,000 MB | mlxlearn predict | sklearn predict | Predict speedup | Test accuracy, mlxlearn / sklearn | Support vectors, mlxlearn / sklearn |
 |---|---|---|---|---|---|---|---|---|
 | MNIST | 12.5 s / 5.6 s | 122 s | **9.8× / 21.7×** | 0.09 s | 26.6 s | **298×** | 97.92% / 97.92% | 12,334 / 12,336 |
-| Fashion-MNIST | 13.6 s / 5.7 s | 167 s | **12.3× / 29.5×** | 0.17 s | 45.0 s | **263×** | 89.21% / 89.21% | 20,816 / 20,823 |
-| Kannada-MNIST (Dig-MNIST) | 10.2 s / 5.2 s | 118 s | **11.6× / 22.6×** | 0.09 s | 24.7 s | **271×** | 68.01% / 68.00% | 11,180 / 11,180 |
+| Fashion-MNIST | 13.6 s / 5.7 s | 167 s | **12.3× / 29.4×** | 0.17 s | 45.0 s | **263×** | 89.21% / 89.21% | 20,816 / 20,823 |
+| Kannada-MNIST (Dig-MNIST) | 10.2 s / 5.2 s | 118 s | **11.6× / 22.5×** | 0.09 s | 24.7 s | **271×** | 68.01% / 68.00% | 11,180 / 11,180 |
 
 - **Cache size:** raising `cache_size` to 2,000 MB does not change scikit-learn's fit time
   (122.5 s, 166.2 s and 117.5 s).

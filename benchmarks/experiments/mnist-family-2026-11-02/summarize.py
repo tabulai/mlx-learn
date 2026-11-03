@@ -54,17 +54,19 @@ def knn_table():
 
 def svc_table():
     print("\n### SVC (rbf, C=1, gamma=scale)")
-    print("| dataset | mlx fit (200 MB) | mlx fit (2000 MB) | sk fit (200 / 2000 MB) | fit speedup | mlx predict | sk predict | predict speedup | mlx test | sk test | nSV mlx/sk | pred agree |")
+    print("| dataset | mlx fit (200 MB) | mlx fit (2000 MB) | sk fit (200 / 2000 MB) | fit speedup (200 / 2000 MB) | mlx predict | sk predict | predict speedup | mlx test | sk test | nSV mlx/sk | pred agree |")
     print("|---|---|---|---|---|---|---|---|---|---|---|---|")
     for ds in SPLITS:
         m, mc, s, sc = (get(ds, f"svc_{v}") for v in ("mlx", "mlx_c2000", "sklearn", "sklearn_c2000"))
         if not (m and s):
             continue
-        sk2 = f"{med(sc['fit_s']):.1f}" if sc else "-"
+        # The 2,000 MB speedup compares both libraries at that cache size.
+        sk_fit2 = med(sc["fit_s"]) if sc else float("nan")
+        sk2 = f"{sk_fit2:.1f}" if sc else "-"
         mc_fit = med(mc["fit_s"]) if mc else float("nan")
         agree = np.mean(np.array(m["pred"]) == np.array(s["pred"]))
         print(f"| {ds} | {med(m['fit_s']):.2f} s | {mc_fit:.2f} s | {med(s['fit_s']):.1f} / {sk2} s "
-              f"| {med(s['fit_s'])/med(m['fit_s']):.1f}x / {med(s['fit_s'])/mc_fit:.1f}x "
+              f"| {med(s['fit_s'])/med(m['fit_s']):.1f}x / {sk_fit2/mc_fit:.1f}x "
               f"| {med(m['predict_s']):.3f} s | {med(s['predict_s']):.2f} s | {med(s['predict_s'])/med(m['predict_s']):.0f}x "
               f"| {m['test_acc']:.2%} | {s['test_acc']:.2%} | {sum(m['n_support'])}/{sum(s['n_support'])} | {agree:.2%} |")
 
