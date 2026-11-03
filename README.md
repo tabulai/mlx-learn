@@ -377,13 +377,83 @@ What that means for the measured development build on an M4 Max:
 | **Neighbor queries/inference** | Wins **625/648**, **648/648** and **648/648** medians against default brute, single-thread brute and auto sklearn on the [full panel](docs/knn-digits-benchmarks-2026-10-30.md). The ≥2× counts are **587**, **300** and **592**, respectively. |
 | Neighbor `fit` and startup | Owns training data and defers search preparation where appropriate. Fit-only, first fit-plus-query and total process startup are reported separately; query gains do not guarantee faster fit or startup. |
 | `SVC` | Native working sets improve measured linear and RBF fits; tiny-cache RBF still trails sklearn and prediction gains vary. See the [current results and limitations](docs/svc-working-set-2026-10-31.md). Patched routing remains conservative, and linear is excluded from automatic GPU selection. |
-| `LogisticRegression` | **Slower than scikit-learn below 1 024 features**, by a lot. The crossover is set high so patched dispatch hands those to scikit-learn; see [`docs/benchmarks.md`](docs/benchmarks.md) for why and what would change it. |
+| `LogisticRegression` | Faster than scikit-learn on large problems: **11.8×, 5.8× and 2.7×** for binary fits at 500,000 × 32, 500,000 × 128 and 60,000 × 1,024 ([fused-kernel rerun](docs/fused-narrow-kernel-2026-10-27.md)), and **6.4–12.8×** for converged 10-class fits at 60,000 × 784 ([MNIST family](#mnist-fashion-mnist-and-kannada-mnist)). Patched dispatch still hands small problems to scikit-learn, which was faster there when last measured. It uses MLX only from 20,000 samples and 2×10⁷ elements, or from 250,000 samples and 8×10⁶ elements. The [historical small-problem measurements](docs/benchmarks.md) explain the per-iteration overhead behind that threshold. |
 
 Reproduce them:
 
 ```bash
 python -m benchmarks.run --profile smoke
 ```
+
+### MNIST, Fashion-MNIST and Kannada-MNIST
+
+The three 10-class image datasets are 60,000 training rows × 784 pixels each. Pixels are
+scaled to [0, 1] and estimator parameters are left at their defaults unless noted. MNIST and
+Fashion-MNIST validate on their 10,000-row test sets. Kannada-MNIST's Kaggle `test.csv` is
+unlabeled, so it validates on the 10,240-row Dig-MNIST set. Dig-MNIST was written by
+different people and is much harder: both libraries reach about 98% training accuracy on
+Kannada-MNIST but score far lower on it.
+
+These shapes clear the automatic thresholds, so `patch_sklearn()` runs all three
+estimators on MLX as well. Measured 2026-11-02 at `c928419` on an M4 Max (12+4 CPU cores,
+40-core GPU, 128 GB) with Python 3.14.2, scikit-learn 1.9.1, MLX 0.32.4 and NumPy 2.5.4.
+First-use kernel compilation is excluded from every timing. The scripts and raw results
+are in [`benchmarks/experiments/mnist-family-2026-11-02`](benchmarks/experiments/mnist-family-2026-11-02/).
+
+**`LogisticRegression`**, run to convergence (`max_iter=5000`, default `tol=1e-4`). Times
+are medians of 5 fits, with float32 input for mlxlearn and float64 for scikit-learn.
+
+| Dataset | mlxlearn fit | sklearn fit | Speedup | L-BFGS iterations, mlxlearn / sklearn | Test accuracy, mlxlearn / sklearn |
+|---|---|---|---|---|---|
+| MNIST | 0.25 s | 3.14 s | **12.8×** | 108 / 247 | 92.60% / 92.60% |
+| Fashion-MNIST | 1.28 s | 8.20 s | **6.4×** | 313 / 653 | 85.24% / 85.26% |
+| Kannada-MNIST (Dig-MNIST) | 0.14 s | 1.17 s | **8.2×** | 63 / 93 | 59.81% / 59.87% |
+
+- **Convergence:** both libraries reach the tolerance on all three datasets, checked with an
+  independent float64 evaluation of scikit-learn's objective and gradient. The final
+  objectives agree to within 0.4%, mlxlearn's being lower on two of the three. Predictions
+  agree on 98.6–99.8% of validation rows.
+- **Default `max_iter=100`:** MNIST and Fashion-MNIST stop unconverged in both libraries.
+  mlxlearn fits 4.9× and 4.6× faster there and stops at a lower objective.
+- **Prediction:** `predict` costs the same in both (about 2 ms per 10,000 rows) because
+  inference uses scikit-learn's own code.
+
+**`KNeighborsClassifier`** (`n_neighbors=5`). Predict times are the best and the median of
+7 calls on the full validation set. mlxlearn gets float32 input and scikit-learn gets
+float64 input, its faster setting here.
+
+| Dataset | mlxlearn predict | sklearn predict | Speedup (best) | Test accuracy, both |
+|---|---|---|---|---|
+| MNIST | 0.11 s / 0.14 s | 1.28 s / 1.31 s | **11.4×** | 96.88% |
+| Fashion-MNIST | 0.11 s / 0.11 s | 1.22 s / 1.25 s | **11.0×** | 85.89% |
+| Kannada-MNIST (Dig-MNIST) | 0.11 s / 0.11 s | 1.25 s / 1.28 s | **11.7×** | 71.46% |
+
+- **Exactness:** the raw pixels are integers, so exact squared distances are available for
+  every pair. Every returned neighbor set, from both libraries with both float32 and float64
+  input, was audited against them and is exact on all three datasets.
+- **Predictions:** identical everywhere. On one Fashion-MNIST row, the two libraries break an
+  exact distance tie at the 5th neighbor differently.
+- **Fit:** fitting stores the training data and takes 8–13 ms in both libraries.
+
+**`SVC`** (RBF kernel, `C=1`, `gamma="scale"`). mlxlearn times are medians of 3 fits and
+scikit-learn times are single fits.
+
+| Dataset | mlxlearn fit, 200 MB / 2,000 MB cache | sklearn fit | Fit speedup | mlxlearn predict | sklearn predict | Predict speedup | Test accuracy, mlxlearn / sklearn | Support vectors, mlxlearn / sklearn |
+|---|---|---|---|---|---|---|---|---|
+| MNIST | 12.5 s / 5.6 s | 122 s | **9.8× / 21.7×** | 0.09 s | 26.6 s | **298×** | 97.92% / 97.92% | 12,334 / 12,336 |
+| Fashion-MNIST | 13.6 s / 5.7 s | 167 s | **12.3× / 29.5×** | 0.17 s | 45.0 s | **263×** | 89.21% / 89.21% | 20,816 / 20,823 |
+| Kannada-MNIST (Dig-MNIST) | 10.2 s / 5.2 s | 118 s | **11.6× / 22.6×** | 0.09 s | 24.7 s | **271×** | 68.01% / 68.00% | 11,180 / 11,180 |
+
+- **Cache size:** raising `cache_size` to 2,000 MB does not change scikit-learn's fit time
+  (122.5 s, 166.2 s and 117.5 s).
+- **Predictions:** identical on MNIST and Fashion-MNIST, and 2 of 10,240 differ on Dig-MNIST.
+  At most 0.21% of rows have a pairwise decision with the opposite sign from scikit-learn's.
+- **Decision values:** summed one-vs-one decision values differ by a median of 2–4×10⁻⁴ (at
+  most 2.6×10⁻³). That is consistent with `tol=1e-3` and float32 kernel rows.
+
+Three unrelated single-threaded processes and other applications' GPU work (about 19% GPU
+utilization at idle) were running throughout. Under that load, back-to-back mlxlearn KNN
+predictions on MNIST varied between 0.11 and 0.22 s.
 
 ## Precision
 
