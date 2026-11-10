@@ -207,6 +207,7 @@ def test_registry_contains_only_gated_estimators():
         "sklearn.neighbors.KNeighborsClassifier",
         "sklearn.neighbors.KNeighborsRegressor",
         "sklearn.linear_model.LogisticRegression",
+        "sklearn.decomposition.PCA",
         "sklearn.svm.SVC",
     }
 
