@@ -132,6 +132,7 @@ REQUIRED_PACKAGES = (
     "src/mlxlearn/_common/__init__.py",
     "src/mlxlearn/_kernels/__init__.py",
     "src/mlxlearn/_solvers/__init__.py",
+    "src/mlxlearn/decomposition/__init__.py",
     "src/mlxlearn/linear_model/__init__.py",
     "src/mlxlearn/neighbors/__init__.py",
     "src/mlxlearn/svm/__init__.py",
