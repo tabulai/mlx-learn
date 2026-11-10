@@ -29,6 +29,7 @@ from sklearn.neighbors import KNeighborsClassifier as _StockKNeighborsClassifier
 from sklearn.neighbors import KNeighborsRegressor as _StockKNeighborsRegressor
 from sklearn.neighbors import NearestNeighbors as _StockNearestNeighbors
 
+from ..decomposition import PCA as _PCA
 from ..linear_model import LinearRegression as _LinearRegression
 from ..linear_model import LogisticRegression as _LogisticRegression
 from ..neighbors import KNeighborsClassifier as _KNeighborsClassifier
@@ -43,6 +44,7 @@ __all__ = [
     "KNeighborsRegressor",
     "LinearRegression",
     "LogisticRegression",
+    "PCA",
     "SVC",
 ]
 
@@ -102,6 +104,10 @@ class LogisticRegression(_LogisticRegression):
     _mlxlearn_allow_fallback = True
 
 
+class PCA(_PCA):
+    _mlxlearn_allow_fallback = True
+
+
 class SVC(_SVC):
     _mlxlearn_allow_fallback = True
 
@@ -112,6 +118,7 @@ for _cls, _name in (
     (KNeighborsRegressor, "KNeighborsRegressor"),
     (LinearRegression, "LinearRegression"),
     (LogisticRegression, "LogisticRegression"),
+    (PCA, "PCA"),
     (SVC, "SVC"),
 ):
     _patched(_cls, _name)

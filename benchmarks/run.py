@@ -65,6 +65,9 @@ PROFILES: dict[str, list[Case]] = {
         Case("logreg", "fit", 50_000, 64),
         Case("linreg", "fit", 8_000, 64),
         Case("linreg", "fit", 50_000, 128),
+        Case("pca", "fit", 10_000, 128),
+        Case("pca", "fit", 50_000, 256),
+        Case("pca", "transform", 50_000, 256),
         Case("svc", "fit", 1_000, 32),
         Case("svc", "fit", 4_000, 32),
     ],
@@ -77,6 +80,8 @@ PROFILES: dict[str, list[Case]] = {
         ),
         *[Case("logreg", "fit", n, d) for n in (1_000, 10_000, 100_000, 500_000) for d in (16, 128, 1_024)],
         *[Case("linreg", "fit", n, d) for n in (2_000, 16_000, 64_000, 256_000) for d in (16, 128, 1_024)],
+        *[Case("pca", "fit", n, d) for n in (1_000, 10_000, 50_000, 100_000) for d in (64, 256, 1_024)],
+        *[Case("pca", "transform", n, d) for n in (10_000, 50_000, 100_000) for d in (64, 256, 1_024)],
         *[Case("svc", "fit", n, d) for n in (500, 2_000, 8_000, 32_000) for d in (16, 128)],
         *[Case("svc", "predict", n, d) for n in (2_000, 8_000) for d in (16, 128)],
     ],
@@ -110,6 +115,7 @@ def _runner(
     but reporting it as though it were the patched number would understate small
     problems, since it measures a path patched users never execute.
     """
+    import sklearn.decomposition
     import sklearn.linear_model
     import sklearn.neighbors
     import sklearn.svm
@@ -117,8 +123,9 @@ def _runner(
     if layer == "patched":
         from mlxlearn.patching import _estimators as mlx_linear
 
-        mlx_neighbors = mlx_svm = mlx_linear
+        mlx_decomposition = mlx_neighbors = mlx_svm = mlx_linear
     else:
+        from mlxlearn import decomposition as mlx_decomposition
         from mlxlearn import linear_model as mlx_linear
         from mlxlearn import neighbors as mlx_neighbors
         from mlxlearn import svm as mlx_svm
@@ -154,6 +161,18 @@ def _runner(
         mlx_model = mlx_linear.LinearRegression().fit(X, y)
         sk_model = sklearn.linear_model.LinearRegression().fit(X, y)
         return (lambda: mlx_model.predict(Q), lambda: sk_model.predict(Q), shape)
+
+    if case.algorithm == "pca":
+        k = min(32, case.n_features)
+        if case.operation == "fit":
+            return (
+                lambda: mlx_decomposition.PCA(n_components=k).fit(X),
+                lambda: sklearn.decomposition.PCA(n_components=k).fit(X),
+                shape,
+            )
+        mlx_model = mlx_decomposition.PCA(n_components=k).fit(X)
+        sk_model = sklearn.decomposition.PCA(n_components=k).fit(X)
+        return (lambda: mlx_model.transform(X), lambda: sk_model.transform(X), shape)
 
     if case.algorithm == "svc":
         if case.operation == "fit":

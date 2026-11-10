@@ -166,6 +166,8 @@ class Tuning:
     # kernel is excluded at every size.
     svc_min_samples: int = 2_048
     svc_min_work: int = 1_000_000  # n_samples * n_features
+    pca_min_samples: int = 256
+    pca_min_work: int = 65_536  # n_samples * n_features
 
     # ---- blocking ---------------------------------------------------------------------
     distance_block_bytes: int = 256 * 1024 * 1024

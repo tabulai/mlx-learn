@@ -25,6 +25,7 @@ from __future__ import annotations
 import pytest
 from sklearn.utils.estimator_checks import check_estimator
 
+from mlxlearn.decomposition import PCA
 from mlxlearn.linear_model import LinearRegression, LogisticRegression
 from mlxlearn.neighbors import KNeighborsClassifier, KNeighborsRegressor, NearestNeighbors
 from mlxlearn.patching import _estimators as patched
@@ -64,6 +65,7 @@ LAYER1 = [
     KNeighborsRegressor,
     LinearRegression,
     LogisticRegression,
+    PCA,
     SVC,
 ]
 LAYER2 = [
@@ -72,6 +74,7 @@ LAYER2 = [
     patched.KNeighborsRegressor,
     patched.LinearRegression,
     patched.LogisticRegression,
+    patched.PCA,
     patched.SVC,
 ]
 
