@@ -18,11 +18,15 @@ import scipy.linalg
 import scipy.sparse.linalg
 
 from .._common.arrays import to_numpy
+from .._common.preparation import cast_float32_checked
 from .._kernels.pca_input import pca_stats, prepare_pca_centered
 
 
 def ensure_f32_2d(array: np.ndarray) -> np.ndarray:
-    return np.asarray(array, dtype=np.float32, order="C")
+    """Return ``array`` as C-contiguous float32, narrowing large float64 input in parallel."""
+    if array.dtype == np.float32:
+        return np.asarray(array, dtype=np.float32, order="C")
+    return cast_float32_checked(array)[0]
 
 
 def to_mlx_f32(array: np.ndarray) -> mx.array:
@@ -262,6 +266,92 @@ def _transform_from_centered(
     return Z.astype(out_dtype, copy=False)
 
 
+#: Rows whose column sums are taken in the input dtype before the partial sums are
+#: accumulated in float64. Short float32 runs keep the column mean at float32
+#: accuracy; one float32 sweep over a million rows loses about three digits.
+_HOST_SUM_BLOCK_ROWS = 4096
+#: Rows sampled to guess, before any Gram matrix exists, whether the mean dominates.
+_HOST_SPREAD_SAMPLE_ROWS = 256
+
+
+def _host_column_sum(X: np.ndarray) -> np.ndarray:
+    """Column sums of ``X`` in float64, from short BLAS sweeps in the input dtype."""
+    n_samples, n_features = X.shape
+    ones = np.ones(min(n_samples, _HOST_SUM_BLOCK_ROWS), dtype=X.dtype)
+    column_sum = np.zeros(n_features, dtype=np.float64)
+    for start in range(0, n_samples, _HOST_SUM_BLOCK_ROWS):
+        block = X[start : start + _HOST_SUM_BLOCK_ROWS]
+        column_sum += ones[: block.shape[0]] @ block
+    return column_sum
+
+
+def _host_sum_of_squares(A: np.ndarray) -> float:
+    """Sum of squares of a C-contiguous array, accumulated in float64 without a copy."""
+    flat = A.reshape(-1)
+    total = 0.0
+    with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+        for start in range(0, flat.size, 1 << 16):
+            chunk = flat[start : start + (1 << 16)]
+            total += float(np.dot(chunk, chunk))
+    return total
+
+
+def _host_mean_and_gram(X: np.ndarray) -> tuple[np.ndarray, np.ndarray] | None:
+    """Column mean (float64) and centered Gram matrix of ``X`` on the host.
+
+    The usual route is ``X.T @ X - n * outer(mean, mean)``: it reads ``X`` twice,
+    once for the column sums and once for the symmetric rank-k update, and
+    allocates nothing the size of ``X``. It is the formulation scikit-learn's
+    ``covariance_eigh`` uses, in the input dtype, so float64 input keeps float64
+    accuracy.
+
+    That subtraction cancels the digits that carry the variance once the mean
+    dominates the spread, and the error it leaves is first order in the mean, so
+    float32 gets a tight bound and float64 a loose one. Past the bound the Gram
+    matrix is taken from an explicitly centered copy instead, whose own column
+    sums then refine the mean: sums of values near 1e4 carry an absolute error
+    that sums of their small residuals do not. A small row sample predicts which
+    route applies, so shifted data does not pay for a discarded rank-k update; the
+    exact test on the finished Gram matrix still decides.
+
+    Returns ``None`` when the Gram diagonal is not finite: ``X`` holds NaN or
+    infinity, or values whose squares overflow the dtype. The caller then
+    validates ``X`` explicitly.
+    """
+    n_samples = X.shape[0]
+    limit = 10.0 if X.dtype == np.float32 else 1e6
+    # NumPy 2.2 with Accelerate raises spurious floating-point flags from matmul on
+    # finite data; finiteness is read off the sums and the Gram diagonal instead.
+    with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+        column_sum = _host_column_sum(X)
+        if not bool(np.isfinite(column_sum).all()):
+            return None
+        mean = column_sum / n_samples
+        mean_ss = n_samples * float(np.sum(mean * mean))
+
+        step = max(1, n_samples // _HOST_SPREAD_SAMPLE_ROWS)
+        sample = X[::step].astype(np.float64) - mean
+        spread_guess = float(np.sum(sample * sample)) * (n_samples / sample.shape[0])
+        if mean_ss <= limit * max(spread_guess, 1e-12):
+            gram = X.T @ X
+            trace = float(np.sum(np.diagonal(gram), dtype=np.float64))
+            if not math.isfinite(trace):
+                return None
+            if mean_ss <= limit * max(trace - mean_ss, 1e-12):
+                gram -= (n_samples * np.outer(mean, mean)).astype(gram.dtype, copy=False)
+                return mean, gram
+
+        shift = mean.astype(X.dtype, copy=False)
+        centered = X - shift
+        residual = _host_column_sum(centered) / n_samples
+        gram = centered.T @ centered
+        if not math.isfinite(float(np.sum(np.diagonal(gram), dtype=np.float64))):
+            return None
+        gram -= (n_samples * np.outer(residual, residual)).astype(gram.dtype, copy=False)
+        mean = shift.astype(np.float64) + residual
+    return mean, gram
+
+
 def _solve_cpu_full_or_eigh(
     X: np.ndarray,
     config: PCAConfig,
@@ -269,18 +359,28 @@ def _solve_cpu_full_or_eigh(
     out_dtype: np.dtype,
     return_transformed: bool,
 ) -> PCASolution:
-    """CPU reference path for small matrices on ``full`` and ``covariance_eigh``."""
+    """Host path for ``full`` and ``covariance_eigh``, in the dtype of ``X``.
+
+    Validates finiteness itself: ``covariance_eigh`` reads it off the Gram diagonal
+    it needs anyway, and everything else scans ``X`` before centering it.
+    """
     n_samples, n_features = X.shape
-    mean = np.mean(X, axis=0, dtype=np.float64).astype(out_dtype, copy=False)
+    X_c: np.ndarray | None = None
+    gram = _host_mean_and_gram(X) if fit_svd_solver == "covariance_eigh" else None
+    if gram is None:
+        if not bool(np.isfinite(X).all()):
+            raise ValueError("Input X contains NaN or infinity.")
+        mean = np.mean(X, axis=0, dtype=np.float64).astype(out_dtype, copy=False)
+        X_c = (X - mean).astype(out_dtype, copy=False)
+    else:
+        mean = gram[0].astype(out_dtype, copy=False)
 
     if fit_svd_solver == "full":
-        X_c = (X - mean).astype(out_dtype, copy=False)
         U, S, Vt = scipy.linalg.svd(X_c, full_matrices=False)
         U, Vt = _svd_flip(U, Vt, u_based_decision=False)
         explained_variance = ((S**2) / (n_samples - 1)).astype(out_dtype, copy=False)
     else:
-        X_c = (X - mean).astype(out_dtype, copy=False)
-        cov = X_c.T @ X_c
+        cov = gram[1] if gram is not None else X_c.T @ X_c  # type: ignore[union-attr]
         w, V = scipy.linalg.eigh(cov, driver="evd")
         w = np.maximum(w, 0.0)
         S = np.sqrt(w)[::-1].astype(out_dtype, copy=False)
@@ -310,10 +410,12 @@ def _solve_cpu_full_or_eigh(
     sv_k = singular_values[:k].astype(out_dtype, copy=False)
 
     transformed = None
-    if return_transformed:
+    if return_transformed and X_c is not None:
         transformed = _transform_from_centered(
             X_c, None, Vt_k, ev_k, config.whiten, out_dtype, prefer_gpu=False
         )
+    elif return_transformed:
+        transformed = pca_transform(X, mean, Vt_k, ev_k, whiten=config.whiten, prefer_gpu=False)
 
     return PCASolution(
         components=Vt_k,
@@ -549,33 +651,121 @@ def _solve_gpu_full_or_eigh(
     )
 
 
-def _normalize_subspace_gram(
+def _gram_f64(A_mx: mx.array) -> np.ndarray:
+    """Return the small Gram matrix ``A.T @ A`` on the host, symmetrized, in float64."""
+    G = to_numpy(A_mx.T @ A_mx).astype(np.float64)
+    return 0.5 * (G + G.T)
+
+
+def _unit_scale(A_mx: mx.array) -> mx.array:
+    """Divide ``A_mx`` by its largest magnitude, lazily, on the GPU.
+
+    A scalar factor leaves the column span untouched. It keeps an unnormalized
+    power iteration from growing by ``sigma_max ** 2`` per step, and keeps the
+    Gram matrix of a float32 block, which squares its scale, from overflowing on
+    data whose singular values are merely in the thousands.
+    """
+    return A_mx / mx.maximum(mx.max(mx.abs(A_mx)), 1e-30)
+
+
+#: Cholesky QR rounds allowed before the block is handed to a host factorization.
+_CHOLESKY_QR_MAX_ROUNDS = 8
+
+
+def _orthonormalize(
     Y_mx: mx.array,
-    XtY_mx: mx.array | None,
     normalizer: Literal["QR", "LU", "none"],
-) -> tuple[mx.array, np.ndarray | None]:
-    """Orthonormalize columns of ``Y_mx`` via its tiny ``l x l`` Gram matrix."""
+    *,
+    passes: int = 1,
+    rescale: bool = True,
+) -> mx.array:
+    """Normalize the columns of ``Y_mx`` on the GPU by Cholesky QR.
+
+    ``Q = Y @ inv(R)`` is always formed explicitly, so every later product uses the
+    basis that was actually computed. One resolved pass leaves ``Q.T @ Q - I`` of
+    order ``eps * cond(Y) ** 2``, which keeps a power iteration well scaled. Two
+    bring that down to ``eps`` and are what the final range finder needs, because
+    a Rayleigh-Ritz step through a non-orthonormal basis leaks the leading
+    singular values into the trailing ones.
+
+    The ``size x size`` Gram matrix is computed in float32, so it only resolves
+    directions above a relative floor. When the smallest Cholesky pivot falls
+    under that floor, or the factorization fails, the round is repeated with the
+    floor added to the diagonal: that step is safe for any conditioning, and it
+    lifts the unresolved directions by up to ``1 / sqrt(floor)`` so a later round
+    can resolve them. Low-rank data with a noise floor, which is most real data,
+    converges in a few such rounds, each costing one small GPU Gram matrix; a
+    rank-deficient block converges too, with rounding noise completing the basis.
+    Pivots can overstate conditioning, so the last of two passes also requires the
+    block it starts from to be close to orthonormal.
+
+    Only a block that never converges, or a Gram matrix that is not finite, is
+    normalized on the host with a Householder QR (or LU, when that was requested).
+
+    The block is rescaled to unit magnitude first (see :func:`_unit_scale`), which
+    is all that ``normalizer="none"`` does. A caller that has bounded the block's
+    scale, so that its Gram matrix cannot overflow, passes ``rescale=False``.
+    """
     if normalizer == "none":
-        return Y_mx, None
-    YtY_mx = Y_mx.T @ Y_mx
-    if XtY_mx is not None:
-        mx.eval(YtY_mx, XtY_mx)
-    else:
-        mx.eval(YtY_mx)
-    G = to_numpy(YtY_mx).astype(np.float64)
-    G = 0.5 * (G + G.T)
+        return _unit_scale(Y_mx)
+    Q_mx = _unit_scale(Y_mx) if rescale else Y_mx
+    n_rows = max(int(Y_mx.shape[0]), 1)
+    relative_floor = max(1e-5, 8.0 * float(np.finfo(np.float32).eps) * math.sqrt(n_rows))
+    clean = 0
     try:
-        R = scipy.linalg.cholesky(G, lower=False)
-        R_inv = scipy.linalg.solve_triangular(R, np.eye(G.shape[0], dtype=np.float64), lower=False)
-        return Y_mx @ to_mlx_f32(R_inv), R_inv
+        for _ in range(_CHOLESKY_QR_MAX_ROUNDS):
+            G = _gram_f64(Q_mx)
+            top = float(np.max(np.diagonal(G)))
+            if not math.isfinite(float(np.sum(G))) or not top > 0.0:
+                break
+            identity = np.eye(G.shape[0], dtype=np.float64)
+            if clean and not float(np.max(np.abs(G - identity))) < 0.5:
+                clean = 0
+            floor = relative_floor * top
+            try:
+                R = scipy.linalg.cholesky(G, lower=False, check_finite=False)
+                resolved = float(np.min(np.diagonal(R))) ** 2 >= floor
+            except scipy.linalg.LinAlgError:
+                resolved = False
+            if not resolved:
+                R = scipy.linalg.cholesky(G + floor * identity, lower=False, check_finite=False)
+            R_inv = scipy.linalg.solve_triangular(R, identity, lower=False, check_finite=False)
+            Q_mx = Q_mx @ to_mlx_f32(R_inv)
+            if resolved:
+                clean += 1
+                if clean >= passes:
+                    return Q_mx
     except scipy.linalg.LinAlgError:
-        # Rank-deficient subspace fallback: standard QR / LU on CPU.
-        Y_np = to_numpy(Y_mx)
-        if normalizer == "LU":
-            Q_np, _ = scipy.linalg.lu(Y_np, permute_l=True)
-        else:
-            Q_np, _ = scipy.linalg.qr(Y_np, mode="economic")
-        return to_mlx_f32(Q_np), None
+        pass
+    Y_np = to_numpy(Y_mx)
+    if not bool(np.isfinite(Y_np).all()):
+        raise ValueError("The randomized range finder overflowed float32.")
+    if normalizer == "LU":
+        Q_np, _ = scipy.linalg.lu(Y_np, permute_l=True)
+    else:
+        Q_np, _ = scipy.linalg.qr(Y_np, mode="economic")
+    return to_mlx_f32(Q_np)
+
+
+def _host_normalize(Z: np.ndarray, normalizer: Literal["QR", "LU"]) -> np.ndarray:
+    """Normalize the columns of a small float64 host block between power iterations.
+
+    The Gram route only needs a well-conditioned basis here, not an exactly
+    orthonormal one, because its next step renormalizes through ``Q.T @ G @ Q``.
+    A Cholesky QR in float64 delivers that for a fraction of a Householder QR,
+    which was most of the route's run time at a few thousand columns; Householder
+    remains the fallback when the block is too ill-conditioned to factor.
+    """
+    lapack = {"check_finite": False, "overwrite_a": True}
+    if normalizer == "LU":
+        return scipy.linalg.lu(Z, permute_l=True, **lapack)[0]
+    with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+        ZtZ = Z.T @ Z
+    try:
+        R = scipy.linalg.cholesky(0.5 * (ZtZ + ZtZ.T), lower=False)
+        return scipy.linalg.solve_triangular(R.T, Z.T, lower=True, check_finite=False).T
+    except scipy.linalg.LinAlgError:
+        return scipy.linalg.qr(Z, mode="economic", **lapack)[0]
 
 
 def _solve_randomized(
@@ -596,19 +786,25 @@ def _solve_randomized(
         7 if config.iterated_power == "auto" and k < 0.1 * min(n_samples, n_features)
         else (4 if config.iterated_power == "auto" else int(config.iterated_power))
     )
+    on_host = not use_gpu or X_mx is None or mean_mx is None or col_ss_mx is None
     normalizer: Literal["QR", "LU", "none"]
     if config.power_iteration_normalizer == "auto":
-        normalizer = "none" if n_iter <= 2 else "QR"
+        # The host mirrors scikit-learn, whose automatic normalizer is the cheaper
+        # LU. On the GPU both spellings are a Cholesky QR through a small Gram matrix.
+        normalizer = "none" if n_iter <= 2 else ("LU" if on_host else "QR")
     else:
         normalizer = config.power_iteration_normalizer
 
     rng = np.random.RandomState(config.seed)
 
-    if not use_gpu or X_mx is None or mean_mx is None or col_ss_mx is None:
+    if on_host:
         mean = np.mean(X_np, axis=0, dtype=np.float64).astype(out_dtype, copy=False)
-        X_c = (X_np - mean).astype(out_dtype, copy=False)
-        total_var = float(np.sum(X_c.astype(np.float64) ** 2)) / (n_samples - 1)
+        X_c = np.ascontiguousarray((X_np - mean).astype(out_dtype, copy=False))
+        total_var = _host_sum_of_squares(X_c) / (n_samples - 1)
 
+        # X was validated finite before this point, and every factorization below
+        # owns its freshly computed argument.
+        lapack = {"check_finite": False, "overwrite_a": True}
         transpose = n_samples < n_features
         M = X_c.T if transpose else X_c
         Q = rng.normal(size=(M.shape[1], n_random)).astype(out_dtype, copy=False)
@@ -617,14 +813,14 @@ def _solve_randomized(
                 Q = M @ Q
                 Q = M.T @ Q
             elif normalizer == "LU":
-                Q, _ = scipy.linalg.lu(M @ Q, permute_l=True)
-                Q, _ = scipy.linalg.lu(M.T @ Q, permute_l=True)
+                Q, _ = scipy.linalg.lu(M @ Q, permute_l=True, **lapack)
+                Q, _ = scipy.linalg.lu(M.T @ Q, permute_l=True, **lapack)
             else:
-                Q, _ = scipy.linalg.qr(M @ Q, mode="economic")
-                Q, _ = scipy.linalg.qr(M.T @ Q, mode="economic")
-        Q, _ = scipy.linalg.qr(M @ Q, mode="economic")
+                Q, _ = scipy.linalg.qr(M @ Q, mode="economic", **lapack)
+                Q, _ = scipy.linalg.qr(M.T @ Q, mode="economic", **lapack)
+        Q, _ = scipy.linalg.qr(M @ Q, mode="economic", **lapack)
         B = Q.T @ M
-        Uhat, S, Vt = scipy.linalg.svd(B, full_matrices=False)
+        Uhat, S, Vt = scipy.linalg.svd(B, full_matrices=False, check_finite=False)
         U = Q @ Uhat
         if transpose:
             U, Vt = Vt.T, U.T
@@ -707,10 +903,9 @@ def _solve_randomized(
             except scipy.linalg.LinAlgError:
                 gram_ok = False
                 break
-            if normalizer == "LU":
-                Q_np, _ = scipy.linalg.lu(Z, permute_l=True)
-            else:
-                Q_np, _ = scipy.linalg.qr(Z, mode="economic")
+            # Back to float32, so the next product with G is one single-precision
+            # matrix multiply instead of a float64 one on a converted copy of G.
+            Q_np = np.ascontiguousarray(_host_normalize(Z, normalizer), dtype=np.float32)
 
         if gram_ok:
             GQ = G_np @ Q_np
@@ -784,51 +979,35 @@ def _solve_randomized(
             except scipy.linalg.LinAlgError:
                 pass
 
-    # Fused direct GPU subspace iteration:
-    # For each power iteration, compute Y = M @ Q and MtY = M.T @ Y on the GPU,
-    # and normalize using the tiny (size x size) Gram matrices Y.T @ Y and MtY.T @ MtY.
+    # Direct GPU subspace iteration. Each half step multiplies by ``M`` or ``M.T`` and
+    # then normalizes through the tiny ``size x size`` Gram matrix, forming the
+    # normalized basis explicitly before the next product. Building ``M.T @ Q`` as
+    # ``(M.T @ Y) @ inv(R)`` instead would cost the same two passes over ``M`` but
+    # cancels catastrophically in float32 once ``Y`` is ill-conditioned.
+    #
+    # A block's Gram matrix is bounded by the squared norm of the block. Normalized
+    # iterates have unit scale and the Gaussian start has spectral norm about
+    # sqrt(m_cols) + sqrt(size), so with two orders of margin the Gram matrices
+    # cannot overflow float32 unless the data's own sum of squares is enormous;
+    # only then, or when the iteration is not normalized, are blocks rescaled.
+    total_ss = total_var * (n_samples - 1)
+    rescale = normalizer == "none" or not (
+        400.0 * m_cols * size * total_ss < float(np.finfo(np.float32).max)
+    )
     Q_mx = to_mlx_f32(Q_init)
     for _ in range(n_iter):
-        Y_mx = M_mx @ Q_mx
         if normalizer == "none":
-            Q_mx = M_mx.T @ Y_mx
+            Q_mx = _unit_scale(M_mx.T @ _unit_scale(M_mx @ Q_mx))
             mx.eval(Q_mx)
             continue
-        MtY_mx = M_mx.T @ Y_mx
-        YtY_mx = Y_mx.T @ Y_mx
-        MtYtMtY_mx = MtY_mx.T @ MtY_mx
-        mx.eval(YtY_mx, MtYtMtY_mx, MtY_mx)
-        YtY = to_numpy(YtY_mx).astype(np.float64)
-        YtY = 0.5 * (YtY + YtY.T)
-        MtYtMtY = to_numpy(MtYtMtY_mx).astype(np.float64)
-        MtYtMtY = 0.5 * (MtYtMtY + MtYtMtY.T)
-        try:
-            if normalizer == "QR":
-                Ry = scipy.linalg.cholesky(YtY, lower=False)
-                Ry_inv = scipy.linalg.solve_triangular(
-                    Ry, np.eye(YtY.shape[0], dtype=np.float64), lower=False
-                )
-                ZtZ = Ry_inv.T @ MtYtMtY @ Ry_inv
-                ZtZ = 0.5 * (ZtZ + ZtZ.T)
-                Rz = scipy.linalg.cholesky(ZtZ, lower=False)
-                comb = scipy.linalg.solve_triangular(Rz.T, Ry_inv.T, lower=True).T
-                Q_mx = MtY_mx @ to_mlx_f32(comb.astype(np.float32))
-                mx.eval(Q_mx)
-                continue
-        except scipy.linalg.LinAlgError:
-            pass
-        # Fallback when LU normalizer is requested or subspace is rank-deficient
-        Q_y_mx, _ = _normalize_subspace_gram(Y_mx, None, normalizer)
-        Z_mx = M_mx.T @ Q_y_mx
-        Q_mx, _ = _normalize_subspace_gram(Z_mx, None, normalizer)
-        mx.eval(Q_mx)
+        Q_mx = _orthonormalize(
+            M_mx.T @ _orthonormalize(M_mx @ Q_mx, normalizer, rescale=rescale),
+            normalizer,
+            rescale=rescale,
+        )
 
-    Y_mx = M_mx @ Q_mx
-    Q_y_mx, R_inv = _normalize_subspace_gram(Y_mx, None, "QR")
-    if R_inv is not None:
-        B_T_mx = (M_mx.T @ Y_mx) @ to_mlx_f32(R_inv.astype(np.float32))
-    else:
-        B_T_mx = M_mx.T @ Q_y_mx
+    Q_y_mx = _orthonormalize(M_mx @ Q_mx, "QR", passes=2, rescale=rescale)
+    B_T_mx = M_mx.T @ Q_y_mx
     mx.eval(B_T_mx, Q_y_mx)
     B = to_numpy(B_T_mx).T
     Uhat, S, Vt = scipy.linalg.svd(B, full_matrices=False)
@@ -968,8 +1147,13 @@ def solve_pca(
     config: PCAConfig,
     *,
     return_transformed: bool = False,
+    X_f32: np.ndarray | None = None,
 ) -> PCASolution:
-    """Fit PCA on a dense 2D array ``X`` of dtype ``float64`` or ``float32``."""
+    """Fit PCA on a dense 2D array ``X`` of dtype ``float64`` or ``float32``.
+
+    ``X_f32`` is an optional C-contiguous float32 copy of ``X`` that the caller has
+    already made, so the GPU path does not narrow the input a second time.
+    """
     n_samples, n_features = X.shape
     out_dtype = np.dtype(np.float32) if X.dtype == np.float32 else np.dtype(np.float64)
     fit_svd_solver = choose_svd_solver(
@@ -985,11 +1169,11 @@ def solve_pca(
         and n_samples * n_features >= 16_384
     )
 
-    X_f32: np.ndarray | None = None
+    borrowed: np.ndarray | None = None
     try:
         if use_gpu:
-            X_f32 = ensure_f32_2d(X)
-            X_mx = borrow_mlx_f32(X_f32)
+            borrowed = ensure_f32_2d(X) if X_f32 is None else X_f32
+            X_mx = borrow_mlx_f32(borrowed)
             mean_mx, col_ss_mx, finite_mx = pca_stats(X_mx)
             mx.eval(mean_mx, col_ss_mx, finite_mx)
             if not bool(finite_mx.item()):
@@ -999,7 +1183,9 @@ def solve_pca(
             if not bool(np.all(np.isfinite(col_ss_np))):
                 use_gpu = False
         else:
-            if not bool(np.isfinite(X).all()):
+            # The host full/covariance solve validates finiteness itself; the
+            # covariance route does it without an extra pass over X.
+            if fit_svd_solver in ("randomized", "arpack") and not bool(np.isfinite(X).all()):
                 raise ValueError("Input X contains NaN or infinity.")
             X_mx = None
             mean_mx = None
@@ -1044,7 +1230,7 @@ def solve_pca(
             return_transformed,
         )
     finally:
-        if X_f32 is not None:
+        if borrowed is not None:
             mx.synchronize()
 
 
@@ -1059,8 +1245,12 @@ def pca_transform(
     device_mean: mx.array | None = None,
     device_components: mx.array | None = None,
     X_mx: mx.array | None = None,
+    X_f32: np.ndarray | None = None,
 ) -> np.ndarray:
-    """Project ``X`` onto the fitted principal components."""
+    """Project ``X`` onto the fitted principal components.
+
+    ``X_f32`` is an optional float32 copy of ``X`` the caller has already made.
+    """
     out_dtype = np.result_type(X.dtype, mean.dtype)
     n_samples = X.shape[0]
     k = components.shape[0]
@@ -1068,11 +1258,11 @@ def pca_transform(
         return np.zeros((n_samples, 0), dtype=out_dtype)
 
     if prefer_gpu and (X_mx is not None or X.size >= 65_536):
-        X_f32: np.ndarray | None = None
+        borrowed: np.ndarray | None = None
         try:
             if X_mx is None:
-                X_f32 = ensure_f32_2d(X)
-                X_mx = borrow_mlx_f32(X_f32)
+                borrowed = ensure_f32_2d(X) if X_f32 is None else X_f32
+                X_mx = borrow_mlx_f32(borrowed)
             if not whiten and device_components is not None and device_mean is not None:
                 V_mx = device_components.T
                 bias_mx = -(device_mean @ V_mx)
@@ -1092,16 +1282,19 @@ def pca_transform(
             mx.eval(Z_mx)
             return to_numpy(Z_mx).astype(out_dtype, copy=False)
         finally:
-            if X_f32 is not None:
+            if borrowed is not None:
                 mx.synchronize()
 
-    X_transformed = (X - mean) @ components.T
+    # Project first and shift the k-wide result, as scikit-learn does, instead of
+    # centering a copy of X.
+    X_transformed = np.asarray(X @ components.T, dtype=out_dtype)
+    X_transformed -= (mean @ components.T).astype(out_dtype, copy=False)
     if whiten:
         scale = np.sqrt(explained_variance)
         min_scale = np.finfo(scale.dtype).eps
         scale = np.where(scale < min_scale, min_scale, scale)
-        X_transformed = X_transformed / scale
-    return X_transformed.astype(out_dtype, copy=False)
+        X_transformed /= scale.astype(out_dtype, copy=False)
+    return X_transformed
 
 
 def pca_inverse_transform(
@@ -1114,6 +1307,7 @@ def pca_inverse_transform(
     prefer_gpu: bool = True,
     device_mean: mx.array | None = None,
     device_components: mx.array | None = None,
+    X_f32: np.ndarray | None = None,
 ) -> np.ndarray:
     """Transform data from the latent space back to the original feature space."""
     out_dtype = np.result_type(X.dtype, mean.dtype)
@@ -1127,7 +1321,7 @@ def pca_inverse_transform(
         return np.broadcast_to(mean.astype(out_dtype, copy=False), (n_samples, n_features)).copy()
 
     if prefer_gpu and n_samples * n_features >= 65_536:
-        X_f32 = ensure_f32_2d(X)
+        X_f32 = ensure_f32_2d(X) if X_f32 is None else X_f32
         try:
             X_mx = borrow_mlx_f32(X_f32)
             if not whiten and device_components is not None and device_mean is not None:
@@ -1159,6 +1353,7 @@ def pca_score_samples(
     noise_variance: float | np.floating,
     *,
     prefer_gpu: bool = True,
+    X_f32: np.ndarray | None = None,
 ) -> np.ndarray:
     """Compute the log-likelihood of each sample in ``O(n d k)`` via the Woodbury identity.
 
@@ -1174,7 +1369,7 @@ def pca_score_samples(
     ev = np.maximum(explained_variance.astype(np.float64, copy=False), nv)
 
     if prefer_gpu and n_samples * n_features >= 65_536:
-        X_f32 = ensure_f32_2d(X)
+        X_f32 = ensure_f32_2d(X) if X_f32 is None else X_f32
         try:
             X_mx = borrow_mlx_f32(X_f32)
             mean_mx = to_mlx_f32(mean.astype(np.float32, copy=False))
