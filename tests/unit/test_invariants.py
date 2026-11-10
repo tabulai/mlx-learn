@@ -17,6 +17,7 @@ from sklearn.base import clone
 from sklearn.datasets import make_classification
 
 from mlxlearn._common.config import tuning_context
+from mlxlearn.decomposition import PCA
 from mlxlearn.linear_model import LogisticRegression
 from mlxlearn.neighbors import (
     KNeighborsClassifier,
@@ -35,7 +36,10 @@ SUPERVISED = [
     (LogisticRegression, {}),
     (SVC, {}),
 ]
-ALL = SUPERVISED + [(NearestNeighbors, {"n_neighbors": 5, "radius": 50.0})]
+ALL = SUPERVISED + [
+    (NearestNeighbors, {"n_neighbors": 5, "radius": 50.0}),
+    (PCA, {"n_components": 6}),
+]
 
 
 @pytest.fixture(scope="module")
@@ -53,6 +57,8 @@ def _fit(cls, kwargs, X, y, backend="mlx"):
 def _output(model, X):
     if hasattr(model, "predict"):
         return model.predict(X)
+    if hasattr(model, "transform"):
+        return model.transform(X)
     return model.kneighbors(X)[1]
 
 

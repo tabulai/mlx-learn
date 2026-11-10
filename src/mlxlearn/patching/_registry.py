@@ -84,6 +84,7 @@ ESTIMATOR_REGISTRY: tuple[EstimatorSpec, ...] = (
         "RadiusNeighborsRegressor",
     ),
     _spec("sklearn.linear_model", "LogisticRegression", "mlxlearn.patching._estimators", "LogisticRegression"),
+    _spec("sklearn.decomposition", "PCA", "mlxlearn.patching._estimators", "PCA"),
     _spec("sklearn.svm", "SVC", "mlxlearn.patching._estimators", "SVC"),
 )
 
