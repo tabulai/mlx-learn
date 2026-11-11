@@ -460,8 +460,10 @@ def test_pca_host_mean_and_gram_guards():
         X_bad = X[:1000].copy()
         X_bad[17, 1] = bad
         assert _host_mean_and_gram(X_bad) is None
-    # Squares that overflow the dtype cannot be validated from the Gram diagonal.
-    assert _host_mean_and_gram(np.full((50, 2), 1e30, dtype=np.float32)) is None
+    # Alternating signs keep the centered values large enough to overflow the Gram.
+    X_overflow = np.full((50, 2), 1e30, dtype=np.float32)
+    X_overflow[::2] *= -1
+    assert _host_mean_and_gram(X_overflow) is None
 
     # A mean that dominates the spread is centered explicitly, not cancelled away.
     shifted = (X[:20_000].astype(np.float64) + 1e4).astype(np.float32)
