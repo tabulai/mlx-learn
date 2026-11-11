@@ -8,6 +8,31 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- PCA routing now follows a measured crossover per solver instead of one shape
+  floor. `covariance_eigh` reaches the GPU from 8·10⁶ elements or 512 features,
+  `randomized` from 8·10⁶ elements, and `full` and `arpack` are served on the
+  host at every size; below those floors patched estimators hand the fit to
+  scikit-learn and direct ones use the host path. The previous floor (256 samples
+  or 65 536 elements) sent fits to the GPU that ran at 0.07×–0.9× scikit-learn.
+  See [the PCA crossover study](docs/benchmarks.md#pca--the-solver-decides) and
+  `python -m benchmarks.pca_crossover`.
+- PCA narrows float64 input for the GPU with one parallel cast that doubles as
+  the float32 range check, instead of two full scans of the float64 array and a
+  serial cast. Finite overflow is still a capability error and NaN/Inf still
+  raise scikit-learn's message. Large float64 fits and `transform` calls take
+  about half the time.
+- PCA's host path, which direct estimators use below the crossover, now solves
+  `covariance_eigh` from `XᵀX − n·mean·meanᵀ` in the input dtype without a
+  centered copy (reading finiteness off the Gram diagonal and centering
+  explicitly only when the mean dominates), uses scikit-learn's LU normalizer for
+  `randomized`, and projects before shifting in `transform`. It measured
+  0.9×–2.5× scikit-learn's speed, the low end on fits under 0.2 ms, and keeps
+  float64 accuracy for float64 input.
+- The randomized solver's Gram route keeps its host iterations in float32 and
+  normalizes them by Cholesky QR; a Householder QR in float64 had been most of
+  its run time at a few thousand columns (8 000 × 2 048, 128 components: 107 ms
+  to 40 ms).
+
 - SVC now solves eligible subproblems with native hierarchical working sets,
   batches GPU kernel-row requests within the configured cache budget, and
   certifies convergence using a reconstructed full gradient. The native pair
@@ -305,6 +330,20 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- PCA's randomized solver no longer loses float32 accuracy on spectra that fall
+  quickly. The GPU iteration formed `Mᵀ·Q` as `(Mᵀ·Y)·R⁻¹`, which cancels
+  catastrophically once `Y` is ill-conditioned, and orthonormalized with a single
+  Cholesky QR pass. On a 600 × 4 000 input whose singular values drop a decade
+  every three components, `components_` were orthonormal only to 0.59 and
+  resolvable singular values were wrong by up to 320%. The basis is now formed
+  explicitly, the final range finder takes two passes, and blocks float32 cannot
+  resolve are retried with a diagonal shift on the GPU rather than factored on
+  the host; results match an exact float64 reference to float32 accuracy.
+- PCA's randomized solver no longer raises "array must not contain infs or NaNs"
+  on finite float32 data when `iterated_power <= 2`. The unnormalized power
+  iteration grew by `σ_max²` per step and its Gram matrix squared that again,
+  overflowing float32 for singular values in the thousands. Blocks are rescaled
+  by their largest magnitude, which leaves the subspace unchanged.
 - The L-BFGS curvature floor is relative to the pair (`sᵀy > min_curvature·yᵀy`,
   in the native solver's metric) in the Metal direction kernel, the native
   command loop and both Python solvers. The former `max(yᵀy, 1)` form was an

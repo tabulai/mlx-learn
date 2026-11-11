@@ -158,8 +158,22 @@ class Tuning:
     # kernel is excluded at every size.
     svc_min_samples: int = 2_048
     svc_min_work: int = 1_000_000  # n_samples * n_features
-    pca_min_samples: int = 256
-    pca_min_work: int = 65_536  # n_samples * n_features
+    #
+    # PCA's floor depends on the solver (see PCA._below_crossover and
+    # docs/benchmarks.md). Measured against scikit-learn across float32/float64,
+    # centered, shifted and low-rank data, n_components, and fit/fit_transform:
+    #
+    # * covariance_eigh reads X twice and then works on a d x d matrix, so the host
+    #   BLAS wins narrow problems. Over 416 configurations the GPU path was
+    #   0.26x-1.07x below 8e6 elements and 1.09x or better from there, and 1.19x or
+    #   better at every size from 512 features up. Both conditions must hold for a
+    #   fit to be handed away.
+    # * randomized pays two GPU round trips per power iteration. Over 912
+    #   configurations it was 0.07x-1.06x below 8e6 elements.
+    # * full and arpack are never routed to the GPU; they have no floor here.
+    pca_covariance_min_work: int = 8_000_000  # n_samples * n_features
+    pca_covariance_min_features: int = 512
+    pca_randomized_min_work: int = 8_000_000  # n_samples * n_features
 
     # ---- blocking ---------------------------------------------------------------------
     distance_block_bytes: int = 256 * 1024 * 1024
