@@ -38,7 +38,7 @@ stock inheritance. See the [compatibility details](docs/support_matrix.md).
 
 ## Status
 
-**`0.1.0a2` — alpha.** The API may change. See [CHANGELOG.md](CHANGELOG.md).
+**`0.1.2` — alpha.** The API may change. See [CHANGELOG.md](CHANGELOG.md).
 
 | Estimator | Status |
 |---|---|
@@ -47,7 +47,7 @@ stock inheritance. See the [compatibility details](docs/support_matrix.md).
 | `mlxlearn.neighbors.KNeighborsRegressor` | 0.1.0 |
 | `mlxlearn.linear_model.LogisticRegression` | 0.1.0 |
 | `mlxlearn.svm.SVC` (exact) | 0.1.0 |
-| `mlxlearn.decomposition.PCA` | development branch, unreleased |
+| `mlxlearn.decomposition.PCA` | 0.1.2 |
 | `LinearRegression`, `Ridge`, `KMeans`, `DBSCAN`, `TSNE` | planned, 0.2.x |
 | `SVR`, `NuSVR`, `NuSVC` | deferred — will not ship until they implement the true objective |
 | tree ensembles | out of scope |
@@ -67,10 +67,11 @@ CI tests only valid pairs — see [`docs/support_matrix.md`](docs/support_matrix
 pip install mlx-learn
 ```
 
-The released `0.1.0a2` wheel is pure Python. Development builds on Apple silicon
-can include optional Metal and C++ CPU extensions. The CPU extension handles
-small KNN workloads and is compiled at build time; fitting or querying never
-invokes the C++ compiler. A compatible wheel includes the extensions built into it.
+Version `0.1.2` provides Apple silicon wheels for Python 3.10–3.13 with Metal
+and C++ CPU extensions. Source builds can also include these optional extensions.
+The KNN CPU extension handles small workloads and is compiled at build time;
+fitting or querying never invokes the C++ compiler. A compatible wheel includes
+the extensions built into it.
 Without a compiler or CPU extension, the certified portable CPU implementation
 remains available with the same ordering contract; native-build benchmark timings
 do not describe that fallback's performance.

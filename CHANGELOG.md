@@ -6,38 +6,62 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.2] — 2026-11-11
+
+### Added
+
+- `mlxlearn.decomposition.PCA`, also available through `patch_sklearn()`, with
+  dense covariance and randomized GPU solvers, host `full` and `arpack` solvers,
+  whitening, inverse transforms, and probabilistic scores.
+- Regression coverage for shifted inputs, per-feature covariance cancellation,
+  whitening, randomized component orthogonality and overflow, low residual
+  variance, batch-independent scores, and mixed-dtype or strided transforms.
+
 ### Changed
 
-- PCA selects the transform backend before preparing input, avoiding an unused
-  float32 cast when a float64 projection runs on the host. Small float64 batches
-  use the host, and the host centers first when needed for precision. A mixed
-  float32-fit/float64-query projection computes its mean offset in float64. The
-  [image and million-row rerun](docs/benchmarks.md#pca-million-row-and-image-rerun)
-  records fit, train-transform and query timings, including slower short queries.
-- PCA routing now follows a measured crossover per solver instead of one shape
-  floor. `covariance_eigh` reaches the GPU from 8·10⁶ elements or 512 features,
-  `randomized` from 8·10⁶ elements, and `full` and `arpack` are served on the
-  host at every size; below those floors patched estimators hand the fit to
-  scikit-learn and direct ones use the host path. The previous floor (256 samples
-  or 65 536 elements) sent fits to the GPU that ran at 0.07×–0.9× scikit-learn.
-  See [the PCA crossover study](docs/benchmarks.md#pca--the-solver-decides) and
-  `python -m benchmarks.pca_crossover`.
-- PCA narrows float64 input for the GPU with one parallel cast that doubles as
-  the float32 range check, instead of two full scans of the float64 array and a
-  serial cast. Finite overflow is still a capability error and NaN/Inf still
-  raise scikit-learn's message. Large float64 fits and `transform` calls take
-  about half the time.
-- PCA's host path, which direct estimators use below the crossover, now solves
-  `covariance_eigh` from `XᵀX − n·mean·meanᵀ` in the input dtype without a
-  centered copy (reading finiteness off the Gram diagonal and centering
-  explicitly only when the mean dominates), uses scikit-learn's LU normalizer for
-  `randomized`, and projects before shifting in `transform`. It measured
-  0.9×–2.5× scikit-learn's speed, the low end on fits under 0.2 ms, and keeps
-  float64 accuracy for float64 input.
-- The randomized solver's Gram route keeps its host iterations in float32 and
-  normalizes them by Cholesky QR; a Householder QR in float64 had been most of
-  its run time at a few thousand columns (8 000 × 2 048, 128 components: 107 ms
-  to 40 ms).
+- PCA routes each solver by its measured crossover: `covariance_eigh` reaches
+  the GPU from 8·10⁶ elements or 512 features, `randomized` from 8·10⁶ elements,
+  while `full` and `arpack` use the host. Below those floors, patched estimators
+  delegate fits to scikit-learn and direct estimators use the host path. See the
+  [crossover study](docs/benchmarks.md#pca--the-solver-decides).
+- Float64 PCA input uses a parallel narrowing cast with a combined range check
+  for GPU work. Transforms select their backend before preparing input, avoiding
+  unused float32 casts on host projections. Small float64 batches use the host;
+  projection centers first when necessary to preserve precision.
+- High-component, low-rank randomized PCA tries a host randomized solve when the
+  GPU Gram iteration fails its numerical checks, using a full float64 SVD only
+  when the randomized result also fails validation. This removes the unnecessary
+  full-SVD slowdown while retaining the accuracy fallback.
+
+### Fixed
+
+- Large offsets no longer erase float64 variation during narrowing. Covariance
+  centering guards check every feature, and shifted whitening agrees between
+  `fit_transform` and `transform` on both CPU and GPU paths.
+- Randomized PCA preserves component orthogonality and resolvable singular values
+  on rapidly decaying spectra, rescales power iterations to prevent overflow,
+  and computes small residual variance without catastrophic cancellation.
+- Probabilistic PCA scores remain consistent across batch sizes when fitted
+  noise variance is small.
+- Mixed float32-fit/float64-query projections compute the mean offset in float64.
+  Tiny query variations, strided arrays, original-input range checks, and NaN/Inf
+  validation remain covered by regression tests.
+
+### Measured
+
+- Reran 24 MNIST-family configurations, 18 earlier synthetic cases, and 12 scaling
+  cases through one million rows. With float64 input and 32 components,
+  million-row fits at 256 and 1,024 features measured **5.24×** and **12.36×**
+  faster than scikit-learn; full-training transforms measured **2.42×** and
+  **1.62×** faster. Short-query results varied with the measurement sequence:
+  the 1,024-feature float64 query took 13.35 ms versus scikit-learn's 3.27 ms
+  immediately after the full-training transform, and 2.10 ms versus 2.76 ms
+  in a separate query-only run after fitting. See the
+  [complete results, limitations, and reproduction commands](docs/benchmarks.md#pca-million-row-and-image-rerun).
+
+## [0.1.1] — 2026-11-02
+
+### Changed
 
 - SVC now solves eligible subproblems with native hierarchical working sets,
   batches GPU kernel-row requests within the configured cache budget, and
@@ -336,20 +360,6 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
-- PCA's randomized solver no longer loses float32 accuracy on spectra that fall
-  quickly. The GPU iteration formed `Mᵀ·Q` as `(Mᵀ·Y)·R⁻¹`, which cancels
-  catastrophically once `Y` is ill-conditioned, and orthonormalized with a single
-  Cholesky QR pass. On a 600 × 4 000 input whose singular values drop a decade
-  every three components, `components_` were orthonormal only to 0.59 and
-  resolvable singular values were wrong by up to 320%. The basis is now formed
-  explicitly, the final range finder takes two passes, and blocks float32 cannot
-  resolve are retried with a diagonal shift on the GPU rather than factored on
-  the host; results match an exact float64 reference to float32 accuracy.
-- PCA's randomized solver no longer raises "array must not contain infs or NaNs"
-  on finite float32 data when `iterated_power <= 2`. The unnormalized power
-  iteration grew by `σ_max²` per step and its Gram matrix squared that again,
-  overflowing float32 for singular values in the thousands. Blocks are rescaled
-  by their largest magnitude, which leaves the subspace unchanged.
 - The L-BFGS curvature floor is relative to the pair (`sᵀy > min_curvature·yᵀy`,
   in the native solver's metric) in the Metal direction kernel, the native
   command loop and both Python solvers. The former `max(yᵀy, 1)` form was an
@@ -554,6 +564,8 @@ Each of these is now covered by a regression test:
   shape, making `fit` a non-pure function of its arguments.
 - `except Exception:` around the accelerated path, rerunning silently on scikit-learn.
 
-[Unreleased]: https://github.com/tabulai/mlx-learn/compare/v0.1.0a2...HEAD
+[Unreleased]: https://github.com/tabulai/mlx-learn/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/tabulai/mlx-learn/compare/v0.1.1...v0.1.2
+[0.1.1]: https://github.com/tabulai/mlx-learn/compare/v0.1.0a2...v0.1.1
 [0.1.0a2]: https://github.com/tabulai/mlx-learn/compare/v0.1.0a1...v0.1.0a2
 [0.1.0a1]: https://github.com/tabulai/mlx-learn/releases/tag/v0.1.0a1
