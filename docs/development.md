@@ -155,8 +155,10 @@ sides equally rather than whichever ran second.
 1. Every gate green; `python -m benchmarks.run --profile full` re-run and
    `docs/benchmarks.md` refreshed.
 2. `CHANGELOG.md` updated.
-3. Version bumped in `pyproject.toml`.
+3. Version bumped in `pyproject.toml` and `src/mlxlearn/__init__.py`, with release
+   status updated in the README and support matrix. Merge the release preparation
+   into `main` after CI passes, so the published version is retained in development history.
 4. Tag `vX.Y.Z`. The release workflow builds, verifies that the tag matches the package
-   version and that the Apple wheel contains the stable-ABI Metal extension, and publishes through PyPI Trusted
+   version, imports the installed wheel, and checks all native extensions before publishing through PyPI Trusted
    Publishing from a `pypi` environment that requires manual approval. No API token is
    stored in this repository, and a tag push alone cannot publish.

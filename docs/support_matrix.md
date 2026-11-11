@@ -50,7 +50,7 @@ now covers them against whichever version is installed rather than pinning the p
 resolver that quietly picks an older wheel fails loudly rather than producing subtly
 different numerics.
 
-Development is on MLX 0.31.2.
+The latest release benchmarks use MLX 0.32.4.
 
 ## NumPy
 
@@ -65,7 +65,7 @@ Development is on MLX 0.31.2.
 | `neighbors.KNeighborsRegressor` | 0.1.0 | as above | as above |
 | `linear_model.LogisticRegression` | 0.1.0 | L-BFGS, L2 / unpenalized | `l1`/`elasticnet`, non-`lbfgs` solvers, `dual=True`, sparse, `warm_start` |
 | `svm.SVC` | 0.1.0 | exact SMO, linear/poly/rbf/sigmoid | `kernel="precomputed"`, callable kernels, `probability=True`, sparse |
-| `decomposition.PCA` | development, unreleased | dense covariance and randomized PCA, CPU/GPU projection | sparse input, values outside float32 range |
+| `decomposition.PCA` | 0.1.2 | dense covariance and randomized PCA, CPU/GPU projection | sparse input, values outside float32 range |
 
 `radius_neighbors` and `radius_neighbors_graph` delegate lazily to scikit-learn and run
 unaccelerated on the CPU in float32. Correct, but not fast — stated here rather than left
