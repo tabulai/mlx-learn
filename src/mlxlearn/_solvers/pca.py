@@ -286,13 +286,19 @@ def _host_column_sum(X: np.ndarray) -> np.ndarray:
 
 
 def _host_sum_of_squares(A: np.ndarray) -> float:
-    """Sum of squares of a C-contiguous array, accumulated in float64 without a copy."""
+    """Sum of squares with float64 accumulation and float32 dot products when safe."""
     flat = A.reshape(-1)
     total = 0.0
+    narrow = flat.dtype == np.float32
+    min_normal = float(np.finfo(np.float32).tiny)
     with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
         for start in range(0, flat.size, 1 << 16):
             chunk = flat[start : start + (1 << 16)]
-            total += float(np.dot(chunk, chunk))
+            subtotal = float(np.dot(chunk, chunk))
+            if narrow and (not math.isfinite(subtotal) or subtotal < min_normal):
+                wide_chunk = chunk.astype(np.float64)
+                subtotal = float(np.dot(wide_chunk, wide_chunk))
+            total += subtotal
     return total
 
 
@@ -305,9 +311,9 @@ def _host_mean_and_gram(X: np.ndarray) -> tuple[np.ndarray, np.ndarray] | None:
     ``covariance_eigh`` uses, in the input dtype, so float64 input keeps float64
     accuracy.
 
-    That subtraction cancels the digits that carry the variance once the mean
-    dominates the spread, and the error it leaves is first order in the mean, so
-    float32 gets a tight bound and float64 a loose one. Past the bound the Gram
+    That subtraction cancels the digits that carry the variance once a feature's
+    mean dominates its spread, even when other features have large variances.
+    Float32 gets a tight bound and float64 a loose one. Past the bound the Gram
     matrix is taken from an explicitly centered copy instead, whose own column
     sums then refine the mean: sums of values near 1e4 carry an absolute error
     that sums of their small residuals do not. A small row sample predicts which
@@ -327,17 +333,17 @@ def _host_mean_and_gram(X: np.ndarray) -> tuple[np.ndarray, np.ndarray] | None:
         if not bool(np.isfinite(column_sum).all()):
             return None
         mean = column_sum / n_samples
-        mean_ss = n_samples * float(np.sum(mean * mean))
+        mean_ss = n_samples * (mean * mean)
 
         step = max(1, n_samples // _HOST_SPREAD_SAMPLE_ROWS)
         sample = X[::step].astype(np.float64) - mean
-        spread_guess = float(np.sum(sample * sample)) * (n_samples / sample.shape[0])
-        if mean_ss <= limit * max(spread_guess, 1e-12):
+        spread_guess = np.einsum("ij,ij->j", sample, sample) * (n_samples / sample.shape[0])
+        if bool(np.all(mean_ss <= limit * spread_guess)):
             gram = X.T @ X
-            trace = float(np.sum(np.diagonal(gram), dtype=np.float64))
-            if not math.isfinite(trace):
+            column_ss = np.diagonal(gram).astype(np.float64, copy=False)
+            if not bool(np.isfinite(column_ss).all()):
                 return None
-            if mean_ss <= limit * max(trace - mean_ss, 1e-12):
+            if bool(np.all(mean_ss <= limit * (column_ss - mean_ss))):
                 gram -= (n_samples * np.outer(mean, mean)).astype(gram.dtype, copy=False)
                 return mean, gram
 
@@ -447,13 +453,13 @@ def _solve_gpu_full_or_eigh(
     n_samples, n_features = X_mx.shape
     mean_f32 = to_numpy(mean_mx)
     mean = mean_f32.astype(out_dtype, copy=False)
-    col_ss_sum = float(np.sum(to_numpy(col_ss_mx), dtype=np.float64))
-    mean_ss = float(n_samples) * float(np.sum(mean_f32.astype(np.float64) ** 2))
+    col_ss = to_numpy(col_ss_mx).astype(np.float64, copy=False)
+    mean_ss = n_samples * mean_f32.astype(np.float64) ** 2
 
     # When fit_svd_solver == 'covariance_eigh' and the data shift does not dominate
-    # the centered variance, compute G = X.T @ X - n * mean @ mean.T directly without
-    # allocating or writing an n x d centered copy X_c.
-    if fit_svd_solver == "covariance_eigh" and mean_ss <= 10.0 * max(col_ss_sum, 1e-12):
+    # any feature's centered variance, compute G = X.T @ X - n * mean @ mean.T
+    # directly without allocating or writing an n x d centered copy X_c.
+    if fit_svd_solver == "covariance_eigh" and bool(np.all(mean_ss <= 10.0 * col_ss)):
         X_c_mx: mx.array | None = None
         G_mx = mx.addmm(
             mean_mx[:, None] @ mean_mx[None, :],
@@ -768,6 +774,97 @@ def _host_normalize(Z: np.ndarray, normalizer: Literal["QR", "LU"]) -> np.ndarra
         return scipy.linalg.qr(Z, mode="economic", **lapack)[0]
 
 
+def _randomized_noise_variance(
+    centered: np.ndarray | mx.array,
+    components: np.ndarray,
+    total_var: float,
+    explained_variance: np.ndarray,
+) -> float | np.floating:
+    """Recover small residual variances that would be lost in a subtraction."""
+    remaining = min(centered.shape) - components.shape[0]
+    if remaining == 0:
+        return 0.0
+
+    residual_var = total_var - float(explained_variance.sum())
+    dtype = centered.dtype if isinstance(centered, np.ndarray) else np.float32
+    if total_var > 0.0 and residual_var <= 64.0 * float(np.finfo(dtype).eps) * total_var:
+        n_samples, n_features = centered.shape
+        if isinstance(centered, np.ndarray):
+            directions = components.astype(np.float64, copy=False)
+            rows_per_block = max(1, (1 << 20) // n_features)
+            residual_ss = 0.0
+            with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+                for start in range(0, n_samples, rows_per_block):
+                    block = centered[start : start + rows_per_block].astype(np.float64, copy=False)
+                    residual = block - (block @ directions.T) @ directions
+                    residual_ss += float(np.einsum("ij,ij->", residual, residual))
+            residual_var = residual_ss / (n_samples - 1)
+        else:
+            directions_mx = to_mlx_f32(components)
+            residual_mx = mx.addmm(centered, centered @ directions_mx.T, directions_mx, alpha=-1.0)
+            scaled = residual_mx / math.sqrt(total_var * (n_samples - 1))
+            residual_var = float(mx.sum(mx.square(scaled)).item()) * total_var
+
+    return components.dtype.type(max(residual_var, 0.0) / remaining)
+
+
+def _solve_wide_randomized_on_host(
+    X: np.ndarray, k: int, whiten: bool, return_transformed: bool
+) -> PCASolution:
+    """Resolve a failed, nearly full-width sketch in double precision."""
+    n_samples, n_features = X.shape
+    mean = X.mean(axis=0, dtype=np.float64)
+    centered = np.subtract(X, mean, dtype=np.float64)
+    components = None
+    with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+        try:
+            eigenvalues, left = scipy.linalg.eigh(
+                centered @ centered.T, driver="evd", overwrite_a=True, check_finite=False
+            )
+            spectrum = np.maximum(eigenvalues[::-1], 0.0)
+            # A Gram solve squares the condition number. Require the retained
+            # spectrum and average discarded energy to clear its roundoff floor.
+            floor = 32.0 * np.finfo(np.float64).eps * n_samples * spectrum[0]
+            if spectrum[k - 1] > floor and (k == n_samples or spectrum[k:].mean() > floor):
+                candidate = (left[:, -k:][:, ::-1].T @ centered) / np.sqrt(spectrum[:k, None])
+                if np.max(np.abs(candidate @ candidate.T - np.eye(k))) <= 1e-5:
+                    components = candidate
+        except scipy.linalg.LinAlgError:
+            pass
+    if components is None:
+        _, singular_values, Vt = scipy.linalg.svd(
+            centered, full_matrices=False, overwrite_a=True, check_finite=False
+        )
+        spectrum = singular_values**2
+        components = Vt[:k]
+
+    _, components = _svd_flip(None, components.astype(X.dtype, copy=False), u_based_decision=False)
+    mean = mean.astype(X.dtype, copy=False)
+    variance = (spectrum[:k] / (n_samples - 1)).astype(X.dtype, copy=False)
+    total = float(spectrum.sum())
+    ratios = spectrum[:k] / total if total > 0.0 else np.full(k, np.nan)
+    noise_variance = X.dtype.type(spectrum[k:].mean() / (n_samples - 1)) if k < n_samples else 0.0
+    transformed = (
+        pca_transform(X, mean, components, variance, whiten=whiten, prefer_gpu=False)
+        if return_transformed
+        else None
+    )
+    return PCASolution(
+        components=components,
+        explained_variance=variance,
+        explained_variance_ratio=ratios.astype(X.dtype, copy=False),
+        singular_values=np.sqrt(spectrum[:k]).astype(X.dtype, copy=False),
+        mean=mean,
+        n_components=k,
+        n_samples=n_samples,
+        n_features=n_features,
+        noise_variance=noise_variance,
+        fit_svd_solver="randomized",
+        used_gpu=False,
+        transformed=transformed,
+    )
+
+
 def _solve_randomized(
     X_np: np.ndarray,
     X_mx: mx.array | None,
@@ -808,17 +905,26 @@ def _solve_randomized(
         transpose = n_samples < n_features
         M = X_c.T if transpose else X_c
         Q = rng.normal(size=(M.shape[1], n_random)).astype(out_dtype, copy=False)
+        power_matrix = M
+        if normalizer == "none" and total_var > 0.0:
+            # Each multiplication can grow the sketch by at most the Frobenius
+            # norm of M. Power-of-two scaling preserves the span and keeps the
+            # original matrix for the final projection and singular values.
+            _, matrix_exponent = math.frexp(math.sqrt(total_var * (n_samples - 1)))
+            _, sketch_exponent = math.frexp(4.0 * math.sqrt(Q.size))
+            if (2 * n_iter + 1) * matrix_exponent + sketch_exponent >= np.finfo(out_dtype).maxexp:
+                power_matrix = np.ldexp(M, -matrix_exponent)
         for _ in range(n_iter):
             if normalizer == "none":
-                Q = M @ Q
-                Q = M.T @ Q
+                Q = power_matrix @ Q
+                Q = power_matrix.T @ Q
             elif normalizer == "LU":
                 Q, _ = scipy.linalg.lu(M @ Q, permute_l=True, **lapack)
                 Q, _ = scipy.linalg.lu(M.T @ Q, permute_l=True, **lapack)
             else:
                 Q, _ = scipy.linalg.qr(M @ Q, mode="economic", **lapack)
                 Q, _ = scipy.linalg.qr(M.T @ Q, mode="economic", **lapack)
-        Q, _ = scipy.linalg.qr(M @ Q, mode="economic", **lapack)
+        Q, _ = scipy.linalg.qr(power_matrix @ Q, mode="economic", **lapack)
         B = Q.T @ M
         Uhat, S, Vt = scipy.linalg.svd(B, full_matrices=False, check_finite=False)
         U = Q @ Uhat
@@ -829,14 +935,10 @@ def _solve_randomized(
         Vt_k = Vt[:k].astype(out_dtype, copy=False)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", RuntimeWarning)
-            ev_k = ((S_k**2) / (n_samples - 1)).astype(out_dtype, copy=False)
-            evr_k = (ev_k / total_var).astype(out_dtype, copy=False)
-        if k < min(n_features, n_samples):
-            noise_variance: float | np.floating = out_dtype.type(
-                max(total_var - float(ev_k.sum()), 0.0) / (min(n_features, n_samples) - k)
-            )
-        else:
-            noise_variance = 0.0
+            ev = S_k.astype(np.float64) ** 2 / (n_samples - 1)
+            ev_k = ev.astype(out_dtype, copy=False)
+            evr_k = (ev / total_var).astype(out_dtype, copy=False)
+        noise_variance = _randomized_noise_variance(X_c, Vt_k, total_var, ev)
         if return_transformed:
             U_k = U[:, :k]
             if config.whiten:
@@ -874,11 +976,20 @@ def _solve_randomized(
     if size < n_random:
         Q_init = Q_init[:, :size]
 
+    # Bound the Gram matrices of M and of the sampled blocks. The Gaussian
+    # start has squared norm about m_cols * size; leave margin for its tails
+    # and for the growth between normalizations.
+    total_ss = total_var * (n_samples - 1)
+    gram_safe = 400.0 * m_cols * size * total_ss < float(np.finfo(np.float32).max)
+    n_direct_iter = n_iter
+
     # When m_cols <= 2048 and m_rows >= 2 * m_cols (and m_cols <= 2 * (n_iter + 1) * size)
     # with QR/LU normalizer, precomputing the Gram matrix G = M.T @ M once on the GPU
     # reads the large matrix M only once instead of 2*(n_iter + 1) times.
     use_gram_subspace = (
         normalizer in ("QR", "LU")
+        and n_iter > 0
+        and gram_safe
         and m_cols <= 2048
         and m_rows >= 2 * m_cols
         and m_cols <= 2 * (n_iter + 1) * size
@@ -889,113 +1000,47 @@ def _solve_randomized(
         mx.eval(G_mx)
         G_np = to_numpy(G_mx)
         Q_np = Q_init
+        # For a wide matrix with most of its spectrum requested, restarting a
+        # failed Gram iteration would normalize nearly full-width blocks at
+        # every step. Solve the smaller, sample-side problem in double precision.
+        use_host_on_failure = (
+            transpose
+            and 4 * k >= 3 * m_cols
+            and config.iterated_power == "auto"
+            and config.power_iteration_normalizer == "auto"
+            and config.n_oversamples == PCAConfig.n_oversamples
+        )
         # Each iteration on M is Q <- norm(M.T @ norm(M @ Q)).
         # Using Gram G = M.T @ M: (M @ Q)^T (M @ Q) = Q.T @ G @ Q = R_y.T @ R_y,
         # and M.T @ Q_y = (G @ Q) @ R_y^{-1}.
-        gram_ok = True
         for _ in range(n_iter):
-            GQ = G_np @ Q_np
-            YtY = (Q_np.T @ GQ).astype(np.float64)
+            with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+                GQ = G_np @ Q_np
+                YtY = (Q_np.T @ GQ).astype(np.float64)
+            if not np.isfinite(YtY).all():
+                break
             YtY = 0.5 * (YtY + YtY.T)
             try:
-                Ry = scipy.linalg.cholesky(YtY, lower=False)
+                Ry = scipy.linalg.cholesky(YtY, lower=False, check_finite=False)
                 Z = scipy.linalg.solve_triangular(Ry.T, GQ.T, lower=True).T
             except scipy.linalg.LinAlgError:
-                gram_ok = False
+                if use_host_on_failure:
+                    return _solve_wide_randomized_on_host(X_np, k, config.whiten, return_transformed)
                 break
             # Back to float32, so the next product with G is one single-precision
             # matrix multiply instead of a float64 one on a converted copy of G.
             Q_np = np.ascontiguousarray(_host_normalize(Z, normalizer), dtype=np.float32)
+        else:
+            Q_init = Q_np
+            n_direct_iter = 0
 
-        if gram_ok:
-            GQ = G_np @ Q_np
-            YtY = (Q_np.T @ GQ).astype(np.float64)
-            YtY = 0.5 * (YtY + YtY.T)
-            try:
-                Ry = scipy.linalg.cholesky(YtY, lower=False)
-                B_T = scipy.linalg.solve_triangular(Ry.T, GQ.T, lower=True).T
-                B = B_T.T
-                Uhat, S, Vt = scipy.linalg.svd(B, full_matrices=False)
-                if transpose:
-                    # M = X_c.T, so Vt has shape (size, n_samples) and Q_y = (M @ Q) @ Ry^{-1}
-                    Q_Rinv = scipy.linalg.solve_triangular(Ry.T, Q_np.T, lower=True).T
-                    Q_Uhat_mx = to_mlx_f32((Q_Rinv @ Uhat[:, :k]).astype(np.float32))
-                    Vt_k_mx = (M_mx @ Q_Uhat_mx).T
-                    mx.eval(Vt_k_mx)
-                    Vt_k_raw = to_numpy(Vt_k_mx)
-                    U_k_raw = Vt[:k].T
-                    U_k_flipped, Vt_k_raw = _svd_flip(U_k_raw, Vt_k_raw, u_based_decision=False)
-                else:
-                    Uhat_flipped, Vt_flipped = _svd_flip(Uhat, Vt, u_based_decision=False)
-                    Vt_k_raw = Vt_flipped[:k]
-                    U_k_flipped = None
-                S_k = S[:k].astype(out_dtype, copy=False)
-                Vt_k = Vt_k_raw.astype(out_dtype, copy=False)
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore", RuntimeWarning)
-                    ev_k = ((S_k.astype(np.float64) ** 2) / (n_samples - 1)).astype(
-                        out_dtype, copy=False
-                    )
-                    evr_k = (ev_k.astype(np.float64) / total_var).astype(out_dtype, copy=False)
-                if k < min(n_features, n_samples):
-                    noise_variance = out_dtype.type(
-                        max(total_var - float(ev_k.astype(np.float64).sum()), 0.0)
-                        / (min(n_features, n_samples) - k)
-                    )
-                else:
-                    noise_variance = 0.0
-                if return_transformed:
-                    scale_vec = (
-                        np.full(k, math.sqrt(n_samples - 1), dtype=np.float64)
-                        if config.whiten
-                        else S[:k].astype(np.float64)
-                    )
-                    if transpose and U_k_flipped is not None:
-                        transformed = (U_k_flipped * scale_vec).astype(out_dtype, copy=False)
-                    else:
-                        Q_Rinv = scipy.linalg.solve_triangular(Ry.T, Q_np.T, lower=True).T
-                        W = (Q_Rinv @ (Uhat_flipped[:, :k] * scale_vec)).astype(np.float32)  # type: ignore[index]
-                        Z_mx = M_mx @ to_mlx_f32(W)
-                        mx.eval(Z_mx)
-                        transformed = to_numpy(Z_mx).astype(out_dtype, copy=False)
-                else:
-                    transformed = None
-                return PCASolution(
-                    components=Vt_k,
-                    explained_variance=ev_k,
-                    explained_variance_ratio=evr_k,
-                    singular_values=S_k,
-                    mean=mean,
-                    n_components=k,
-                    n_samples=n_samples,
-                    n_features=n_features,
-                    noise_variance=noise_variance,
-                    fit_svd_solver="randomized",
-                    used_gpu=True,
-                    transformed=transformed,
-                    device_mean=mean_mx,
-                    device_components=to_mlx_f32(Vt_k) if k > 0 else None,
-                )
-            except scipy.linalg.LinAlgError:
-                pass
-
-    # Direct GPU subspace iteration. Each half step multiplies by ``M`` or ``M.T`` and
-    # then normalizes through the tiny ``size x size`` Gram matrix, forming the
-    # normalized basis explicitly before the next product. Building ``M.T @ Q`` as
-    # ``(M.T @ Y) @ inv(R)`` instead would cost the same two passes over ``M`` but
-    # cancels catastrophically in float32 once ``Y`` is ill-conditioned.
-    #
-    # A block's Gram matrix is bounded by the squared norm of the block. Normalized
-    # iterates have unit scale and the Gaussian start has spectral norm about
-    # sqrt(m_cols) + sqrt(size), so with two orders of margin the Gram matrices
-    # cannot overflow float32 unless the data's own sum of squares is enormous;
-    # only then, or when the iteration is not normalized, are blocks rescaled.
-    total_ss = total_var * (n_samples - 1)
-    rescale = normalizer == "none" or not (
-        400.0 * m_cols * size * total_ss < float(np.finfo(np.float32).max)
-    )
+    # Direct GPU iteration forms a normalized basis at each half step. Even
+    # after Gram-based iterations, form and normalize M @ Q explicitly before
+    # the final SVD: (G @ Q) @ inv(R) amplifies Gram rounding errors and can
+    # yield nonorthogonal components even when Cholesky succeeds.
+    rescale = normalizer == "none" or not gram_safe
     Q_mx = to_mlx_f32(Q_init)
-    for _ in range(n_iter):
+    for _ in range(n_direct_iter):
         if normalizer == "none":
             Q_mx = _unit_scale(M_mx.T @ _unit_scale(M_mx @ Q_mx))
             mx.eval(Q_mx)
@@ -1010,6 +1055,9 @@ def _solve_randomized(
     B_T_mx = M_mx.T @ Q_y_mx
     mx.eval(B_T_mx, Q_y_mx)
     B = to_numpy(B_T_mx).T
+    if n_direct_iter == 0 and n_iter > 0:
+        # Keep the Gram route's double-precision small SVD for closely spaced values.
+        B = B.astype(np.float64)
     Uhat, S, Vt = scipy.linalg.svd(B, full_matrices=False)
     if transpose:
         Q_y_Uhat_mx = Q_y_mx @ to_mlx_f32(Uhat[:, :k].astype(np.float32))
@@ -1027,16 +1075,10 @@ def _solve_randomized(
     Vt_k = Vt_k_raw.astype(out_dtype, copy=False)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
-        ev_k = ((S_k.astype(np.float64) ** 2) / (n_samples - 1)).astype(out_dtype, copy=False)
-        evr_k = (ev_k.astype(np.float64) / total_var).astype(out_dtype, copy=False)
-
-    if k < min(n_features, n_samples):
-        noise_variance = out_dtype.type(
-            max(total_var - float(ev_k.astype(np.float64).sum()), 0.0)
-            / (min(n_features, n_samples) - k)
-        )
-    else:
-        noise_variance = 0.0
+        ev = S_k.astype(np.float64) ** 2 / (n_samples - 1)
+        ev_k = ev.astype(out_dtype, copy=False)
+        evr_k = (ev / total_var).astype(out_dtype, copy=False)
+    noise_variance = _randomized_noise_variance(X_c_mx, Vt_k, total_var, ev)
 
     if return_transformed:
         scale_vec = (
@@ -1142,6 +1184,20 @@ def _solve_arpack(
     )
 
 
+def _float32_mean_loses_spread(
+    X: np.ndarray, mean: np.ndarray, col_ss: np.ndarray
+) -> bool:
+    """Detect columns whose spread is too small relative to float32 rounding."""
+    rounding = np.finfo(np.float32).eps * np.abs(mean.astype(np.float64))
+    spread = np.sqrt(col_ss.astype(np.float64) / X.shape[0])
+    risky = rounding > 1e-3 * spread
+    if np.any(risky & (col_ss > 0)):
+        return True
+    # A constant feature cannot lose variance. Check the original values when
+    # the narrowed column is constant so genuine intercept columns stay on GPU.
+    return any(np.any(X[:, j] != X[0, j]) for j in np.flatnonzero(risky))
+
+
 def solve_pca(
     X: np.ndarray,
     config: PCAConfig,
@@ -1181,6 +1237,12 @@ def solve_pca(
             # Guard against extreme float32 values (> 1e19) where squared deviations overflow float32.
             col_ss_np = to_numpy(col_ss_mx)
             if not bool(np.all(np.isfinite(col_ss_np))):
+                use_gpu = False
+            elif X.dtype == np.float64 and _float32_mean_loses_spread(
+                X, to_numpy(mean_mx), col_ss_np
+            ):
+                # Centering after narrowing cannot recover the lost spread.
+                # The host solver can still center and fit the original data.
                 use_gpu = False
         else:
             # The host full/covariance solve validates finiteness itself; the
@@ -1234,6 +1296,16 @@ def solve_pca(
             mx.synchronize()
 
 
+def _projection_needs_centering(
+    mean: np.ndarray, explained_variance: np.ndarray, dtype: np.dtype
+) -> bool:
+    """Estimate when projecting before centering loses digits in fitted scores."""
+    # The projected mean can itself cancel, so use the original mean magnitude.
+    roundoff = np.finfo(dtype).eps * np.linalg.norm(mean.astype(np.float64, copy=False))
+    score_scale = math.sqrt(float(np.min(explained_variance)))
+    return bool(roundoff > 1e-6 * score_scale)
+
+
 def pca_transform(
     X: np.ndarray,
     mean: np.ndarray,
@@ -1257,12 +1329,22 @@ def pca_transform(
     if k == 0:
         return np.zeros((n_samples, 0), dtype=out_dtype)
 
-    if prefer_gpu and (X_mx is not None or X.size >= 65_536):
+    use_gpu = prefer_gpu and (X_mx is not None or X.size >= 65_536)
+    projection_dtype = np.dtype(np.float32) if use_gpu else out_dtype
+    center_first = _projection_needs_centering(mean, explained_variance, projection_dtype)
+    # Float64 values that need centering must be subtracted before narrowing.
+    if use_gpu and (not center_first or out_dtype == np.float32):
         borrowed: np.ndarray | None = None
         try:
             if X_mx is None:
                 borrowed = ensure_f32_2d(X) if X_f32 is None else X_f32
                 X_mx = borrow_mlx_f32(borrowed)
+            if center_first:
+                mean_mx = device_mean if device_mean is not None else to_mlx_f32(mean)
+                X_c_mx = prepare_pca_centered(X_mx, mean_mx)
+                return _transform_from_centered(
+                    None, X_c_mx, components, explained_variance, whiten, out_dtype, prefer_gpu=True
+                )
             if not whiten and device_components is not None and device_mean is not None:
                 V_mx = device_components.T
                 bias_mx = -(device_mean @ V_mx)
@@ -1285,10 +1367,12 @@ def pca_transform(
             if borrowed is not None:
                 mx.synchronize()
 
-    # Project first and shift the k-wide result, as scikit-learn does, instead of
-    # centering a copy of X.
-    X_transformed = np.asarray(X @ components.T, dtype=out_dtype)
-    X_transformed -= (mean @ components.T).astype(out_dtype, copy=False)
+    if center_first:
+        X_transformed = np.asarray((X - mean) @ components.T, dtype=out_dtype)
+    else:
+        # Project first and shift the k-wide result to avoid an input-sized copy.
+        X_transformed = np.asarray(X @ components.T, dtype=out_dtype)
+        X_transformed -= (mean @ components.T).astype(out_dtype, copy=False)
     if whiten:
         scale = np.sqrt(explained_variance)
         min_scale = np.finfo(scale.dtype).eps
@@ -1353,14 +1437,18 @@ def pca_score_samples(
     noise_variance: float | np.floating,
     *,
     prefer_gpu: bool = True,
+    use_residual: bool = False,
     X_f32: np.ndarray | None = None,
 ) -> np.ndarray:
-    """Compute the log-likelihood of each sample in ``O(n d k)`` via the Woodbury identity.
+    """Compute log-likelihoods with the Woodbury identity or an explicit residual.
 
     For probabilistic PCA with covariance :math:`C = V^T (\\Lambda - \\sigma^2 I) V + \\sigma^2 I`:
 
     * :math:`\\log |C| = (d - k) \\log(\\sigma^2) + \\sum_{i=1}^k \\log(\\lambda_i)`
     * :math:`x_c^T C^{-1} x_c = \\frac{1}{\\sigma^2} \\|x_c\\|^2 - \\sum_{i=1}^k \\left(\\frac{1}{\\sigma^2} - \\frac{1}{\\lambda_i}\\right) (x_c \\cdot v_i)^2`
+
+    When ``use_residual`` is set, a thin SVD yields the signal eigenvalues and
+    basis. The quadratic is then a sum of the signal and residual energies.
     """
     out_dtype = np.result_type(X.dtype, mean.dtype)
     n_samples, n_features = X.shape
@@ -1368,7 +1456,18 @@ def pca_score_samples(
     nv = float(noise_variance)
     ev = np.maximum(explained_variance.astype(np.float64, copy=False), nv)
 
-    if prefer_gpu and n_samples * n_features >= 65_536:
+    variances = ev
+    if use_residual:
+        # Diagonalize the fitted signal covariance in its small subspace,
+        # allowing for roundoff in the orthogonality of the component rows.
+        signal = components.T.astype(np.float64, copy=False) * np.sqrt(ev - nv)
+        basis, singular, _ = scipy.linalg.svd(signal, full_matrices=False)
+        variances = singular**2 + nv
+        X_c = np.subtract(X, mean, dtype=np.float64)
+        Z = X_c @ basis
+        X_c -= Z @ basis.T
+        quad = np.einsum("ij,ij->i", X_c, X_c) / nv + (Z * Z) @ (1.0 / variances)
+    elif prefer_gpu and n_samples * n_features >= 65_536:
         X_f32 = ensure_f32_2d(X) if X_f32 is None else X_f32
         try:
             X_mx = borrow_mlx_f32(X_f32)
@@ -1390,7 +1489,7 @@ def pca_score_samples(
         finally:
             mx.synchronize()
     else:
-        X_c = (X - mean).astype(np.float64, copy=False)
+        X_c = np.subtract(X, mean, dtype=np.float64)
         row_ss = np.einsum("ij,ij->i", X_c, X_c)
         if k > 0:
             Z = X_c @ components.T.astype(np.float64, copy=False)
@@ -1399,6 +1498,6 @@ def pca_score_samples(
         else:
             quad = row_ss / nv
 
-    log_det = (n_features - k) * math.log(nv) + float(np.sum(np.log(ev)))
+    log_det = (n_features - k) * math.log(nv) + float(np.sum(np.log(variances)))
     ll = -0.5 * (quad + log_det + n_features * math.log(2.0 * math.pi))
     return ll.astype(out_dtype, copy=False)

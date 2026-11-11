@@ -146,6 +146,21 @@ def test_pca_shifted_data_numerical_stability():
     _assert_pca_parity(mlx_pca, sk_pca, X, rtol=1e-3, atol=1e-3)
 
 
+@pytest.mark.parametrize("estimator", [PCA, PatchedPCA])
+def test_pca_float64_spread_below_float32_resolution(estimator):
+    X = np.random.default_rng(0).normal(1e8, 0.5, size=(5200, 520))
+    reference = SkPCA(n_components=8, svd_solver="full").fit(X)
+
+    model = estimator(n_components=8, whiten=True)
+    scores = model.fit_transform(X)
+
+    assert model._fit_svd_solver == "covariance_eigh"
+    assert model.execution_backend_ == "cpu"
+    np.testing.assert_allclose(model.singular_values_, reference.singular_values_, rtol=1e-9)
+    np.testing.assert_allclose(scores.std(axis=0, ddof=1), np.ones(8), atol=1e-6)
+    np.testing.assert_allclose(model.transform(X), scores, atol=1e-6)
+
+
 def test_pca_ill_conditioned_spectrum_deflated_tail_refinement():
     """Ill-conditioned singular values spanning 1e4 are recovered accurately under svd_solver='full'."""
     rng = np.random.default_rng(101)

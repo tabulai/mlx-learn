@@ -236,14 +236,14 @@ right for all of them. The first floor (256 samples or 65 536 elements) sent eve
 the GPU far too early; measured against scikit-learn it ran at 0.07×–0.9× below the
 crossovers recorded here.
 
-Measured on 2026-11-10 on an Apple M4 Max, 128 GiB, with Python 3.13.3, MLX 0.32.2,
-scikit-learn 1.9.0, NumPy 2.5.2 and SciPy 1.18.1; `python -m benchmarks.pca_crossover` runs
-the same panels. Other CPU-bound
-jobs were running on the machine, so absolute times carry 10–20% noise; every figure is a
-ratio of medians from runs that rotate the order of the routes. Each cell is the **worst
-case** over what a caller can vary without changing the shape: dtype, data (centered, mean
-at 100 standard deviations, or low-rank with a noise floor 10⁻³ as large), `n_components`,
-`iterated_power`, and `fit` against `fit_transform`.
+The original crossover study ran on 2026-11-10 on an Apple M4 Max, 128 GiB, with Python
+3.13.3, MLX 0.32.2, scikit-learn 1.9.0, NumPy 2.5.2 and SciPy 1.18.1.
+`python -m benchmarks.pca_crossover` runs those panels. Other CPU-bound jobs were running
+on the machine, so absolute times carry 10–20% noise. Every figure is a ratio of medians
+from runs that rotate the order of the routes. Each cell reports the **worst case** across
+the tested dtypes, data distributions (centered, mean at 100 standard deviations, or
+low-rank with a noise floor 10⁻³ as large), component counts, iteration counts and
+operations at that shape.
 
 ### `covariance_eigh`: 8·10⁶ elements, or 512 features
 
@@ -299,6 +299,14 @@ and low-rank data dropped the orthonormalization onto a host QR. Re-measured aft
 every previously marginal case is between 1.09× and 29×. The two panels above predate those
 fixes, so they understate the GPU route; the floor was not lowered on the strength of that.
 
+With default randomized controls, wide fits requesting at least three quarters of the
+available components switch to a float64 CPU solve if the GPU Gram iteration fails its
+Cholesky factorization.
+This applies within the Gram iteration route, which requires at most 2 048 samples and
+at least twice as many features. The CPU computes the smaller sample-side Gram matrix,
+checks the spectrum and component orthogonality, and uses a full float64 SVD if those
+checks fail. [Solver implementation](../src/mlxlearn/_solvers/pca.py)
+
 ### `full` and `arpack`: always on the host
 
 The GPU `full` route solves through a float32 Gram matrix and refines the part of the
@@ -324,9 +332,10 @@ example by deflating recursively on the GPU, is what would change this.
 
 ### What the routing delivers
 
-Speedup over scikit-learn for `PCA(n_components=32)` on isotropic Gaussian data, medians of
-nine interleaved runs. "Before" is the estimator as first merged; "direct" is
-`mlxlearn.decomposition.PCA` and "patched" is the class installed by `patch_sklearn()`.
+Original crossover-study speedup over scikit-learn for `PCA(n_components=32)` on isotropic
+Gaussian data, medians of nine interleaved runs. "Before" is the estimator as first merged.
+"Direct" is `mlxlearn.decomposition.PCA` and "patched" is the class installed by
+`patch_sklearn()`.
 
 | operation, shape, dtype | before | direct | patched | route |
 |---|---|---|---|---|
@@ -360,6 +369,32 @@ Consequences, applied rather than merely noted:
 - The float64 gains above the floors come from input handling, not arithmetic: one parallel
   narrowing cast replaced two scans of the float64 array and a serial cast, which had been
   more than half of a large fit.
+
+### Rerun after the high-component fallback
+
+The rerun covered 18 workloads on the same Apple M4 Max with Python 3.14.2, MLX 0.32.4,
+scikit-learn 1.9.1, NumPy 2.5.4 and SciPy 1.18.1. The table gives selected median times in
+milliseconds. "Before fallback" is the direct estimator with the numerical fixes already
+applied. The regular workloads used two warmups and nine interleaved rounds. The two
+1 500-component cases used one warmup and five interleaved rounds.
+
+| Solver, operation and input | Components | scikit-learn | Before fallback | After fallback | Final route |
+|---|---:|---:|---:|---:|---|
+| Randomized `fit_transform`, 2 000 × 4 096, float32, low-rank | 1 500 | 756.59 | 902.24 | 431.91 | GPU → CPU |
+| Randomized `fit_transform`, 2 000 × 4 096, float32, Gaussian | 1 500 | 765.53 | 553.42 | 555.31 | GPU |
+| Randomized `fit`, 100 000 × 1 024, float64, Gaussian | 32 | 508.08 | 54.21 | 42.14 | GPU |
+| Gram randomized `fit`, 8 000 × 2 048, float32, Gaussian | 128 | 109.04 | 40.93 | 39.77 | GPU |
+| Gram randomized `fit`, 8 000 × 2 048, float32, low-rank | 128 | 109.14 | 42.19 | 40.90 | GPU |
+| Covariance `fit`, 40 000 × 256, float64, Gaussian | 32 | 13.34 | 7.28 | 7.65 | GPU |
+| Covariance `fit_transform`, 20 000 × 512, float32, Gaussian | 32 | 21.24 | 16.36 | 15.17 | GPU |
+| Covariance `fit`, 10 000 × 64, float32, Gaussian | 32 | 0.527 | 0.332 | 0.333 | CPU |
+| Full `fit`, 1 000 × 1 000, float32, Gaussian | 32 | 51.37 | 50.90 | 51.42 | CPU |
+
+The 1 500-component low-rank input used a rank-250 Gaussian product, Gaussian noise with
+standard deviation 0.001 and an offset of 10. It ran 2.09× faster than before the fallback
+and 1.75× faster than scikit-learn. Against a float64 SVD of the same float32 input, the
+maximum relative error over the retained singular values after the first 250 fell from
+8.87% to 2.06 × 10⁻⁷. Before-and-after timing ranges overlapped for the other workloads.
 
 ## Reading these numbers honestly
 

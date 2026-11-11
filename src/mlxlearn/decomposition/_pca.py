@@ -11,6 +11,7 @@ from .._common.arrays import to_mlx
 from .._common.base import BackendMixin, mlx_guard
 from .._common.config import get_tuning
 from .._common.device import use_device
+from .._common.diagnostics import record_event
 from .._common.preparation import cast_float32_checked
 from .._common.rng import resolve_seed
 from .._common.validation import (
@@ -374,6 +375,9 @@ class MLXPCA(BackendMixin):
         self.n_components_ = solution.n_components
         self.noise_variance_ = solution.noise_variance
 
+        if backend == "mlx" and not solution.used_gpu:
+            backend = "cpu"
+            record_event(type(self).__name__, "fit", backend, reason="host-solve", shape=X_checked.shape)
         if backend == "mlx" and solution.device_mean is not None:
             self._mlx_state_ = {
                 "mean": solution.device_mean,
@@ -488,7 +492,6 @@ class MLXPCA(BackendMixin):
             and self.n_components_ > 0
             and bool(np.all(self.explained_variance_ > nv))
         )
-        defer_finite = backend == "mlx" and use_woodbury
         X_checked = validate_data(
             self,
             X,
@@ -497,30 +500,26 @@ class MLXPCA(BackendMixin):
             ensure_all_finite=False,
             reset=False,
         )
-        X_f32 = self._narrow_input(X_checked, use_gpu=defer_finite, need_finite=True)
-        if use_woodbury and X_checked.size >= 16_384:
-            device_target = "gpu" if backend == "mlx" else "cpu"
-            with mlx_guard(type(self).__name__, "score_samples"), use_device(device_target):
-                out = pca_score_samples(
-                    X_checked,
-                    self.mean_,
-                    self.components_,
-                    self.explained_variance_,
-                    self.noise_variance_,
-                    prefer_gpu=(backend == "mlx"),
-                    X_f32=X_f32,
-                )
-            if defer_finite and not bool(np.isfinite(out).all()):
-                check_array(
-                    X_checked,
-                    dtype=[np.float64, np.float32],
-                    ensure_2d=True,
-                    ensure_all_finite=True,
-                    input_name="X",
-                    estimator=self,
-                )
-            return out
-        if defer_finite:
+        # When noise is small, subtracting two terms scaled by its inverse
+        # amplifies rounding in the projections and in the fitted components.
+        use_residual = use_woodbury and nv <= 1e-3 * float(self.explained_variance_.max())
+        use_gpu = backend == "mlx" and use_woodbury and not use_residual and X_checked.size >= 65_536
+        X_f32 = self._narrow_input(X_checked, use_gpu=use_gpu, need_finite=True)
+        if not use_woodbury:
+            return _SkPCA.score_samples(self, X_checked)
+        device_target = "gpu" if use_gpu else "cpu"
+        with mlx_guard(type(self).__name__, "score_samples"), use_device(device_target):
+            out = pca_score_samples(
+                X_checked,
+                self.mean_,
+                self.components_,
+                self.explained_variance_,
+                self.noise_variance_,
+                prefer_gpu=use_gpu,
+                use_residual=use_residual,
+                X_f32=X_f32,
+            )
+        if use_gpu and not bool(np.isfinite(out).all()):
             check_array(
                 X_checked,
                 dtype=[np.float64, np.float32],
@@ -529,7 +528,7 @@ class MLXPCA(BackendMixin):
                 input_name="X",
                 estimator=self,
             )
-        return _SkPCA.score_samples(self, X_checked)
+        return out
 
     def score(self, X: Any, y: Any = None) -> float:
         """Return the average log-likelihood of all samples."""
