@@ -101,6 +101,7 @@ MLX 0.31.2, scikit-learn 1.7.2, NumPy 2.5.1.
 | `knn/fit` | never | — | accepted regression, see below |
 | `svc/fit` | ~2 000 samples **and** ~10⁶ elements; never for `kernel="linear"` | 2.93× | `svc_min_samples = 2048`, `svc_min_work = 1_000_000` |
 | `logreg/fit` | ~20 000 samples **and** ~2·10⁷ elements | 1.34× | `logreg_min_samples = 20_000`, `logreg_min_work = 20_000_000` |
+| `pca/fit` | by solver: `covariance_eigh` ~8·10⁶ elements **or** 512 features; `randomized` ~8·10⁶ elements; `full` and `arpack` never | 14.3× | `pca_covariance_min_work = 8_000_000`, `pca_covariance_min_features = 512`, `pca_randomized_min_work = 8_000_000` |
 
 These feed `mlxlearn._common.config.Tuning`, which dispatch reads. That is the point: a
 published crossover the dispatcher ignores is a claim, not a mechanism.
@@ -228,6 +229,231 @@ dispatch is doing its job.
 **This is an optimization target, not a permanent property.** What would move it: evaluating
 the Wolfe conditions on device so an accepted step costs one synchronization instead of
 several, and batching the line-search candidate evaluations. Neither is in 0.1.0a2.
+
+## PCA — the solver decides
+
+PCA has four solvers and they cross over in different places, so one shape floor cannot be
+right for all of them. The first floor (256 samples or 65 536 elements) sent every solver to
+the GPU far too early; measured against scikit-learn it ran at 0.07×–0.9× below the
+crossovers recorded here.
+
+The original crossover study ran on 2026-11-10 on an Apple M4 Max, 128 GiB, with Python
+3.13.3, MLX 0.32.2, scikit-learn 1.9.0, NumPy 2.5.2 and SciPy 1.18.1.
+`python -m benchmarks.pca_crossover` runs those panels. Other CPU-bound jobs were running
+on the machine, so absolute times carry 10–20% noise. Every figure is a ratio of medians
+from runs that rotate the order of the routes. Each cell reports the **worst case** across
+the tested dtypes, data distributions (centered, mean at 100 standard deviations, or
+low-rank with a noise floor 10⁻³ as large), component counts, iteration counts and
+operations at that shape.
+
+### `covariance_eigh`: 8·10⁶ elements, or 512 features
+
+GPU route against scikit-learn, 416 configurations. Rows are features, columns are elements
+(`n_samples × n_features`).
+
+| float32 | 0.25M | 0.5M | 1M | 2M | 4M | 8M | 16M | 32M |
+|---|---|---|---|---|---|---|---|---|
+| 8 | 0.43 | 0.58 | 0.94 | 1.13 | 1.36 | 1.59 | 1.75 | 2.01 |
+| 16 | 0.28 | 0.43 | 0.62 | 0.73 | 0.99 | 1.21 | 1.44 | 1.72 |
+| 32 | 0.26 | 0.43 | 0.55 | 0.72 | 0.89 | 1.12 | 1.40 | 1.65 |
+| 64 | 0.37 | 0.47 | 0.55 | 0.64 | 1.01 | 1.12 | 1.37 | 1.58 |
+| 128 | 0.54 | 0.60 | 0.68 | 0.75 | 0.95 | 1.12 | 1.32 | 1.55 |
+| 256 | · | · | 0.95 | 1.01 | 1.08 | 1.09 | 1.16 | 1.30 |
+| 512 | · | · | · | · | 1.37 | 1.33 | 1.31 | 1.24 |
+| 1000 | · | · | · | · | · | · | 1.23 | 1.19 |
+
+| float64 | 0.25M | 0.5M | 1M | 2M | 4M | 8M | 16M | 32M |
+|---|---|---|---|---|---|---|---|---|
+| 8 | 0.33 | 0.48 | 0.66 | 0.84 | 0.94 | 1.21 | 1.42 | 1.60 |
+| 16 | 0.28 | 0.45 | 0.62 | 0.71 | 0.95 | 1.25 | 1.50 | 1.68 |
+| 32 | 0.31 | 0.44 | 0.64 | 0.72 | 0.93 | 1.20 | 1.65 | 2.01 |
+| 64 | 0.41 | 0.57 | 0.66 | 0.86 | 1.07 | 1.43 | 1.80 | 2.05 |
+| 128 | 0.55 | 0.69 | 0.81 | 0.92 | 1.19 | 1.56 | 1.87 | 2.12 |
+| 256 | · | · | 1.04 | 1.15 | 1.33 | 1.70 | 1.89 | 2.17 |
+| 512 | · | · | · | · | 1.43 | 1.53 | 1.70 | · |
+
+The solver reads `X` twice and then works on a `d × d` matrix. On narrow data the host BLAS
+is finished before a GPU round trip, about 0.6 ms, has paid for itself. From 512 features up
+the eigensolve dominates both sides and the GPU Gram matrix wins at every row count for
+which `svd_solver="auto"` picks this solver, so a fit is handed away only when it is small
+on **both** counts.
+
+### `randomized`: 8·10⁶ elements
+
+The GPU iteration makes two round trips per power iteration, a fixed cost of several
+milliseconds. Over 912 small configurations (300–16 000 samples, 32–4 096 features, 4 and 32
+components) the worst cases in float32 were:
+
+| samples \ features | 32 | 64 | 128 | 256 | 512 | 1 024 | 2 048 | 4 096 |
+|---|---|---|---|---|---|---|---|---|
+| 300 | 0.83 | 0.07 | 0.19 | 0.10 | 0.12 | 0.18 | 0.30 | 0.63 |
+| 1 000 | 0.12 | 0.26 | 0.29 | 0.16 | 0.21 | 0.28 | 0.47 | 1.03 |
+| 4 000 | 0.90 | 0.28 | 0.67 | 0.40 | 0.54 | 0.89 | 1.12 | 1.40 |
+| 16 000 | 0.72 | 0.71 | 1.32 | 1.25 | 1.26 | 1.62 | 1.99 | · |
+
+A second panel of 784 configurations at 8·10⁶ and 16·10⁶ elements (32–32 768 features; 4, 32
+and 128 components; `iterated_power` of `"auto"`, 0 and 2) had the GPU ahead in 98.6% of
+cases at both sizes, with a median of 2.1× and 2.5×. The 1.4% at or just under parity
+(0.91–1.00) were all 128-component float32 fits, and both causes were then fixed rather than
+routed around: the Gram route ran its host iterations in float64 through a Householder QR,
+and low-rank data dropped the orthonormalization onto a host QR. Re-measured afterwards,
+every previously marginal case is between 1.09× and 29×. The two panels above predate those
+fixes, so they understate the GPU route; the floor was not lowered on the strength of that.
+
+With default randomized controls, wide fits requesting at least three quarters of the
+available components switch to a float64 CPU solve if the GPU Gram iteration fails its
+Cholesky factorization.
+This applies within the Gram iteration route, which requires at most 2 048 samples and
+at least twice as many features. The CPU computes the smaller sample-side Gram matrix,
+checks the spectrum and component orthogonality, and uses a full float64 SVD if those
+checks fail. [Solver implementation](../src/mlxlearn/_solvers/pca.py)
+
+### `full` and `arpack`: always on the host
+
+The GPU `full` route solves through a float32 Gram matrix and refines the part of the
+spectrum below about 1.5 decades with a host SVD of the deflated tail. On well-conditioned
+data that refinement never runs and the route is 3–5× faster. On data with a decaying
+spectrum, which is most real data whenever every component is requested, the tail is most
+of the matrix and its SVD costs as much as scikit-learn's whole fit:
+
+| shape | float32, flat spectrum | float32, low-rank | float64, flat spectrum | float64, low-rank |
+|---|---|---|---|---|
+| 500 × 500 | 1.20 | 0.60 | 1.58 | 0.90 |
+| 2 000 × 300 | 3.44 | 0.85 | 4.99 | 1.33 |
+| 300 × 2 000 | 3.11 | 0.67 | 4.24 | 1.02 |
+| 1 000 × 1 000 | 1.43 | 0.65 | 1.82 | 0.93 |
+| 3 000 × 600 | 3.51 | 0.88 | 5.30 | 1.47 |
+| 1 500 × 1 500 | 1.47 | 0.66 | 2.22 | 1.06 |
+
+A route that loses on ordinary data in float32 at every measured size cannot be selected by
+shape, so `full` stays on LAPACK. `arpack` iterates in SciPy on the host whichever backend
+is chosen; its GPU route added a centered copy and measured within 4% of scikit-learn.
+Both remain reachable with `force_backend="mlx"`. Making the tail refinement cheap, for
+example by deflating recursively on the GPU, is what would change this.
+
+### What the routing delivers
+
+Original crossover-study speedup over scikit-learn for `PCA(n_components=32)` on isotropic
+Gaussian data, medians of nine interleaved runs. "Before" is the estimator as first merged.
+"Direct" is `mlxlearn.decomposition.PCA` and "patched" is the class installed by
+`patch_sklearn()`.
+
+| operation, shape, dtype | before | direct | patched | route |
+|---|---|---|---|---|
+| fit, 1 000 × 64, float64 | 0.48 | 0.99 | 0.93 | host / scikit-learn |
+| fit, 10 000 × 64, float32 | 0.66 | 1.55 | 0.94 | host / scikit-learn |
+| fit, 100 000 × 64, float32 | 1.32 | 2.31 | 0.97 | host / scikit-learn |
+| fit, 1 000 × 1 024, float32 | 0.64 | 1.02 | 0.99 | host / scikit-learn |
+| fit, 100 000 × 256, float64 | 1.25 | 2.34 | 2.32 | GPU |
+| fit, 500 000 × 256, float64 | 1.45 | 4.52 | 5.78 | GPU |
+| fit, 100 000 × 1 024, float64 | 5.14 | 8.86 | 11.6 | GPU |
+| fit, 100 000 × 1 024, float32 | 5.74 | 5.46 | 7.80 | GPU |
+| fit, 200 000 × 1 024, float64 | 6.14 | 12.2 | 14.3 | GPU |
+| fit, 50 000 × 4 096, float64 | 4.80 | 9.30 | 11.1 | GPU |
+| transform, 100 000 × 1 024, float64 | 0.65 | 1.67 | 1.70 | GPU |
+| transform, 100 000 × 256, float64 | 0.72 | 1.44 | 1.47 | GPU |
+
+On the GPU rows "direct" and "patched" run the same code, so the spread between those two
+columns is the run-to-run noise of this machine. Across all 54 cases of the grid the direct
+estimator went from 0.48×–8.4× to 0.99×–12.2×, and the patched one from 0.40×–9.8× to
+0.92×–14.3×.
+
+Consequences, applied rather than merely noted:
+
+- Below the floors a patched estimator hands the whole fit to scikit-learn before
+  validating, scanning or casting anything, and lands at 0.9×–1.0×: the remainder is the
+  dispatch itself, about 0.04 ms.
+- A directly imported `PCA` never dispatches to scikit-learn, so below the floors it runs
+  its own host path. That path was brought to scikit-learn's speed or better (0.9×–2.5×,
+  the low end on fits under 0.2 ms) instead of being left as a slow fallback: `covariance_eigh` without a centered copy, scikit-learn's
+  LU normalizer for `randomized`, and one pass to validate input for `transform`.
+- The float64 gains above the floors come from input handling, not arithmetic: one parallel
+  narrowing cast replaced two scans of the float64 array and a serial cast, which had been
+  more than half of a large fit.
+
+### Rerun after the high-component fallback
+
+The rerun covered 18 workloads on the same Apple M4 Max with Python 3.14.2, MLX 0.32.4,
+scikit-learn 1.9.1, NumPy 2.5.4 and SciPy 1.18.1. The table gives selected median times in
+milliseconds. "Before fallback" is the direct estimator with the numerical fixes already
+applied. The regular workloads used two warmups and nine interleaved rounds. The two
+1 500-component cases used one warmup and five interleaved rounds.
+
+| Solver, operation and input | Components | scikit-learn | Before fallback | After fallback | Final route |
+|---|---:|---:|---:|---:|---|
+| Randomized `fit_transform`, 2 000 × 4 096, float32, low-rank | 1 500 | 756.59 | 902.24 | 431.91 | GPU → CPU |
+| Randomized `fit_transform`, 2 000 × 4 096, float32, Gaussian | 1 500 | 765.53 | 553.42 | 555.31 | GPU |
+| Randomized `fit`, 100 000 × 1 024, float64, Gaussian | 32 | 508.08 | 54.21 | 42.14 | GPU |
+| Gram randomized `fit`, 8 000 × 2 048, float32, Gaussian | 128 | 109.04 | 40.93 | 39.77 | GPU |
+| Gram randomized `fit`, 8 000 × 2 048, float32, low-rank | 128 | 109.14 | 42.19 | 40.90 | GPU |
+| Covariance `fit`, 40 000 × 256, float64, Gaussian | 32 | 13.34 | 7.28 | 7.65 | GPU |
+| Covariance `fit_transform`, 20 000 × 512, float32, Gaussian | 32 | 21.24 | 16.36 | 15.17 | GPU |
+| Covariance `fit`, 10 000 × 64, float32, Gaussian | 32 | 0.527 | 0.332 | 0.333 | CPU |
+| Full `fit`, 1 000 × 1 000, float32, Gaussian | 32 | 51.37 | 50.90 | 51.42 | CPU |
+
+The 1 500-component low-rank input used a rank-250 Gaussian product, Gaussian noise with
+standard deviation 0.001 and an offset of 10. It ran 2.09× faster than before the fallback
+and 1.75× faster than scikit-learn. Against a float64 SVD of the same float32 input, the
+maximum relative error over the retained singular values after the first 250 fell from
+8.87% to 2.06 × 10⁻⁷. Before-and-after timing ranges overlapped for the other workloads.
+
+### PCA million-row and image rerun
+
+On 2026-11-10 the 18-case synthetic panel and the 24 MNIST-family configurations were
+rerun after the float64 transform change. The latter chooses the projection backend before
+preparing input and avoids an unused float32 copy on the CPU path. Float64 CPU projection
+centers first when its error estimate requires it. Small float64 batches use the host;
+larger batches can use the GPU when the float32 precision guard permits it.
+
+The synthetic scaling panel below used independent standard-normal training and
+10,000-row query arrays, `PCA(n_components=32, random_state=0)` and the default solver.
+Both libraries received the same dtype. The default chose `covariance_eigh` for 256
+features and `randomized` for 1,024. Each entry gives median milliseconds for scikit-learn
+and direct mlxlearn, respectively, across five interleaved rounds after one warmup.
+Each timed fit was followed by a full-training transform and then the query transform.
+
+| Training rows | Features | Dtype | Fit, sklearn / mlxlearn | Train transform, sklearn / mlxlearn | Query transform, sklearn / mlxlearn |
+|---:|---:|---|---:|---:|---:|
+| 100,000 | 256 | float32 | 13.38 / 5.42 | 6.14 / 1.53 | 0.74 / 0.80 |
+| 100,000 | 256 | float64 | 28.77 / 12.52 | 10.11 / 5.43 | 1.41 / 1.10 |
+| 100,000 | 1,024 | float32 | 365.40 / 34.04 | 21.67 / 4.94 | 2.73 / 1.59 |
+| 100,000 | 1,024 | float64 | 642.77 / 44.55 | 33.93 / 12.42 | 3.39 / 2.91 |
+| 500,000 | 256 | float32 | 54.57 / 14.15 | 26.05 / 6.39 | 0.75 / 1.41 |
+| 500,000 | 256 | float64 | 129.37 / 30.86 | 40.10 / 17.62 | 1.07 / 0.82 |
+| 500,000 | 1,024 | float32 | 1,990.94 / 170.49 | 99.64 / 25.79 | 6.00 / 5.18 |
+| 500,000 | 1,024 | float64 | 4,060.72 / 240.24 | 141.86 / 68.26 | 3.19 / 7.31 |
+| 1,000,000 | 256 | float32 | 102.76 / 28.92 | 47.27 / 12.96 | 0.89 / 2.38 |
+| 1,000,000 | 256 | float64 | 267.62 / 51.10 | 84.71 / 35.01 | 1.15 / 0.92 |
+| 1,000,000 | 1,024 | float32 | 3,901.99 / 535.66 | 191.00 / 79.45 | 6.82 / 10.17 |
+| 1,000,000 | 1,024 | float64 | 7,549.53 / 610.73 | 278.93 / 171.92 | 3.27 / 13.35 |
+
+The largest float64 query was slower immediately after the full-training transform.
+In a separate interleaved query-only measurement following a fresh fit on the same
+million-row shape, medians were 2.76 ms for scikit-learn, 2.10 ms for the mlxlearn GPU
+path and 2.27 ms for the mlxlearn CPU path. The difference between measurement sequences
+may reflect memory locality and system load. For the million-row fits, explained-variance
+ratios differed by at most 0.00014 percentage points from scikit-learn. Projection checks
+used float64 centering and each estimator's fitted components on 1,024 query rows.
+
+The 128-component image results and split details are in the [MNIST-family README](../benchmarks/experiments/mnist-family-2026-11-02/README.md#pca).
+The image and synthetic reruns used an Apple M4 Max with 128 GiB, Python 3.14.2,
+NumPy 2.5.4, SciPy 1.18.1, scikit-learn 1.9.1 and MLX 0.32.4. The 18-case replay
+includes the high-component low-rank and Gaussian controls. It used nine rounds after
+two warmups for ordinary cases and five rounds after one warmup for the high-component
+cases. Raw samples are available for the [scaling panel](../benchmarks/results/pca-scale-2026-11-10.json.gz),
+[18-case replay](../benchmarks/results/pca-replay-2026-11-10.json.gz),
+[isolated query check](../benchmarks/results/pca-query-2026-11-10.json.gz), and
+[image panel](../benchmarks/experiments/mnist-family-2026-11-02/results/pca-2026-11-10.json.gz).
+
+From the repository root, the synthetic panels can be repeated with:
+
+```bash
+python benchmarks/pca_scale.py --out /tmp/pca-scale.json
+python benchmarks/pca_replay.py original > /tmp/pca-original.jsonl
+python benchmarks/pca_replay.py gram > /tmp/pca-gram.jsonl
+python benchmarks/pca_replay.py stress > /tmp/pca-stress.jsonl
+python benchmarks/pca_query.py --out /tmp/pca-query.json
+```
 
 ## Reading these numbers honestly
 

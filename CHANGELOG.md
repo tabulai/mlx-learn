@@ -17,6 +17,61 @@ All notable changes to this project are documented here. The format follows
   twins. Votes and averages use every training row inside `radius`; empty
   neighborhoods follow scikit-learn (`outlier_label` or `NaN`).
 
+## [0.1.2] — 2026-11-11
+
+### Added
+
+- `mlxlearn.decomposition.PCA`, also available through `patch_sklearn()`, with
+  dense covariance and randomized GPU solvers, host `full` and `arpack` solvers,
+  whitening, inverse transforms, and probabilistic scores.
+- Regression coverage for shifted inputs, per-feature covariance cancellation,
+  whitening, randomized component orthogonality and overflow, low residual
+  variance, batch-independent scores, and mixed-dtype or strided transforms.
+
+### Changed
+
+- PCA routes each solver by its measured crossover: `covariance_eigh` reaches
+  the GPU from 8·10⁶ elements or 512 features, `randomized` from 8·10⁶ elements,
+  while `full` and `arpack` use the host. Below those floors, patched estimators
+  delegate fits to scikit-learn and direct estimators use the host path. See the
+  [crossover study](docs/benchmarks.md#pca--the-solver-decides).
+- Float64 PCA input uses a parallel narrowing cast with a combined range check
+  for GPU work. Transforms select their backend before preparing input, avoiding
+  unused float32 casts on host projections. Small float64 batches use the host;
+  projection centers first when necessary to preserve precision.
+- High-component, low-rank randomized PCA tries a host randomized solve when the
+  GPU Gram iteration fails its numerical checks, using a full float64 SVD only
+  when the randomized result also fails validation. This removes the unnecessary
+  full-SVD slowdown while retaining the accuracy fallback.
+
+### Fixed
+
+- Large offsets no longer erase float64 variation during narrowing. Covariance
+  centering guards check every feature, and shifted whitening agrees between
+  `fit_transform` and `transform` on both CPU and GPU paths.
+- Randomized PCA preserves component orthogonality and resolvable singular values
+  on rapidly decaying spectra, rescales power iterations to prevent overflow,
+  and computes small residual variance without catastrophic cancellation.
+- Probabilistic PCA scores remain consistent across batch sizes when fitted
+  noise variance is small.
+- Mixed float32-fit/float64-query projections compute the mean offset in float64.
+  Tiny query variations, strided arrays, original-input range checks, and NaN/Inf
+  validation remain covered by regression tests.
+
+### Measured
+
+- Reran 24 MNIST-family configurations, 18 earlier synthetic cases, and 12 scaling
+  cases through one million rows. With float64 input and 32 components,
+  million-row fits at 256 and 1,024 features measured **5.24×** and **12.36×**
+  faster than scikit-learn; full-training transforms measured **2.42×** and
+  **1.62×** faster. Short-query results varied with the measurement sequence:
+  the 1,024-feature float64 query took 13.35 ms versus scikit-learn's 3.27 ms
+  immediately after the full-training transform, and 2.10 ms versus 2.76 ms
+  in a separate query-only run after fitting. See the
+  [complete results, limitations, and reproduction commands](docs/benchmarks.md#pca-million-row-and-image-rerun).
+
+## [0.1.1] — 2026-11-02
+
 ### Changed
 
 - SVC now solves eligible subproblems with native hierarchical working sets,
@@ -520,6 +575,8 @@ Each of these is now covered by a regression test:
   shape, making `fit` a non-pure function of its arguments.
 - `except Exception:` around the accelerated path, rerunning silently on scikit-learn.
 
-[Unreleased]: https://github.com/tabulai/mlx-learn/compare/v0.1.0a2...HEAD
+[Unreleased]: https://github.com/tabulai/mlx-learn/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/tabulai/mlx-learn/compare/v0.1.1...v0.1.2
+[0.1.1]: https://github.com/tabulai/mlx-learn/compare/v0.1.0a2...v0.1.1
 [0.1.0a2]: https://github.com/tabulai/mlx-learn/compare/v0.1.0a1...v0.1.0a2
 [0.1.0a1]: https://github.com/tabulai/mlx-learn/releases/tag/v0.1.0a1

@@ -11,6 +11,8 @@ from .._common.arrays import to_mlx
 from .._common.base import BackendMixin, mlx_guard
 from .._common.config import get_tuning
 from .._common.device import use_device
+from .._common.diagnostics import record_event
+from .._common.preparation import cast_float32_checked
 from .._common.rng import resolve_seed
 from .._common.validation import (
     check_array,
@@ -26,10 +28,31 @@ from .._solvers.pca import (
     pca_inverse_transform,
     pca_score_samples,
     pca_transform,
+    pca_transform_uses_gpu,
     solve_pca,
 )
+from ..exceptions import CapabilityError
 
 __all__ = ["MLXPCA", "PCA"]
+
+_FLOAT32_MAX_SQUARED = float(np.finfo(np.float32).max) ** 2
+
+
+def _finite_and_in_float32_range(X: np.ndarray) -> bool:
+    """Prove with one BLAS pass that ``X`` is finite and fits float32, when possible.
+
+    The sum of squares bounds the largest magnitude from above, so a finite sum
+    below ``float32.max ** 2`` settles both questions at once, and NaN or infinity
+    poison it. ``False`` means undecided, not invalid: values whose squares
+    overflow the dtype land here too, and the exact checks must then decide.
+    """
+    if not (X.flags.c_contiguous or X.flags.f_contiguous):
+        return False
+    flat = X.ravel(order="K")
+    # NumPy 2.2 with Accelerate raises spurious floating-point flags from dot.
+    with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+        total = float(np.dot(flat, flat))
+    return total < _FLOAT32_MAX_SQUARED
 
 
 def _safe_shape(X: Any) -> tuple[int, ...] | None:
@@ -97,21 +120,111 @@ def _validate_pca_n_components(
 class MLXPCA(BackendMixin):
     """Metal GPU and Unified-Memory Accelerate mixin for :class:`sklearn.decomposition.PCA`."""
 
-    def _check_pca_capability(self, X: Any, operation: str = "fit") -> None:
-        name = type(self).__name__
-        require_dense(X, estimator=name, operation=operation)
-        check_float32_range(X, name="X")
+    def _narrow_input(
+        self, X_checked: np.ndarray, *, use_gpu: bool, need_finite: bool
+    ) -> np.ndarray | None:
+        """Enforce the float32 capability; return the float32 copy the GPU will read.
 
-    def _below_crossover(self, n_samples: int, n_features: int) -> tuple[bool, str]:
+        Wider input headed for the GPU has to be narrowed anyway, and that cast
+        doubles as the range check: it is finite exactly when no value overflowed.
+        Scanning the float64 array for its extremes first would read the whole
+        input twice more, which measured as over half of a large fit. float32
+        input cannot overflow and is borrowed by the solver as it is; the GPU
+        validates its finiteness, so there is nothing to do and nothing to return.
+
+        Input that stays on the host yields ``None``. Its range, and its finiteness
+        when the caller has no later check for it (``need_finite``), are settled
+        by one sum of squares instead of separate passes for the minimum, the
+        maximum and the finiteness test.
+
+        In every case the original array is inspected exactly only when the cheap
+        test is inconclusive, so a finite float64 that overflows float32 stays a
+        capability error and NaN/Inf stay scikit-learn's invalid-input error.
+        """
+        narrow = X_checked.dtype == np.float32
+        if use_gpu:
+            if narrow:
+                return None
+            X_f32, proven = cast_float32_checked(X_checked)
+        else:
+            X_f32 = None
+            proven = (narrow and not need_finite) or _finite_and_in_float32_range(X_checked)
+        if not proven:
+            check_float32_range(X_checked, name="X")
+            check_array(
+                X_checked,
+                dtype=[np.float64, np.float32],
+                ensure_2d=True,
+                ensure_all_finite=True,
+                input_name="X",
+                estimator=self,
+            )
+        return X_f32
+
+    def _fit_sklearn(self, X: Any, y: Any, return_transformed: bool) -> np.ndarray | None:
+        """Hand the whole fit to stock scikit-learn and record that it did the work."""
+        if return_transformed:
+            raw_fit_transform = getattr(_SkPCA.fit_transform, "__wrapped__", _SkPCA.fit_transform)
+            out = raw_fit_transform(self, X, y)
+        else:
+            _SkPCA.fit(self, X, y)
+            out = None
+        self._set_backend("sklearn")
+        return out
+
+    def _below_crossover(
+        self, n_samples: int, n_features: int, fit_svd_solver: str
+    ) -> tuple[bool, str]:
+        """Whether stock scikit-learn is expected to win at this size.
+
+        The answer depends on the solver, because the solver decides how much
+        arithmetic each element of ``X`` buys and how many GPU round trips the
+        fit needs. The floors below are where the GPU path beat scikit-learn for
+        every dtype, data distribution, ``n_components`` and operation measured;
+        see ``docs/benchmarks.md``.
+
+        ``covariance_eigh`` reads ``X`` twice and then works on a ``d x d``
+        matrix, so on narrow data the host BLAS is finished before a GPU round
+        trip has paid for itself. From 512 features up the float32 eigensolve and
+        the GPU Gram matrix win at every row count the solver is chosen for, so a
+        problem is below the crossover only if it is small on both counts.
+
+        ``randomized`` makes two GPU round trips per power iteration; their
+        latency is a fixed cost of a few milliseconds that only large inputs repay.
+
+        ``full`` and ``arpack`` stay on the host at every size. The GPU ``full``
+        path wins by 3-5x on well-conditioned data, but a spectrum spanning more
+        than about 1.5 decades, which is most real data, sends its trailing part
+        through a host SVD that costs as much as scikit-learn's whole fit: it
+        measured 0.54x-0.88x in float32 from 200 x 200 to 1500 x 1500. ARPACK's
+        iteration runs in SciPy on the host either way. Both remain reachable with
+        ``force_backend="mlx"``.
+        """
         tuning = get_tuning()
         work = n_samples * n_features
-        if n_samples < tuning.pca_min_samples and work < tuning.pca_min_work:
-            return True, (
-                f"{n_samples} samples x {n_features} features is below the "
-                f"PCA crossover ({tuning.pca_min_samples} samples and "
-                f"{tuning.pca_min_work} elements)"
-            )
-        return False, ""
+        size = f"{n_samples} samples x {n_features} features"
+        if fit_svd_solver == "covariance_eigh":
+            if (
+                work < tuning.pca_covariance_min_work
+                and n_features < tuning.pca_covariance_min_features
+            ):
+                return True, (
+                    f"{size} is below the PCA covariance_eigh crossover "
+                    f"({tuning.pca_covariance_min_work} elements or "
+                    f"{tuning.pca_covariance_min_features} features)"
+                )
+            return False, ""
+        if fit_svd_solver == "randomized":
+            if work < tuning.pca_randomized_min_work:
+                return True, (
+                    f"{size} is below the PCA randomized crossover "
+                    f"({tuning.pca_randomized_min_work} elements)"
+                )
+            return False, ""
+        return True, (
+            f"svd_solver={fit_svd_solver!r} is served by LAPACK/ARPACK on the host "
+            "at every size"
+        )
 
     def _get_device_state(self) -> tuple[Any, Any]:
         """Return cached ``(device_mean, device_components)`` on GPU, rebuilding lazily after unpickling."""
@@ -141,24 +254,29 @@ class MLXPCA(BackendMixin):
         self._clear_backend()
 
         # Check sparse capability before validate_data so Layer 2 can fall back cleanly
-        # while Layer 1 raises SparseInputError (a TypeError subclass).
+        # while Layer 1 raises SparseInputError (a TypeError subclass). The float32
+        # range is enforced after validation, by the cast the GPU path needs anyway.
         def check_capability() -> None:
-            self._check_pca_capability(X, operation="fit")
+            require_dense(X, estimator=type(self).__name__, operation="fit")
 
+        # The crossover needs only the shape. When the input already has one, decide
+        # before validating, so a fit that scikit-learn will serve is handed over
+        # untouched.
+        shape = _safe_shape(X)
+        below, detail = False, ""
+        if shape is not None and min(shape) > 0:
+            below, detail = self._below_crossover(
+                *shape, choose_svd_solver(*shape, self.n_components, self.svd_solver)
+            )
         backend = self._select_backend(
             "fit",
             capability_check=check_capability,
-            shape=_safe_shape(X),
+            below_crossover=below,
+            crossover_detail=detail,
+            shape=shape,
         )
         if backend == "sklearn":
-            if return_transformed:
-                raw_fit_transform = getattr(_SkPCA.fit_transform, "__wrapped__", _SkPCA.fit_transform)
-                out = raw_fit_transform(self, X, y)
-            else:
-                _SkPCA.fit(self, X, y)
-                out = None
-            self._set_backend("sklearn")
-            return out
+            return self._fit_sklearn(X, y, return_transformed)
 
         # Validate array shape and convert to float64 / float32 without forcing an
         # upfront host finiteness pass when the GPU 1-pass kernel will validate it.
@@ -172,36 +290,37 @@ class MLXPCA(BackendMixin):
             force_writeable=True,
             ensure_all_finite=False,
         )
-        check_float32_range(X_checked, name="X")
 
         n_samples, n_features = X_checked.shape
-        below, detail = self._below_crossover(n_samples, n_features)
-        if below and backend != "cpu":
-            backend = self._select_backend(
-                "fit",
-                below_crossover=True,
-                crossover_detail=detail,
-                shape=X_checked.shape,
-            )
-            if backend == "sklearn":
-                if return_transformed:
-                    raw_fit_transform = getattr(
-                        _SkPCA.fit_transform, "__wrapped__", _SkPCA.fit_transform
-                    )
-                    out = raw_fit_transform(self, X, y)
-                else:
-                    _SkPCA.fit(self, X, y)
-                    out = None
-                self._set_backend("sklearn")
-                return out
-
         fit_svd_solver = choose_svd_solver(
             n_samples, n_features, self.n_components, self.svd_solver
         )
+        if X_checked.shape != shape:
+            # Containers without a shape, or one that validation changed.
+            below, detail = self._below_crossover(n_samples, n_features, fit_svd_solver)
+            if below and backend != "cpu":
+                backend = self._select_backend(
+                    "fit",
+                    below_crossover=True,
+                    crossover_detail=detail,
+                    shape=X_checked.shape,
+                )
+                if backend == "sklearn":
+                    return self._fit_sklearn(X, y, return_transformed)
+
         self._fit_svd_solver = fit_svd_solver
         resolved_n_components = _validate_pca_n_components(
             self.n_components, fit_svd_solver, n_samples, n_features
         )
+
+        try:
+            # The solver validates finiteness itself, on the GPU or on the host.
+            X_f32 = self._narrow_input(X_checked, use_gpu=backend == "mlx", need_finite=False)
+        except CapabilityError as exc:
+            # Raises for a directly imported estimator and under
+            # fallback_policy="raise"; otherwise scikit-learn's float64 path serves it.
+            self._handle_capability_error(exc, "fit", shape=X_checked.shape)
+            return self._fit_sklearn(X, y, return_transformed)
 
         seed = resolve_seed(self.random_state)
         config = PCAConfig(
@@ -223,6 +342,7 @@ class MLXPCA(BackendMixin):
                     X_checked,
                     config,
                     return_transformed=return_transformed,
+                    X_f32=X_f32,
                 )
             except ValueError:
                 # Re-run standard sklearn validation so NaN vs Inf error messages match
@@ -256,6 +376,9 @@ class MLXPCA(BackendMixin):
         self.n_components_ = solution.n_components
         self.noise_variance_ = solution.noise_variance
 
+        if backend == "mlx" and not solution.used_gpu:
+            backend = "cpu"
+            record_event(type(self).__name__, "fit", backend, reason="host-solve", shape=X_checked.shape)
         if backend == "mlx" and solution.device_mean is not None:
             self._mlx_state_ = {
                 "mean": solution.device_mean,
@@ -285,18 +408,20 @@ class MLXPCA(BackendMixin):
         if is_sparse(X):
             require_dense(X, estimator=type(self).__name__, operation="transform")
 
-        defer_finite = backend == "mlx" and self.n_components_ > 0
         X_checked = validate_data(
             self,
             X,
             dtype=[np.float64, np.float32],
             accept_sparse=False,
-            ensure_all_finite=not defer_finite,
+            ensure_all_finite=False,
             reset=False,
         )
-        check_float32_range(X_checked, name="X")
-        dev_mean, dev_comp = self._get_device_state()
-        device_target = "gpu" if backend == "mlx" else "cpu"
+        use_gpu = backend == "mlx" and pca_transform_uses_gpu(
+            X_checked, self.mean_, self.explained_variance_
+        )
+        X_f32 = self._narrow_input(X_checked, use_gpu=use_gpu, need_finite=True)
+        dev_mean, dev_comp = self._get_device_state() if use_gpu else (None, None)
+        device_target = "gpu" if use_gpu else "cpu"
         with mlx_guard(type(self).__name__, "transform"), use_device(device_target):
             out = pca_transform(
                 X_checked,
@@ -304,11 +429,12 @@ class MLXPCA(BackendMixin):
                 self.components_,
                 self.explained_variance_,
                 whiten=bool(self.whiten),
-                prefer_gpu=(backend == "mlx"),
+                prefer_gpu=use_gpu,
                 device_mean=dev_mean,
                 device_components=dev_comp,
+                X_f32=X_f32,
             )
-        if defer_finite and not bool(np.isfinite(out).all()):
+        if use_gpu and not bool(np.isfinite(out).all()):
             check_array(
                 X_checked,
                 dtype=[np.float64, np.float32],
@@ -335,7 +461,8 @@ class MLXPCA(BackendMixin):
             dtype=[np.float64, np.float32],
             accept_sparse=False,
         )
-        check_float32_range(X_checked, name="X")
+        # check_array above already established finiteness.
+        X_f32 = self._narrow_input(X_checked, use_gpu=backend == "mlx", need_finite=False)
         dev_mean, dev_comp = self._get_device_state()
         device_target = "gpu" if backend == "mlx" else "cpu"
         with mlx_guard(type(self).__name__, "inverse_transform"), use_device(device_target):
@@ -348,6 +475,7 @@ class MLXPCA(BackendMixin):
                 prefer_gpu=(backend == "mlx"),
                 device_mean=dev_mean,
                 device_components=dev_comp,
+                X_f32=X_f32,
             )
 
     def score_samples(self, X: Any) -> np.ndarray:
@@ -367,38 +495,34 @@ class MLXPCA(BackendMixin):
             and self.n_components_ > 0
             and bool(np.all(self.explained_variance_ > nv))
         )
-        defer_finite = backend == "mlx" and use_woodbury
         X_checked = validate_data(
             self,
             X,
             dtype=[np.float64, np.float32],
             accept_sparse=False,
-            ensure_all_finite=not defer_finite,
+            ensure_all_finite=False,
             reset=False,
         )
-        check_float32_range(X_checked, name="X")
-        if use_woodbury and X_checked.size >= 16_384:
-            device_target = "gpu" if backend == "mlx" else "cpu"
-            with mlx_guard(type(self).__name__, "score_samples"), use_device(device_target):
-                out = pca_score_samples(
-                    X_checked,
-                    self.mean_,
-                    self.components_,
-                    self.explained_variance_,
-                    self.noise_variance_,
-                    prefer_gpu=(backend == "mlx"),
-                )
-            if defer_finite and not bool(np.isfinite(out).all()):
-                check_array(
-                    X_checked,
-                    dtype=[np.float64, np.float32],
-                    ensure_2d=True,
-                    ensure_all_finite=True,
-                    input_name="X",
-                    estimator=self,
-                )
-            return out
-        if defer_finite:
+        # When noise is small, subtracting two terms scaled by its inverse
+        # amplifies rounding in the projections and in the fitted components.
+        use_residual = use_woodbury and nv <= 1e-3 * float(self.explained_variance_.max())
+        use_gpu = backend == "mlx" and use_woodbury and not use_residual and X_checked.size >= 65_536
+        X_f32 = self._narrow_input(X_checked, use_gpu=use_gpu, need_finite=True)
+        if not use_woodbury:
+            return _SkPCA.score_samples(self, X_checked)
+        device_target = "gpu" if use_gpu else "cpu"
+        with mlx_guard(type(self).__name__, "score_samples"), use_device(device_target):
+            out = pca_score_samples(
+                X_checked,
+                self.mean_,
+                self.components_,
+                self.explained_variance_,
+                self.noise_variance_,
+                prefer_gpu=use_gpu,
+                use_residual=use_residual,
+                X_f32=X_f32,
+            )
+        if use_gpu and not bool(np.isfinite(out).all()):
             check_array(
                 X_checked,
                 dtype=[np.float64, np.float32],
@@ -407,7 +531,7 @@ class MLXPCA(BackendMixin):
                 input_name="X",
                 estimator=self,
             )
-        return _SkPCA.score_samples(self, X_checked)
+        return out
 
     def score(self, X: Any, y: Any = None) -> float:
         """Return the average log-likelihood of all samples."""
