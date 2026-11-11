@@ -47,7 +47,8 @@ stock inheritance. See the [compatibility details](docs/support_matrix.md).
 | `mlxlearn.neighbors.KNeighborsRegressor` | 0.1.0 |
 | `mlxlearn.linear_model.LogisticRegression` | 0.1.0 |
 | `mlxlearn.svm.SVC` (exact) | 0.1.0 |
-| `LinearRegression`, `Ridge`, `PCA`, `KMeans`, `DBSCAN`, `TSNE` | planned, 0.2.x |
+| `mlxlearn.decomposition.PCA` | development branch, unreleased |
+| `LinearRegression`, `Ridge`, `KMeans`, `DBSCAN`, `TSNE` | planned, 0.2.x |
 | `SVR`, `NuSVR`, `NuSVC` | deferred — will not ship until they implement the true objective |
 | tree ensembles | out of scope |
 
@@ -131,6 +132,8 @@ path. `last_query_backend_` and backend diagnostics report the actual search.
 Explicit KNN device choices use a `"fixed"` policy. Changing global configuration
 after fit does not alter either fitted policy, and automatic CPU search does not
 invoke a scikit-learn solver. A new `fit` clears state and may choose differently.
+PCA records the fit backend and selects CPU or GPU projection per batch according
+to input size and precision.
 
 ## Configuration
 
@@ -378,6 +381,7 @@ What that means for the measured development build on an M4 Max:
 | Neighbor `fit` and startup | Owns training data and defers search preparation where appropriate. Fit-only, first fit-plus-query and total process startup are reported separately; query gains do not guarantee faster fit or startup. |
 | `SVC` | Native working sets improve measured linear and RBF fits; tiny-cache RBF still trails sklearn and prediction gains vary. See the [current results and limitations](docs/svc-working-set-2026-10-31.md). Patched routing remains conservative, and linear is excluded from automatic GPU selection. |
 | `LogisticRegression` | Faster than scikit-learn on large problems: **11.8×, 5.8× and 2.7×** for binary fits at 500,000 × 32, 500,000 × 128 and 60,000 × 1,024 ([fused-kernel rerun](docs/fused-narrow-kernel-2026-10-27.md)), and **6.4–12.8×** for converged 10-class fits at 60,000 × 784 ([MNIST family](#mnist-fashion-mnist-and-kannada-mnist)). Patched dispatch still hands small problems to scikit-learn, which was faster there when last measured. It uses MLX only from 20,000 samples and 2×10⁷ elements, or from 250,000 samples and 8×10⁶ elements. The [historical small-problem measurements](docs/benchmarks.md) explain the per-iteration overhead behind that threshold. |
+| `PCA` | At 1,000,000 × 256 and 1,000,000 × 1,024 with float64 input and 32 components, fits measured **5.24×** and **12.36×** faster than scikit-learn. Full-training transforms measured **2.42×** and **1.62×** faster. Short-query timings varied with memory pressure; the [PCA benchmark details](docs/benchmarks.md#pca-million-row-and-image-rerun) include the slower cases and raw samples. |
 
 Reproduce them:
 
@@ -399,6 +403,26 @@ estimators on MLX as well. Measured 2026-11-02 at `c928419` on an M4 Max (12+4 C
 40-core GPU, 128 GB) with Python 3.14.2, scikit-learn 1.9.1, MLX 0.32.4 and NumPy 2.5.4.
 First-use kernel compilation is excluded from every timing. The scripts and raw results
 are in [`benchmarks/experiments/mnist-family-2026-11-02`](benchmarks/experiments/mnist-family-2026-11-02/).
+
+**`PCA`**, measured on 2026-11-10 with 128 components and default solver selection.
+Each entry is the scikit-learn median followed by the mlxlearn median, in milliseconds.
+Both libraries receive the same input dtype. The fit uses the 60,000-row training set
+and the transform uses the test set.
+
+| Dataset | Dtype | Fit, sklearn / mlxlearn | Test transform, sklearn / mlxlearn |
+|---|---|---:|---:|
+| MNIST | float32 | 49.77 / 25.79 | 2.02 / 1.43 |
+| MNIST | float64 | 87.28 / 37.48 | 3.98 / 3.55 |
+| Fashion-MNIST | float32 | 52.03 / 26.42 | 2.09 / 1.43 |
+| Fashion-MNIST | float64 | 90.31 / 42.31 | 4.05 / 3.58 |
+| Kannada-MNIST | float32 | 50.19 / 26.09 | 1.08 / 1.15 |
+| Kannada-MNIST | float64 | 88.54 / 37.38 | 2.15 / 1.87 |
+
+The PCA test for Kannada uses its 5,000-row unlabeled Kaggle test set. Its separate
+10,240-row Dig-MNIST holdout took 2.03 / 1.18 ms in float32 and 4.10 / 3.62 ms in
+float64. The 24-case panel also covers 32 components and explicit randomized PCA.
+Held-out reconstruction RMSE agreed within 0.0013% across libraries. Timings are
+medians of nine interleaved rounds after two warmups. [Inputs, scripts and raw results](benchmarks/experiments/mnist-family-2026-11-02/README.md#pca)
 
 **`LogisticRegression`**, run to convergence (`max_iter=5000`, default `tol=1e-4`). Times
 are medians of 5 fits, with float32 input for mlxlearn and float64 for scikit-learn.

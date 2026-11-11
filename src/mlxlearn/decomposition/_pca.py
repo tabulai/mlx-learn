@@ -28,6 +28,7 @@ from .._solvers.pca import (
     pca_inverse_transform,
     pca_score_samples,
     pca_transform,
+    pca_transform_uses_gpu,
     solve_pca,
 )
 from ..exceptions import CapabilityError
@@ -407,7 +408,6 @@ class MLXPCA(BackendMixin):
         if is_sparse(X):
             require_dense(X, estimator=type(self).__name__, operation="transform")
 
-        defer_finite = backend == "mlx" and self.n_components_ > 0
         X_checked = validate_data(
             self,
             X,
@@ -416,9 +416,12 @@ class MLXPCA(BackendMixin):
             ensure_all_finite=False,
             reset=False,
         )
-        X_f32 = self._narrow_input(X_checked, use_gpu=defer_finite, need_finite=True)
-        dev_mean, dev_comp = self._get_device_state()
-        device_target = "gpu" if backend == "mlx" else "cpu"
+        use_gpu = backend == "mlx" and pca_transform_uses_gpu(
+            X_checked, self.mean_, self.explained_variance_
+        )
+        X_f32 = self._narrow_input(X_checked, use_gpu=use_gpu, need_finite=True)
+        dev_mean, dev_comp = self._get_device_state() if use_gpu else (None, None)
+        device_target = "gpu" if use_gpu else "cpu"
         with mlx_guard(type(self).__name__, "transform"), use_device(device_target):
             out = pca_transform(
                 X_checked,
@@ -426,12 +429,12 @@ class MLXPCA(BackendMixin):
                 self.components_,
                 self.explained_variance_,
                 whiten=bool(self.whiten),
-                prefer_gpu=(backend == "mlx"),
+                prefer_gpu=use_gpu,
                 device_mean=dev_mean,
                 device_components=dev_comp,
                 X_f32=X_f32,
             )
-        if defer_finite and not bool(np.isfinite(out).all()):
+        if use_gpu and not bool(np.isfinite(out).all()):
             check_array(
                 X_checked,
                 dtype=[np.float64, np.float32],

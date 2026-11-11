@@ -17,6 +17,9 @@ parses the CSVs and caches the pixels as uint8 under `MNIST_FAMILY_CACHE` (defau
 `~/.cache/mlxlearn/mnist-family`, about 55 MB per dataset). Every script scales pixels to
 [0, 1].
 
+PCA uses Kannada's unlabeled 5,000-row `test.csv.gz` as well as the 10,240-row
+Dig-MNIST holdout. Its inputs contain pixel columns only.
+
 ## Scripts
 
 | Script | What it does |
@@ -26,6 +29,7 @@ parses the CSVs and caches the pixels as uint8 under `MNIST_FAMILY_CACHE` (defau
 | `svc.py` | One library per process (`--lib mlx` or `--lib sklearn`), with `cache_size` from `--cache-size` and everything else at defaults (rbf, `C=1`, `gamma="scale"`). Records fit, `predict` and `decision_function` times, support-vector counts and per-row decision values. |
 | `knn_exact.py` | Checks every KNN variant's neighbors against exact integer squared distances on the raw pixels. |
 | `svc_compare.py` | Compares SVC runs with the scikit-learn run among the files given: prediction agreement, pairwise votes and summed one-vs-one confidences. It recovers these from scikit-learn's ovr decision value, `votes + s / (3 (|s| + 1))`. |
+| `pca.py` | Compares scikit-learn, the committed pre-transform-fix baseline and the working tree for fit and train/test transforms. It records per-round timings, solver and backend choices, reconstruction accuracy, projection accuracy and source-file checksums. |
 | `summarize.py` | Prints the Markdown tables the README section was written from. |
 | `run.sh` | Reruns every timed benchmark with the settings behind `results/`. |
 | `knn_probe_order.py`, `knn_probe_gap.py` | Probes that traced KNN timing drift to run order and other processes' GPU work. Their output was not saved. |
@@ -42,6 +46,8 @@ original bytes. Names are `<dataset>_<estimator>_<variant>.json.gz`:
   default) and 2,000 MB.
 - `*_svc_sklearn` and `*_svc_sklearn_c2000`: one fit and one prediction at each cache
   size. Each fit takes about 2 to 3 minutes.
+- `pca-2026-11-10.json.gz`: 24 PCA configurations across the three datasets, two dtypes,
+  two component counts and two solvers. Each has two warmups and nine interleaved rounds.
 
 The MNIST files were written before the scripts took `--dataset`, so their metadata has no
 `dataset` key. `knn_exact.py` treats a missing key as MNIST.
@@ -72,6 +78,33 @@ committed results, or point the same commands at a rerun directory:
 $PYTHON summarize.py
 $PYTHON knn_exact.py results/fashion_mnist_knn_k5.json.gz
 $PYTHON svc_compare.py results/fashion_mnist_svc_*.json.gz
+```
+
+## PCA
+
+The PCA rerun used the M4 Max with Python 3.14.2, NumPy 2.5.4, SciPy 1.18.1,
+scikit-learn 1.9.1 and MLX 0.32.4. Pixels were divided by 255 in the input dtype.
+Both libraries saw the same input, and the test transforms used models fitted on the
+60,000-row training split. The default solver selected `covariance_eigh` for these shapes.
+
+For 128 components, the median fit and test-transform times in milliseconds were:
+
+| Dataset | Dtype | Fit, sklearn / mlxlearn | Test transform, sklearn / mlxlearn |
+|---|---|---:|---:|
+| MNIST | float32 | 49.77 / 25.79 | 2.02 / 1.43 |
+| MNIST | float64 | 87.28 / 37.48 | 3.98 / 3.55 |
+| Fashion-MNIST | float32 | 52.03 / 26.42 | 2.09 / 1.43 |
+| Fashion-MNIST | float64 | 90.31 / 42.31 | 4.05 / 3.58 |
+| Kannada-MNIST | float32 | 50.19 / 26.09 | 1.08 / 1.15 |
+| Kannada-MNIST | float64 | 88.54 / 37.38 | 2.15 / 1.87 |
+
+The separate Dig-MNIST transform took 2.03 / 1.18 ms in float32 and 4.10 / 3.62 ms
+in float64. The full panel includes 32 components and `svd_solver="randomized"`.
+Held-out reconstruction RMSE agreed within 0.0013% between libraries. The raw result
+contains all train, test and Dig-MNIST timings and numerical checks.
+
+```bash
+MNIST_FAMILY_ROOT=/path/to/datasets "$PYTHON" pca.py --out /tmp/pca-mnist.json
 ```
 
 Three unrelated single-threaded processes and other applications' GPU work (about 19% GPU
