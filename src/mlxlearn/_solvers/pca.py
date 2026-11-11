@@ -43,6 +43,7 @@ __all__ = [
     "pca_inverse_transform",
     "pca_score_samples",
     "pca_transform",
+    "pca_transform_uses_gpu",
     "solve_pca",
 ]
 
@@ -1303,7 +1304,30 @@ def _projection_needs_centering(
     # The projected mean can itself cancel, so use the original mean magnitude.
     roundoff = np.finfo(dtype).eps * np.linalg.norm(mean.astype(np.float64, copy=False))
     score_scale = math.sqrt(float(np.min(explained_variance)))
-    return bool(roundoff > 1e-6 * score_scale)
+    tolerance = 1e-12 if dtype == np.float64 else 1e-6
+    return bool(roundoff > tolerance * score_scale)
+
+
+# Float64 batches below the parallel-cast crossover pay a serial conversion.
+_PCA_GPU_TRANSFORM_MIN_WORK = 65_536
+_PCA_FLOAT64_GPU_TRANSFORM_MIN_WORK = 4 << 20
+
+
+def pca_transform_uses_gpu(
+    X: np.ndarray,
+    mean: np.ndarray,
+    explained_variance: np.ndarray,
+    *,
+    on_device: bool = False,
+) -> bool:
+    """Choose the projection backend before preparing the input buffer."""
+    if not explained_variance.size or (not on_device and X.size < _PCA_GPU_TRANSFORM_MIN_WORK):
+        return False
+    if np.result_type(X.dtype, mean.dtype) == np.float32:
+        return True
+    if not on_device and X.size < _PCA_FLOAT64_GPU_TRANSFORM_MIN_WORK:
+        return False
+    return not _projection_needs_centering(mean, explained_variance, np.dtype(np.float32))
 
 
 def pca_transform(
@@ -1329,11 +1353,12 @@ def pca_transform(
     if k == 0:
         return np.zeros((n_samples, 0), dtype=out_dtype)
 
-    use_gpu = prefer_gpu and (X_mx is not None or X.size >= 65_536)
+    use_gpu = prefer_gpu and pca_transform_uses_gpu(
+        X, mean, explained_variance, on_device=X_mx is not None
+    )
     projection_dtype = np.dtype(np.float32) if use_gpu else out_dtype
     center_first = _projection_needs_centering(mean, explained_variance, projection_dtype)
-    # Float64 values that need centering must be subtracted before narrowing.
-    if use_gpu and (not center_first or out_dtype == np.float32):
+    if use_gpu:
         borrowed: np.ndarray | None = None
         try:
             if X_mx is None:
@@ -1372,7 +1397,7 @@ def pca_transform(
     else:
         # Project first and shift the k-wide result to avoid an input-sized copy.
         X_transformed = np.asarray(X @ components.T, dtype=out_dtype)
-        X_transformed -= (mean @ components.T).astype(out_dtype, copy=False)
+        X_transformed -= mean.astype(out_dtype, copy=False) @ components.T
     if whiten:
         scale = np.sqrt(explained_variance)
         min_scale = np.finfo(scale.dtype).eps

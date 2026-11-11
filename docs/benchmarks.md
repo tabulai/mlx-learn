@@ -396,6 +396,64 @@ and 1.75× faster than scikit-learn. Against a float64 SVD of the same float32 i
 maximum relative error over the retained singular values after the first 250 fell from
 8.87% to 2.06 × 10⁻⁷. Before-and-after timing ranges overlapped for the other workloads.
 
+### PCA million-row and image rerun
+
+On 2026-11-10 the 18-case synthetic panel and the 24 MNIST-family configurations were
+rerun after the float64 transform change. The latter chooses the projection backend before
+preparing input and avoids an unused float32 copy on the CPU path. Float64 CPU projection
+centers first when its error estimate requires it. Small float64 batches use the host;
+larger batches can use the GPU when the float32 precision guard permits it.
+
+The synthetic scaling panel below used independent standard-normal training and
+10,000-row query arrays, `PCA(n_components=32, random_state=0)` and the default solver.
+Both libraries received the same dtype. The default chose `covariance_eigh` for 256
+features and `randomized` for 1,024. Each entry gives median milliseconds for scikit-learn
+and direct mlxlearn, respectively, across five interleaved rounds after one warmup.
+Each timed fit was followed by a full-training transform and then the query transform.
+
+| Training rows | Features | Dtype | Fit, sklearn / mlxlearn | Train transform, sklearn / mlxlearn | Query transform, sklearn / mlxlearn |
+|---:|---:|---|---:|---:|---:|
+| 100,000 | 256 | float32 | 13.38 / 5.42 | 6.14 / 1.53 | 0.74 / 0.80 |
+| 100,000 | 256 | float64 | 28.77 / 12.52 | 10.11 / 5.43 | 1.41 / 1.10 |
+| 100,000 | 1,024 | float32 | 365.40 / 34.04 | 21.67 / 4.94 | 2.73 / 1.59 |
+| 100,000 | 1,024 | float64 | 642.77 / 44.55 | 33.93 / 12.42 | 3.39 / 2.91 |
+| 500,000 | 256 | float32 | 54.57 / 14.15 | 26.05 / 6.39 | 0.75 / 1.41 |
+| 500,000 | 256 | float64 | 129.37 / 30.86 | 40.10 / 17.62 | 1.07 / 0.82 |
+| 500,000 | 1,024 | float32 | 1,990.94 / 170.49 | 99.64 / 25.79 | 6.00 / 5.18 |
+| 500,000 | 1,024 | float64 | 4,060.72 / 240.24 | 141.86 / 68.26 | 3.19 / 7.31 |
+| 1,000,000 | 256 | float32 | 102.76 / 28.92 | 47.27 / 12.96 | 0.89 / 2.38 |
+| 1,000,000 | 256 | float64 | 267.62 / 51.10 | 84.71 / 35.01 | 1.15 / 0.92 |
+| 1,000,000 | 1,024 | float32 | 3,901.99 / 535.66 | 191.00 / 79.45 | 6.82 / 10.17 |
+| 1,000,000 | 1,024 | float64 | 7,549.53 / 610.73 | 278.93 / 171.92 | 3.27 / 13.35 |
+
+The largest float64 query was slower immediately after the full-training transform.
+In a separate interleaved query-only measurement following a fresh fit on the same
+million-row shape, medians were 2.76 ms for scikit-learn, 2.10 ms for the mlxlearn GPU
+path and 2.27 ms for the mlxlearn CPU path. The difference between measurement sequences
+may reflect memory locality and system load. For the million-row fits, explained-variance
+ratios differed by at most 0.00014 percentage points from scikit-learn. Projection checks
+used float64 centering and each estimator's fitted components on 1,024 query rows.
+
+The 128-component image results and split details are in the [MNIST-family README](../benchmarks/experiments/mnist-family-2026-11-02/README.md#pca).
+The image and synthetic reruns used an Apple M4 Max with 128 GiB, Python 3.14.2,
+NumPy 2.5.4, SciPy 1.18.1, scikit-learn 1.9.1 and MLX 0.32.4. The 18-case replay
+includes the high-component low-rank and Gaussian controls. It used nine rounds after
+two warmups for ordinary cases and five rounds after one warmup for the high-component
+cases. Raw samples are available for the [scaling panel](../benchmarks/results/pca-scale-2026-11-10.json.gz),
+[18-case replay](../benchmarks/results/pca-replay-2026-11-10.json.gz),
+[isolated query check](../benchmarks/results/pca-query-2026-11-10.json.gz), and
+[image panel](../benchmarks/experiments/mnist-family-2026-11-02/results/pca-2026-11-10.json.gz).
+
+From the repository root, the synthetic panels can be repeated with:
+
+```bash
+python benchmarks/pca_scale.py --out /tmp/pca-scale.json
+python benchmarks/pca_replay.py original > /tmp/pca-original.jsonl
+python benchmarks/pca_replay.py gram > /tmp/pca-gram.jsonl
+python benchmarks/pca_replay.py stress > /tmp/pca-stress.jsonl
+python benchmarks/pca_query.py --out /tmp/pca-query.json
+```
+
 ## Reading these numbers honestly
 
 - Below a crossover, mlxlearn being slower is the design, not a defect: patched dispatch

@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- PCA selects the transform backend before preparing input, avoiding an unused
+  float32 cast when a float64 projection runs on the host. Small float64 batches
+  use the host, and the host centers first when needed for precision. A mixed
+  float32-fit/float64-query projection computes its mean offset in float64. The
+  [image and million-row rerun](docs/benchmarks.md#pca-million-row-and-image-rerun)
+  records fit, train-transform and query timings, including slower short queries.
 - PCA routing now follows a measured crossover per solver instead of one shape
   floor. `covariance_eigh` reaches the GPU from 8·10⁶ elements or 512 features,
   `randomized` from 8·10⁶ elements, and `full` and `arpack` are served on the
