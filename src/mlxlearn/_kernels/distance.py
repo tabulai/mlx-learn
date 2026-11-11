@@ -106,7 +106,7 @@ def resolve_blocks(
 class NeighborIndex:
     """Owned search state and the sklearn compatibility boundary.
 
-    Host X remains available for inherited sklearn radius queries and portable
+    Host X remains available for sklearn's private fitted state and portable
     pickles. It is independent of both authoritative search buffers. Automatic
     fits prepare CPU or GPU search state lazily when the query policy needs it;
     explicit device fits retain the resident NumPy-free MLX index.
@@ -304,6 +304,187 @@ class NeighborIndex:
         return (None if distances is None else np.sqrt(np.asarray(distances, dtype=np.float64)),
                 np.asarray(indices, dtype=INDEX_DTYPE))
 
+    def _radius_backend(self):
+        if not self.auto_policy or self.backend != "mlx":
+            return self.backend
+        if self._gpu_available is None:
+            from .._common.device import gpu_available
+
+            self._gpu_available = gpu_available()
+        return "mlx" if self._gpu_available else "cpu"
+
+    def query_radius(
+        self,
+        Q: np.ndarray,
+        radius: float,
+        *,
+        return_distance: bool = True,
+        exclude_self: bool = False,
+        sort_results: bool = False,
+        query_block_size: int | None = None,
+        train_block_size: int | None = None,
+    ) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
+        """Return every training row within ``radius`` of each row of ``Q``.
+
+        Parameters
+        ----------
+        Q : ndarray of shape (n_queries, n_features)
+            Query rows, float32.
+        radius : float
+            Inclusive Euclidean radius. Negative values are rejected.
+        return_distance : bool, default=True
+            Whether to return Euclidean distances alongside indices.
+        exclude_self : bool, default=False
+            Drop each query's own training index. Requires ``len(Q) == n_samples``.
+        sort_results : bool, default=False
+            If True, each row is ordered by ``(distance, index)``. If False the
+            order is still deterministic — the same total order — because an
+            unspecified order would make block size and device visible in the
+            output. scikit-learn does not define an order unless this flag is
+            set; we always have one.
+
+        Returns
+        -------
+        neigh_dist : ndarray of shape (n_queries,) of 1-d arrays
+            Euclidean distances, float64. Only when ``return_distance=True``.
+        neigh_ind : ndarray of shape (n_queries,) of 1-d arrays
+            Training-row indices, int64.
+
+        Notes
+        -----
+        Membership is decided on direct coordinate differences, not the Gram
+        identity. ``query`` screens with Gram tiles because it certifies its
+        selection and rescans, but a radius has no selection to certify and
+        Metal's float32 matmul rounds far enough to lose true neighbors.
+        """
+        import mlx.core as mx
+
+        n_query = int(Q.shape[0])
+        n_train = self.n_samples
+        radius = float(radius)
+        if radius < 0:
+            raise ValueError(f"radius must be non-negative, got {radius}")
+
+        if exclude_self and n_query != n_train:
+            raise ValueError(
+                "exclude_self requires the query matrix to be the training matrix: "
+                f"got {n_query} query rows and {n_train} training rows."
+            )
+
+        if n_query == 0:
+            empty_ind = np.empty(0, dtype=object)
+            if return_distance:
+                return np.empty(0, dtype=object), empty_ind
+            return empty_ind
+
+        radius_sq = radius * radius
+        backend = self._radius_backend()
+        plan = resolve_blocks(
+            n_query,
+            n_train,
+            backend=backend,
+            k_search=1,
+            query_block_size=query_block_size,
+            train_block_size=train_block_size,
+        )
+        # A direct tile holds every coordinate difference, not one value per pair.
+        train_cols = plan.train_cols
+        if train_block_size is None:
+            train_cols = max(1, train_cols * 4 // max(self.n_features, 4))
+
+        row_parts: list[np.ndarray] = []
+        col_parts: list[np.ndarray] = []
+        dist_parts: list[np.ndarray] = []
+
+        with use_device("gpu" if backend == "mlx" else "cpu"):
+            X = self.training_data
+            train = X if isinstance(X, mx.array) else mx.array(X, dtype=mx.float32)
+            query = Q if isinstance(Q, mx.array) else mx.array(
+                np.asarray(Q, dtype=NUMPY_FLOAT), dtype=mx.float32
+            )
+
+            for q_start in range(0, n_query, plan.query_rows):
+                block = query[q_start:q_start + plan.query_rows, None, :]
+
+                for t_start in range(0, n_train, train_cols):
+                    diff = block - train[t_start:t_start + train_cols][None, :, :]
+                    tile = mx.sum(diff * diff, axis=2)
+                    mx.eval(tile)
+                    tile_np = np.asarray(tile, dtype=np.float64)
+                    local_rows, local_cols = np.nonzero(tile_np <= radius_sq)
+                    if local_rows.size == 0:
+                        continue
+
+                    squared = tile_np[local_rows, local_cols]
+                    rows = local_rows.astype(INDEX_DTYPE, copy=False) + np.int64(q_start)
+                    cols = local_cols.astype(INDEX_DTYPE, copy=False) + np.int64(t_start)
+                    if exclude_self:
+                        keep = cols != rows
+                        rows, cols, squared = rows[keep], cols[keep], squared[keep]
+                        if rows.size == 0:
+                            continue
+
+                    row_parts.append(rows)
+                    col_parts.append(cols)
+                    dist_parts.append(np.sqrt(squared))
+
+        self.last_query_backend = backend
+        # Always apply a total order so tile sizes cannot leak into the output.
+        # sort_results=False is still deterministic; scikit-learn does not
+        # define an order unless the flag is set.
+        sort_results = True
+        neigh_ind, neigh_dist = _pack_radius_results(
+            n_query, row_parts, col_parts, dist_parts, sort_results=sort_results
+        )
+        if return_distance:
+            return neigh_dist, neigh_ind
+        return neigh_ind
+
+
+def _pack_radius_results(
+    n_query: int,
+    row_parts: list[np.ndarray],
+    col_parts: list[np.ndarray],
+    dist_parts: list[np.ndarray],
+    *,
+    sort_results: bool,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Assemble ragged ``(n_query,)`` object arrays from concatenated triples.
+
+    Rows are ordered by ``(distance, index)`` when ``sort_results`` is true —
+    a total order, so the result does not depend on tile sizes.
+    """
+    neigh_ind = np.empty(n_query, dtype=object)
+    neigh_dist = np.empty(n_query, dtype=object)
+    empty_idx = np.empty(0, dtype=INDEX_DTYPE)
+    empty_dist = np.empty(0, dtype=np.float64)
+
+    if not row_parts:
+        for i in range(n_query):
+            neigh_ind[i] = empty_idx
+            neigh_dist[i] = empty_dist
+        return neigh_ind, neigh_dist
+
+    rows = np.concatenate(row_parts)
+    cols = np.concatenate(col_parts).astype(INDEX_DTYPE, copy=False)
+    dists = np.concatenate(dist_parts).astype(np.float64, copy=False)
+
+    if sort_results:
+        order = np.lexsort((cols, dists, rows))
+    else:
+        order = np.argsort(rows, kind="mergesort")
+    rows = rows[order]
+    cols = cols[order]
+    dists = dists[order]
+
+    counts = np.bincount(rows, minlength=n_query)
+    starts = np.cumsum(np.concatenate(([0], counts)))
+    for i in range(n_query):
+        sl = slice(int(starts[i]), int(starts[i + 1]))
+        neigh_ind[i] = cols[sl]
+        neigh_dist[i] = dists[sl]
+    return neigh_ind, neigh_dist
+
 
 def build_index(X: np.ndarray, *, backend: str, _owned: bool = False,
                 _auto: bool = False, _gpu_available: bool | None = True) -> NeighborIndex:
@@ -324,7 +505,7 @@ def build_index(X: np.ndarray, *, backend: str, _owned: bool = False,
             raise ValueError("training row count must fit int32 indices")
         with use_device("gpu"):
             # mx.array eagerly owns a copy, including on MLX 0.29. Ordinary
-            # queries need only that buffer; radius queries and pickling obtain
+            # queries need only that buffer; private state and pickling obtain
             # an independent host mirror through X when required.
             device_index = DeviceNeighborIndex(mx.array(Xf, dtype=mx.float32), device="gpu")
         return NeighborIndex(X=None, backend=backend, _device_index=device_index,

@@ -1,15 +1,16 @@
 """Shared neighbor-estimator machinery.
 
-The three neighbor estimators differ only in what they do with the indices they
-get back, so everything up to and including ``kneighbors`` lives here.
+The neighbor estimators differ only in what they do with the indices they
+get back, so everything up to and including ``kneighbors`` and
+``radius_neighbors`` lives here.
 
 The direct estimators use scikit-learn's public BaseEstimator and task mixins, with
 matching constructors, parameters and tags. They support cloning, pipelines,
 metadata routing and serialization without eagerly importing sklearn.neighbors.
 They are not subclasses of its concrete neighbor classes: genuine isinstance
 checks against a captured stock neighbor class intentionally differ. Stock
-classes load only for optional radius operations, uncommon parameter validation
-or an explicitly permitted capability fallback. Patched twins additionally
+classes load only for uncommon parameter validation or an explicitly permitted
+capability fallback. Patched twins additionally
 inherit the original stock classes because patching already imports them.
 
 Layer 1 never calls that fallback. ``_mlxlearn_allow_fallback`` is ``False`` here,
@@ -40,7 +41,7 @@ from .._common.validation import (
 from .._kernels.distance import build_index
 from ..exceptions import CapabilityError, UnsupportedParameterError
 
-__all__ = ["MLXNeighborsMixin", "SUPPORTED_METRICS"]
+__all__ = ["MLXNeighborsMixin", "MLXRadiusMixin", "SUPPORTED_METRICS"]
 
 #: Metrics whose squared-distance form is exactly what the blocked Gram kernel
 #: computes. Anything else is a capability mismatch, not an approximation
@@ -51,8 +52,6 @@ SUPPORTED_METRICS = ("euclidean", "l2", "minkowski")
 _SUPPORTED_ALGORITHMS = ("auto", "brute")
 
 _STOCK_NEIGHBORS = {}
-# Private seam for radius callers/tests; None means resolve the original lazily.
-_SK_NEAREST_NEIGHBORS = None
 
 
 def _register_sklearn_neighbor_class(name, original):
@@ -101,6 +100,7 @@ class MLXNeighborsMixin(BackendMixin):
         # values use its own validator, preserving version-specific errors.
         weights = getattr(self, "weights", "uniform")
         radius = getattr(self, "radius", None)
+        outlier_label = getattr(self, "outlier_label", None)
         if (
             (self.n_neighbors is None or isinstance(self.n_neighbors, Integral) and self.n_neighbors >= 1)
             and isinstance(self.algorithm, str) and self.algorithm in {"auto", "brute", "kd_tree", "ball_tree"}
@@ -111,6 +111,7 @@ class MLXNeighborsMixin(BackendMixin):
             and (self.n_jobs is None or isinstance(self.n_jobs, Integral))
             and isinstance(weights, str) and weights in {"uniform", "distance"}
             and (radius is None or isinstance(radius, Real) and radius >= 0)
+            and (outlier_label is None or isinstance(outlier_label, (Integral, str)))
         ):
             return
         return super()._validate_params()
@@ -150,18 +151,6 @@ class MLXNeighborsMixin(BackendMixin):
         model.set_params(**self.get_params(deep=False))
         return model
 
-    def _radius_delegate(self):
-        if self._fitted_backend("radius_neighbors") == "sklearn":
-            return self._sklearn_delegate()
-        factory = _SK_NEAREST_NEIGHBORS or _stock_neighbor_class("NearestNeighbors")
-        model = factory(**self.get_params(deep=False))
-        # Reuse exactly the validated brute-force state formerly read by the
-        # inherited radius methods, including the mutable compatibility mirror.
-        model.__dict__.update({key: value for key, value in self.__dict__.items()
-                               if key not in {"_index_", "_knn_query_state_", "_sklearn_model_"}})
-        model._fit_X = self._fit_X
-        return model
-
     @property
     def execution_policy_(self):
         if "_execution_backend_" not in self.__dict__:
@@ -187,8 +176,8 @@ class MLXNeighborsMixin(BackendMixin):
     @property
     def _fit_X(self):
         # Upstream sklearn writes this attribute during fallback fits. On an
-        # MLX fit, defer its independent host mirror until radius queries or
-        # explicit private-state access need it.
+        # MLX fit, defer its independent host mirror until pickling or explicit
+        # private-state access needs it.
         if "_fit_X" in self.__dict__:
             return self.__dict__["_fit_X"]
         index = self.__dict__.get("_index_")
@@ -377,9 +366,8 @@ class MLXNeighborsMixin(BackendMixin):
         self.n_samples_fit_ = int(X_checked.shape[0])
         self.effective_metric_ = "euclidean"
         self.effective_metric_params_ = {}
-        # Optional radius methods delegate to sklearn's public brute-force
-        # implementation. Preserve the state it reads, including the float32
-        # compatibility mirror used by the preceding inherited implementation.
+        # Preserve the state sklearn's brute-force path reads, including the
+        # float32 compatibility mirror, for private readers and old pickles.
         self._fit_method = "brute"
         self.__dict__.pop("_fit_X", None)
         self._tree = None
@@ -536,6 +524,101 @@ class MLXNeighborsMixin(BackendMixin):
         # Older fitted estimators predate per-query diagnostics.
         if "_execution_backend_" in self.__dict__:
             self.__dict__.setdefault("_knn_query_state_", {"backend": None})
+
+
+class MLXRadiusMixin:
+    """``radius_neighbors`` for the MLX brute-force path.
+
+    Kept off :class:`MLXNeighborsMixin` so :class:`KNeighborsClassifier` and
+    :class:`KNeighborsRegressor` do not grow a method scikit-learn's k-neighbor
+    estimators do not have. :class:`NearestNeighbors` and the radius estimators
+    opt in.
+    """
+
+    def radius_neighbors(self, X=None, radius=None, return_distance=True, sort_results=False):
+        """Find every training row within ``radius`` of each query.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_queries, n_features), default=None
+            Query points. ``None`` means "the training data", and each point's
+            own index is excluded from its neighbors.
+        radius : float, default=None
+            Inclusive Euclidean radius. Defaults to the estimator's ``radius``.
+        return_distance : bool, default=True
+            Whether to return distances alongside indices.
+        sort_results : bool, default=False
+            If True, each row is ordered by increasing distance. ``True`` with
+            ``return_distance=False`` is an error, matching scikit-learn.
+
+        Returns
+        -------
+        neigh_dist : ndarray of shape (n_queries,) of arrays
+            Euclidean distances, float64. Only when ``return_distance=True``.
+        neigh_ind : ndarray of shape (n_queries,) of arrays
+            Training indices, int64.
+        """
+        check_is_fitted(self)
+        if sort_results and not return_distance:
+            raise ValueError("return_distance must be True if sort_results is True.")
+
+        if self._fitted_backend("radius_neighbors") == "sklearn":
+            self._note_inference("radius_neighbors")
+            self._set_query_backend("sklearn")
+            return self._sklearn_delegate().radius_neighbors(
+                X, radius, return_distance, sort_results
+            )
+
+        query_is_train = X is None
+        radius = float(self.radius if radius is None else radius)
+        if radius < 0:
+            raise ValueError(f"radius must be non-negative, got {radius}")
+
+        if query_is_train:
+            Q = self._index_.training_data
+        else:
+            require_dense(X, estimator=type(self).__name__, operation="radius_neighbors")
+            Q = _validate_neighbor_query(self, X)
+
+        with mlx_guard(type(self).__name__, "radius_neighbors"):
+            result = self._index_.query_radius(
+                Q,
+                radius,
+                return_distance=return_distance,
+                exclude_self=query_is_train,
+                sort_results=sort_results,
+            )
+        self._record_neighbor_query("radius_neighbors", Q.shape)
+        return result
+
+    def radius_neighbors_graph(self, X=None, radius=None, mode="connectivity", sort_results=False):
+        """Return the CSR graph of neighbors within ``radius``, excluding self for X=None."""
+        check_is_fitted(self)
+        if self._fitted_backend("radius_neighbors") == "sklearn":
+            self._note_inference("radius_neighbors")
+            self._set_query_backend("sklearn")
+            return self._sklearn_delegate().radius_neighbors_graph(X, radius, mode, sort_results)
+        if mode == "connectivity":
+            indices = self.radius_neighbors(X, radius, return_distance=False)
+            values = None
+        elif mode == "distance":
+            distances, indices = self.radius_neighbors(
+                X, radius, return_distance=True, sort_results=sort_results
+            )
+            values = np.concatenate(list(distances))
+        else:
+            raise ValueError('Unsupported mode, must be one of "connectivity", '
+                             f'or "distance" but got "{mode}" instead')
+        from scipy import sparse
+
+        counts = np.fromiter((len(row) for row in indices), dtype=np.int64, count=len(indices))
+        columns = np.concatenate(list(indices))
+        if values is None:
+            values = np.ones(columns.size)
+        indptr = np.concatenate(([0], np.cumsum(counts)))
+        constructor = (sparse.csr_array if get_sklearn_config().get("sparse_interface") == "sparray"
+                       else sparse.csr_matrix)
+        return constructor((values, columns, indptr), shape=(len(indices), self.n_samples_fit_))
 
 
 def _safe_shape(X) -> tuple[int, ...] | None:
