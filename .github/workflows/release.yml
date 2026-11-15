@@ -72,6 +72,7 @@ jobs:
           import mlxlearn
           from mlxlearn._solvers import _metal_loop, _smo_native, _smo_block_native
           from mlxlearn._kernels import _neighbors_cpu_native, _svc_cpu_native
+          from mlxlearn.cluster import EMeans, KMeans
           from mlxlearn.decomposition import PCA
 
           version = re.search(r'^version = "([^"]+)"', pathlib.Path("pyproject.toml").read_text(), re.M).group(1)
@@ -88,6 +89,15 @@ jobs:
           assert sklearn.decomposition.PCA(n_components=3).fit_transform(X).shape == (64, 3)
           mlxlearn.unpatch_sklearn()
           assert sklearn.decomposition.PCA is original
+          X32 = X.astype(np.float32)
+          for estimator in (
+              KMeans(n_clusters=4, n_init=1, max_iter=2, random_state=0),
+              EMeans(n_clusters=4, max_iter=2, batch_size=32, random_state=0),
+          ):
+              estimator.fit(X32)
+              assert estimator.cluster_centers_.shape == (4, 8)
+              assert estimator.labels_.shape == (64,)
+              assert np.isfinite(estimator.inertia_)
           print("Validated installed release", version, mlxlearn.__file__)
           PY
       - uses: actions/upload-artifact@v4
