@@ -57,6 +57,18 @@ Where an idea is traceable to the ancestor, it is credited in the module docstri
 
 Full notices are in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 
+## E-means
+
+The Metal e-means implementation follows Swann Bessa, Pierre-Emmanuel Mazaré,
+Gergely Szilvasy, Hugo Touvron, David Picard, Matthijs Douze and Hervé Jégou,
+*e-means: outperforming k-means (in one-tenth the epochs)*,
+[arXiv:2611.09501v1](https://arxiv.org/abs/2611.09501).
+The [Faiss reference](https://github.com/facebookresearch/faiss/tree/ebab8f784c1d177129602269d5ad966c525fbdcb/contrib/e_means)
+(MIT, Meta Platforms, Inc. and affiliates) supplied algorithm conventions,
+benchmark data access, and published split fingerprints. GPU kernels and the
+estimator are independently written; the benchmark harness loads a separately
+downloaded, pinned Faiss checkout. See [the implementation guide](docs/e-means.md).
+
 ## A note on scrubbing
 
 Removing a vendor's branding is not the same as removing a vendor's attribution. This

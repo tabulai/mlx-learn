@@ -48,9 +48,48 @@ stock inheritance. See the [compatibility details](docs/support_matrix.md).
 | `mlxlearn.linear_model.LogisticRegression` | 0.1.0 |
 | `mlxlearn.svm.SVC` (exact) | 0.1.0 |
 | `mlxlearn.decomposition.PCA` | 0.1.2 |
-| `LinearRegression`, `Ridge`, `KMeans`, `DBSCAN`, `TSNE` | planned, 0.2.x |
+| `mlxlearn.cluster.EMeans` | development; Metal GPU, paper/Faiss recipes |
+| `mlxlearn.cluster.KMeans` | development; Metal GPU, Lloyd clustering |
+| `LinearRegression`, `Ridge`, `DBSCAN`, `TSNE` | planned, 0.2.x |
 | `SVR`, `NuSVR`, `NuSVC` | deferred — will not ship until they implement the true objective |
 | tree ensembles | out of scope |
+
+## E-means clustering
+
+The development tree includes [e-means](https://arxiv.org/abs/2611.09501),
+with Metal assignment and update kernels for Apple Silicon:
+
+```python
+from mlxlearn.cluster import EMeans
+
+model = EMeans(n_clusters=4096, max_iter=3, random_state=10).fit(X_train)
+labels = model.predict(X_test)
+```
+
+It supports the published recipe, a separately specified Faiss recipe,
+last-epoch means, slow EMA, and spherical clustering. See the
+[implementation guide](docs/e-means.md) and [reproducible paper-data benchmarks](benchmarks/e_means/README.md).
+Measured results are in the [M4 Max benchmark report](docs/e-means-benchmarks-2026-11-14.md).
+The [direct Faiss e-means comparison](docs/e-means-faiss-comparison-2026-11-14.md)
+measures runtime, process memory, and held-out quality with matched Faiss recipes.
+`precision="bfloat16"` enables native BF16 Metal assignment with float32
+accumulation and state, plus the Faiss BF16 statistics semantics. The
+[optimization and H100 protocol report](docs/e-means-h100-protocol-2026-11-14.md)
+compares it with a matched Metal GEMM baseline and documents the limits of
+comparison with published H100 times.
+The subsequent [hardware-gap investigation](docs/e-means-gap-investigation-2026-11-14.md)
+separates arithmetic throughput from implementation overhead and compares further
+optimizations against a frozen native-BF16 implementation in fresh paired runs.
+The [five-dataset 10M-vector comparison](docs/e-means-10m-comparison-2026-11-14.md)
+measures matched FP32 Metal and original Faiss CPU runs: Metal is 3.98–18.95×
+faster, with test-MSE differences within 0.061% in this single-seed campaign.
+`EMeans` is an explicit estimator; it does not replace sklearn's `KMeans` through patching.
+
+For full-batch Lloyd clustering, [Metal `KMeans`](docs/k-means.md) is available
+through `from mlxlearn.cluster import KMeans`. It supports dense FP32 training,
+explicit, random or k-means++ initialization, multiple restarts, and final
+nearest-centroid labels and inertia. Use the direct estimator; it is not part
+of `patch_sklearn()`.
 
 ## Requirements
 

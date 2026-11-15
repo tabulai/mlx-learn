@@ -1,0 +1,45 @@
+{
+  "recorded_at_utc": "2026-11-14T21:44:47.081577+00:00",
+  "records": [
+    {
+      "command": [
+        "pmset",
+        "-g",
+        "batt"
+      ],
+      "exit_code": 0,
+      "output": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=22610019)\t75%; charging; 1:01 remaining present: true\n"
+    },
+    {
+      "command": [
+        "pmset",
+        "-g",
+        "therm"
+      ],
+      "exit_code": 0,
+      "output": "Note: No thermal warning level has been recorded\nNote: No performance warning level has been recorded\nNote: No CPU power status has been recorded\n"
+    },
+    {
+      "command": [
+        "system_profiler",
+        "SPDisplaysDataType"
+      ],
+      "exit_code": 0,
+      "output": "Graphics/Displays:\n\n    Apple M4 Max:\n\n      Chipset Model: Apple M4 Max\n      Type: GPU\n      Bus: Built-In\n      Total Number of Cores: 40\n      Vendor: Apple (0x106b)\n      Metal Support: Metal 4\n      Displays:\n        Dell U4919DW:\n          Resolution: 5120 x 1440\n          UI Looks like: 5120 x 1440 @ 60.00Hz\n          Main Display: Yes\n          Mirror: Off\n          Online: Yes\n          Rotation: Supported\n\n"
+    },
+    {
+      "command": [
+        "powermetrics",
+        "-n",
+        "1",
+        "-i",
+        "100",
+        "--samplers",
+        "gpu_power"
+      ],
+      "exit_code": 1,
+      "output": "powermetrics must be invoked as the superuser\n"
+    }
+  ],
+  "note": "Host snapshot during investigation, not a continuous GPU clock/power trace. No power settings changed. Root-only GPU power counters unavailable."
+}

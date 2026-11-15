@@ -1,0 +1,365 @@
+{
+  "kind": "gap_stage_profile",
+  "source_sha256": {
+    "benchmarks/e_means/run.py": "ba5cde5b87e306ce902fb398bd04750bea0ab7506c9fd0567fa6d201729be399",
+    "benchmarks/e_means/vibe_manifest.json": "175cdf9c60208be8204eed0c60d7361ea4ccd26caf1a057519062a499213d63d",
+    "src/mlxlearn/cluster/__init__.py": "d392c1bfb85290a278128af698108dd59c1ae6f2d225ffe9eeb4f8944812fb79",
+    "src/mlxlearn/cluster/_e_means.py": "fb1db4e9e6edc54df09248c397aab2f20140102b8536b146b718b29171d2c9db",
+    "src/mlxlearn/cluster/_recipe.py": "a384fb14e9fd904b2d07b77f63a5e7c85da5160e73b4e842dd0c44de5ca1c468",
+    "src/mlxlearn/_kernels/e_means.py": "12766f6ba973e29fab849d533bb4f8a98e7ff4d85bc17f735252e41c25a42b81",
+    "benchmarks/e_means/h100.py": "710d8e1325c6905b3ebe8e6e625a7ef636d5010d52eeef948fc5b1f52e104633",
+    "benchmarks/e_means/memory.py": "2140f828d3789ec615af6a27499a24ad79432781e4de083cb7ff183e595876e7",
+    "benchmarks/e_means/h100_protocol.json": "90c885b91fe5fba59590ebe5872d9d751c80dd2e6e9b732c8907df100da91b28",
+    "src/mlxlearn/_kernels/__init__.py": "0a2227680a6afb7d09a596f0aaab4ef6671fe9e58169739d1cc3a9e32c3b062e",
+    "src/mlxlearn/_kernels/distance.py": "2857c9343031e28de213406b6cebac96e3fa13d86a55dc96a272057bd071c4d5",
+    "src/mlxlearn/_kernels/e_means_bf16.py": "cbe903b6972ab2fcca06b940005a5d3ae4e700f9595460036f14880625f3e4ea",
+    "src/mlxlearn/_kernels/kernels.py": "eea5010cb0b160346fa3c75a724a3e23dc82ea3ed2fe29877f49a7a0c68d657b",
+    "src/mlxlearn/_kernels/logistic_input.py": "5f0180ba62076f9899fafca359f67e04f50c796febd2111ea3b3610e6f758efb",
+    "src/mlxlearn/_kernels/neighbors_cpu.py": "3e4955ebae4ae0c64ee8c81d7fcacd91dea4fd1f60e8dfbf65207a53c3854b27",
+    "src/mlxlearn/_kernels/pca_input.py": "5668debf3b48c99b0a215c7a800615438804960295e19290f44d35e71a11d3f1",
+    "src/mlxlearn/_kernels/svc_cpu.py": "c7679b03ba486083b35916ba9dc090dacb9f97d140225c4f1d4668d013c44f29",
+    "src/mlxlearn/_kernels/svc_fused.py": "ccb7db387ac8067df5022a623f0b8c1cc311f18ed9230211db5f79f3967b2fd9",
+    "src/mlxlearn/_kernels/svc_predict.py": "ad8dfe6911b9d8b5b9241e0571d3354b7767990512f269395a871e31b9445f8c"
+  },
+  "profile_sha256": "815d01cca1de819da37f40ee14f2107c6153ce652baaa61f9499b305f8ea5e52",
+  "versions": {
+    "python": "3.14.2",
+    "numpy": "2.5.4",
+    "scipy": "1.18.1",
+    "mlx": "0.32.4",
+    "scikit-learn": "1.9.1",
+    "faiss-cpu": "1.16.0",
+    "h5py": "3.16.0"
+  },
+  "hardware": {
+    "machine": "arm64",
+    "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "cpu": "Apple M4 Max",
+    "ram_bytes": 137438953472
+  },
+  "protocol": "Same seed10 workload, precision, finalization and adaptive warmed/cache-cleared resident timing as h100.py; diagnostic run has no external memory sampler. Instrumented stages serialize GPU execution and separately materialize input arguments.",
+  "records": [
+    {
+      "dataset": "deep1b-1M",
+      "n": 1000000,
+      "d": 96,
+      "k": 16384,
+      "steps": 62,
+      "processed_rows": 2000000,
+      "recipe": {
+        "name": "faiss",
+        "batch_law": "throughput",
+        "batch_law_requested": "throughput",
+        "batch_law_reason": "requested",
+        "batch_size": 32768,
+        "alpha0": 0.20182780779805568,
+        "nepochs": 2.0,
+        "epoch_rows": [
+          1000000,
+          1000000
+        ],
+        "epoch_steps": [
+          31,
+          31
+        ],
+        "total_steps": 62,
+        "alpha_min_factor": 0.1,
+        "init_usage": 1.52587890625e-05,
+        "split_epsilon": 0.0001,
+        "unused_threshold": 0.1,
+        "check_unused_every": 5,
+        "tail_policy": "keep",
+        "fractional_policy": "full_closing_pass_when_T_ge_1",
+        "seed": 10,
+        "backend": "metal",
+        "precision": "bfloat16",
+        "assignment": "auto",
+        "finalization": "last_epoch",
+        "spherical": false,
+        "slow_alpha": null,
+        "assignment_centering": "none",
+        "statistics_representation": "bfloat16"
+      },
+      "dataset_metadata": {
+        "paper_split_exact": true,
+        "fingerprints": {
+          "kind": "shipped_queries",
+          "n_val": 5000,
+          "n_test": 5000,
+          "val_sha256": "ca94deceddb13e16d6cfb81365e2e18c319bf704b1d0ea9a28e5067bba03c458",
+          "test_sha256": "05d685ccf5e413a0559348b3586ec82a72da637d50b7d2b9a521e70c6cd29b6f",
+          "n_train": 1000000,
+          "dim": 96,
+          "train_rows_sha256": "7b74aeede93a64c6a2e598f021fbaa42061a7e09e9f3f75f1c1254fbb4419368",
+          "n_eval_rows_in_train": 4
+        },
+        "split": "official upstream paper_data.py + paper_splits fingerprints",
+        "train_rows_used": 1000000,
+        "test_rows_used": 5000,
+        "dimension": 96,
+        "requested_row_limit": null,
+        "train_sample_sha256": "7b74aeede93a64c6a2e598f021fbaa42061a7e09e9f3f75f1c1254fbb4419368",
+        "test_sha256": "05d685ccf5e413a0559348b3586ec82a72da637d50b7d2b9a521e70c6cd29b6f"
+      },
+      "fit_seconds": 0.5790914171375334,
+      "fit_samples": [
+        0.5785213341005147,
+        0.5790914171375334,
+        0.5940367081202567
+      ],
+      "instrumented_fit_seconds": 0.6790809161029756,
+      "stage_totals": {
+        "assign_input_materialization": {
+          "seconds": 0.01787137519568205,
+          "calls": 62
+        },
+        "assign": {
+          "seconds": 0.5698692100122571,
+          "calls": 62
+        },
+        "batch_stats_input_materialization": {
+          "seconds": 0.0018473700620234013,
+          "calls": 62
+        },
+        "batch_stats": {
+          "seconds": 0.018409250769764185,
+          "calls": 62
+        },
+        "ema_update_input_materialization": {
+          "seconds": 0.0017775753512978554,
+          "calls": 62
+        },
+        "ema_update": {
+          "seconds": 0.018577130511403084,
+          "calls": 62
+        },
+        "revive_input_materialization": {
+          "seconds": 0.0003085443750023842,
+          "calls": 12
+        },
+        "revive": {
+          "seconds": 0.01369812386110425,
+          "calls": 12
+        }
+      },
+      "other_seconds": 0.0367223359644413,
+      "fit_equivalent_assignment_tflops": 10.864357187503934,
+      "normal_centroids_sha256": "db52f4fc46eff220edfd2b9eb6abf881fa2d4cd0ace6d2873f4a0a5fdb0c2edd",
+      "instrumented_centroids_sha256": "db52f4fc46eff220edfd2b9eb6abf881fa2d4cd0ace6d2873f4a0a5fdb0c2edd"
+    },
+    {
+      "dataset": "vibe-glove",
+      "n": 1172514,
+      "d": 200,
+      "k": 16384,
+      "steps": 58,
+      "processed_rows": 1876022,
+      "recipe": {
+        "name": "faiss",
+        "batch_law": "throughput",
+        "batch_law_requested": "throughput",
+        "batch_law_reason": "requested",
+        "batch_size": 32768,
+        "alpha0": 0.19236900487465025,
+        "nepochs": 1.6,
+        "epoch_rows": [
+          703508,
+          1172514
+        ],
+        "epoch_steps": [
+          22,
+          36
+        ],
+        "total_steps": 58,
+        "alpha_min_factor": 0.1,
+        "init_usage": 1.52587890625e-05,
+        "split_epsilon": 0.0001,
+        "unused_threshold": 0.1,
+        "check_unused_every": 5,
+        "tail_policy": "keep",
+        "fractional_policy": "full_closing_pass_when_T_ge_1",
+        "seed": 10,
+        "backend": "metal",
+        "precision": "bfloat16",
+        "assignment": "auto",
+        "finalization": "last_epoch",
+        "spherical": false,
+        "slow_alpha": null,
+        "assignment_centering": "none",
+        "statistics_representation": "bfloat16"
+      },
+      "dataset_metadata": {
+        "split_version": 1,
+        "split_seed": 1234,
+        "source_sha256": "5c0c316db8dd6c2503ea842ba8dc698d1513aa89a6655cc0d4be35d47645f5e0",
+        "source_revision": "07b387891a221b7b073b83d2f752b76462e5fa03",
+        "split": "new deterministic 20,000-row holdout, exact duplicates removed from train",
+        "paper_split_exact": false,
+        "source_train_rows": 1192514,
+        "train_rows": 1172514,
+        "removed_rows": 20000,
+        "test_rows": 10000,
+        "holdout_indices_sha256": "9c6bcbe7635d7075cb6041825dc0e8405af02d98d3ec9371c3fc5c1897735531",
+        "test_sha256": "caa2b9f1a911908c9b61e079d06fc1d0b6ce7c9b37dc8343ddc4a755a2c76677",
+        "train_sample_sha256": "c539a50dc697e67d151e0f3a7d6015c4b6d2b2c6e8a12971e6be121a9e2fb3fd",
+        "normalization": "as stored in the VIBE file; Euclidean clustering",
+        "train_rows_used": 1172514,
+        "test_rows_used": 10000,
+        "dimension": 200,
+        "requested_row_limit": null
+      },
+      "fit_seconds": 1.1003647078759968,
+      "fit_samples": [
+        1.1003647078759968,
+        1.1000610836781561,
+        1.1550224581733346
+      ],
+      "instrumented_fit_seconds": 1.2436838750727475,
+      "stage_totals": {
+        "assign_input_materialization": {
+          "seconds": 0.022232623305171728,
+          "calls": 58
+        },
+        "assign": {
+          "seconds": 1.1183155835606158,
+          "calls": 58
+        },
+        "batch_stats_input_materialization": {
+          "seconds": 0.001524878665804863,
+          "calls": 58
+        },
+        "batch_stats": {
+          "seconds": 0.02307754335924983,
+          "calls": 58
+        },
+        "ema_update_input_materialization": {
+          "seconds": 0.0015235808677971363,
+          "calls": 58
+        },
+        "ema_update": {
+          "seconds": 0.023773289285600185,
+          "calls": 58
+        },
+        "revive_input_materialization": {
+          "seconds": 0.00024824775755405426,
+          "calls": 11
+        },
+        "revive": {
+          "seconds": 0.016671457327902317,
+          "calls": 11
+        }
+      },
+      "other_seconds": 0.03631667094305158,
+      "fit_equivalent_assignment_tflops": 11.173293446435691,
+      "normal_centroids_sha256": "341b8f77b857c289c7db64b6afafdc4bf262518542d4967620e0573a867e855a",
+      "instrumented_centroids_sha256": "341b8f77b857c289c7db64b6afafdc4bf262518542d4967620e0573a867e855a"
+    },
+    {
+      "dataset": "vibe-agnews",
+      "n": 749088,
+      "d": 1024,
+      "k": 16384,
+      "steps": 51,
+      "processed_rows": 1647994,
+      "recipe": {
+        "name": "faiss",
+        "batch_law": "throughput",
+        "batch_law_requested": "throughput",
+        "batch_law_reason": "requested",
+        "batch_size": 32768,
+        "alpha0": 0.22753118297732897,
+        "nepochs": 2.2,
+        "epoch_rows": [
+          749088,
+          149818,
+          749088
+        ],
+        "epoch_steps": [
+          23,
+          5,
+          23
+        ],
+        "total_steps": 51,
+        "alpha_min_factor": 0.1,
+        "init_usage": 1.52587890625e-05,
+        "split_epsilon": 0.0001,
+        "unused_threshold": 0.1,
+        "check_unused_every": 5,
+        "tail_policy": "keep",
+        "fractional_policy": "full_closing_pass_when_T_ge_1",
+        "seed": 10,
+        "backend": "metal",
+        "precision": "bfloat16",
+        "assignment": "auto",
+        "finalization": "last_epoch",
+        "spherical": false,
+        "slow_alpha": null,
+        "assignment_centering": "none",
+        "statistics_representation": "bfloat16"
+      },
+      "dataset_metadata": {
+        "split_version": 1,
+        "split_seed": 1234,
+        "source_sha256": "acb2712c1717e1309e316c20701e534bc4d3015917e6b7667baed2b3592218d0",
+        "source_revision": "07b387891a221b7b073b83d2f752b76462e5fa03",
+        "split": "new deterministic 20,000-row holdout, exact duplicates removed from train",
+        "paper_split_exact": false,
+        "source_train_rows": 769382,
+        "train_rows": 749088,
+        "removed_rows": 20294,
+        "test_rows": 10000,
+        "holdout_indices_sha256": "279150933dc879e0b16ae8c7164044f199372d5cfbb84204fd26a259b10424dd",
+        "test_sha256": "8680162ee5143212ee86e0dd29913189965d45331675011c32e40726b2a67e16",
+        "train_sample_sha256": "b31a64606a8a652d08a9d940540f5eb510ca77f86a2139976cebfeda86bd1c5d",
+        "normalization": "as stored in the VIBE file; Euclidean clustering",
+        "train_rows_used": 749088,
+        "test_rows_used": 10000,
+        "dimension": 1024,
+        "requested_row_limit": null
+      },
+      "fit_seconds": 4.1257157498039305,
+      "fit_samples": [
+        4.1257157498039305
+      ],
+      "instrumented_fit_seconds": 4.347036292310804,
+      "stage_totals": {
+        "assign_input_materialization": {
+          "seconds": 0.08078587194904685,
+          "calls": 51
+        },
+        "assign": {
+          "seconds": 4.007990746758878,
+          "calls": 51
+        },
+        "batch_stats_input_materialization": {
+          "seconds": 0.002843374852091074,
+          "calls": 51
+        },
+        "batch_stats": {
+          "seconds": 0.07335649989545345,
+          "calls": 51
+        },
+        "ema_update_input_materialization": {
+          "seconds": 0.002715369686484337,
+          "calls": 51
+        },
+        "ema_update": {
+          "seconds": 0.07099900022149086,
+          "calls": 51
+        },
+        "revive_input_materialization": {
+          "seconds": 0.0006131669506430626,
+          "calls": 10
+        },
+        "revive": {
+          "seconds": 0.05439812457188964,
+          "calls": 10
+        }
+      },
+      "other_seconds": 0.05333413742482662,
+      "fit_equivalent_assignment_tflops": 13.40312953262375,
+      "normal_centroids_sha256": "5c610916f103d4e855cd6be2e9dfb805e1c63950991db5f6d599846c54ad7dc3",
+      "instrumented_centroids_sha256": "5c610916f103d4e855cd6be2e9dfb805e1c63950991db5f6d599846c54ad7dc3"
+    }
+  ]
+}

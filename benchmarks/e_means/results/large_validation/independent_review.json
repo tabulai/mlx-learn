@@ -1,0 +1,146 @@
+{
+  "status": "PASS",
+  "recorded_at_utc": "2026-11-15T02:21:32.597850+00:00",
+  "review_scope": "Independent CPU-only raw-evidence, archive, configuration, reported arithmetic and memory-scope audit; no benchmark reruns or raw/runtime/harness edits",
+  "coverage": {
+    "datasets": 5,
+    "records": 15,
+    "matched_fp32_pairs": 5,
+    "separate_bf16_supplements": 5,
+    "seed_ids": [
+      10
+    ],
+    "timed_calls": 15
+  },
+  "checks": [
+    "Full coverage and no duplicate dataset/mode/seed keys",
+    "Pinned source hashes equal current files and frozen archive members",
+    "All raw evidence SHA256 equal generated validation manifest",
+    "Same FP32 initialization, data fingerprints, canonical recipes and scoring sample across each three-mode group",
+    "First timed call/adaptive count, full online int64 labels and recipe steps verified",
+    "Primary report table and CSV timing/quality arithmetic independently recomputed",
+    "BF16 ratios reference Metal FP32 only; no mixed-precision CPU ratio claimed",
+    "Process fit-window peaks, RSS, MLX active allocation and preparation/lifetime peaks kept distinct",
+    "Single-seed and published aggregate-budget limitations disclosed",
+    "SPACEV slower timed result retained under prespecified one-call rule"
+  ],
+  "material_issues": [],
+  "metrics": [
+    {
+      "dataset": "deep1b-10M",
+      "metal_fp32_seconds": 46.731841082684696,
+      "faiss_fp32_seconds": 885.5531995408237,
+      "cpu_over_metal_fp32": 18.949674975868714,
+      "fp32_test_mse_change_pct": 0.05647157631263333,
+      "metal_bf16_seconds": 24.17329466715455,
+      "metal_fp32_over_metal_bf16": 1.9332011513590472,
+      "bf16_vs_fp32_test_mse_change_pct": 0.033002052450559205
+    },
+    {
+      "dataset": "spacev-10M",
+      "metal_fp32_seconds": 76.70510749984533,
+      "faiss_fp32_seconds": 892.1624425831251,
+      "cpu_over_metal_fp32": 11.631069581447678,
+      "fp32_test_mse_change_pct": -0.06003140498181958,
+      "metal_bf16_seconds": 34.22098762495443,
+      "metal_fp32_over_metal_bf16": 2.241463874172669,
+      "bf16_vs_fp32_test_mse_change_pct": 0.022527751979106725
+    },
+    {
+      "dataset": "fb-ssnpp-10M",
+      "metal_fp32_seconds": 91.35027608368546,
+      "faiss_fp32_seconds": 819.9430640419014,
+      "cpu_over_metal_fp32": 8.975813748945392,
+      "fp32_test_mse_change_pct": 0.0426034164767497,
+      "metal_bf16_seconds": 63.99318549968302,
+      "metal_fp32_over_metal_bf16": 1.4275000591139184,
+      "bf16_vs_fp32_test_mse_change_pct": -0.07482269930916274
+    },
+    {
+      "dataset": "dino10b-10M-div4096",
+      "metal_fp32_seconds": 285.42819883301854,
+      "faiss_fp32_seconds": 1135.9555609999225,
+      "cpu_over_metal_fp32": 3.9798294830164282,
+      "fp32_test_mse_change_pct": 0.033379934484423224,
+      "metal_bf16_seconds": 224.35605349997059,
+      "metal_fp32_over_metal_bf16": 1.2722108201687368,
+      "bf16_vs_fp32_test_mse_change_pct": -0.03182813253937988
+    },
+    {
+      "dataset": "sift1b-10M-div512",
+      "metal_fp32_seconds": 111.04346987511963,
+      "faiss_fp32_seconds": 1363.2022794168442,
+      "cpu_over_metal_fp32": 12.276293968028128,
+      "fp32_test_mse_change_pct": 0.05540793766887209,
+      "metal_bf16_seconds": 45.64534074999392,
+      "metal_fp32_over_metal_bf16": 2.432744899053786,
+      "bf16_vs_fp32_test_mse_change_pct": 0.051750150352836144
+    }
+  ],
+  "spacev_timing_kept": {
+    "timed_seconds": 76.70510749984533,
+    "warmup_seconds": 55.275463458150625,
+    "timed_calls": 1
+  },
+  "archives": [
+    {
+      "path": "benchmarks/e_means/reference/metal-v3-source.zip",
+      "sha256": "c24dfaf84b3a75c1d741fb1708bb37addda013dc9301d9d6b3166d5f52077413",
+      "verified_members": 5
+    },
+    {
+      "path": "benchmarks/e_means/reference/large-comparison-source.zip",
+      "sha256": "a61613a6c3dabb59690545d9a4b43796c6b104b8e817f502558ee1279287cf39",
+      "verified_members": 57
+    }
+  ],
+  "report_snapshot": {
+    "path": "docs/e-means-10m-comparison-2026-11-14.md",
+    "sha256": "1e92f9291fab05cbb74de28e75e9ebceb00070b7b284b639183e97fcff29bc5e"
+  },
+  "validation_snapshot": {
+    "path": "benchmarks/e_means/results/large_comparison/validation.json",
+    "sha256": "8d1125c0946d1e4da6ba4a7c6dcb06a24b9805b5ee2fbf4561bda1a8e2c48374"
+  },
+  "raw_evidence_sha256": {
+    "benchmarks/e_means/results/large_comparison/deep1b-10M-faiss-fp32-s10-75934d285698.json": "23835d159ed7b886b00f946f2ff1eb7e77f75435b1c6cc31785247bbce595897",
+    "benchmarks/e_means/results/large_comparison/deep1b-10M-metal-bf16-s10-739038086240.json": "7433302021758bd0afaff8474998b97f51ca7cdc62fb67c2dbd51a76baaa33de",
+    "benchmarks/e_means/results/large_comparison/deep1b-10M-metal-fp32-s10-eca32295d2e3.json": "a7a163e20b9bc033be4cb081982988923c971848885e2130606700d9d7e6bb9f",
+    "benchmarks/e_means/results/large_comparison/dino10b-10M-div4096-faiss-fp32-s10-fcf9c6b8f1a9.json": "40ea3a4d79931de7033ebe34785061c91287f13da1c40a50a0fbf908336c6e31",
+    "benchmarks/e_means/results/large_comparison/dino10b-10M-div4096-metal-bf16-s10-ef5a75daebe3.json": "61afaa5c0209659b5d7b47e511e5552ef89d737195ce5b6d1ae32f2e7b9415cd",
+    "benchmarks/e_means/results/large_comparison/dino10b-10M-div4096-metal-fp32-s10-c7c8c99cbae4.json": "c0e566544f0e78a72dcff94be0550018bea48e072217ee1b453cfd6b69a4a9c0",
+    "benchmarks/e_means/results/large_comparison/fb-ssnpp-10M-faiss-fp32-s10-2aba9f1957b3.json": "4c31a8111223c62e3e675ddc57b8aa920ceb56fee5ce272d70241a5f937f64ed",
+    "benchmarks/e_means/results/large_comparison/fb-ssnpp-10M-metal-bf16-s10-c074e37a3710.json": "2f3c13791d6b95ecd39a8af3803f78e05cca2816134f516c4e77357c4597c469",
+    "benchmarks/e_means/results/large_comparison/fb-ssnpp-10M-metal-fp32-s10-b6abca833aad.json": "107d1b6569442b0d901fedc461194af37218005cf639819e3303f189d46f9ec7",
+    "benchmarks/e_means/results/large_comparison/sift1b-10M-div512-faiss-fp32-s10-07aab498d460.json": "16a25a3684e6fd16f54b268bbf931b8bf4a332d128b7760ebe11949bbaf0a2bf",
+    "benchmarks/e_means/results/large_comparison/sift1b-10M-div512-metal-bf16-s10-c8a34ba0ba17.json": "53e0c7b9a2e8d3729de88fe3bee5231062d8f14d5a66795b49e779e0b7f01ab7",
+    "benchmarks/e_means/results/large_comparison/sift1b-10M-div512-metal-fp32-s10-b35c5d47e8ba.json": "b9241e98e18313ce5ea48758b8f137be5e98d4a58d39f95fe0f392957de1bc6a",
+    "benchmarks/e_means/results/large_comparison/spacev-10M-faiss-fp32-s10-bddcef488f27.json": "00cbe524f8f0b01f1717914ad53c11d4e92dd2559887b6461133bd212c42fb76",
+    "benchmarks/e_means/results/large_comparison/spacev-10M-metal-bf16-s10-affa76605e4b.json": "c9445ec77b96f9fef84037b723e4ea4bbc51145757fa5075553b8e4484eca1df",
+    "benchmarks/e_means/results/large_comparison/spacev-10M-metal-fp32-s10-7bc0aa5c530c.json": "b61326a781de02e3c98c97d04cc0158917cc79d3d254d973ac55daf9cc4384e5"
+  },
+  "no_gpu_work": true,
+  "figure_snapshots": [
+    {
+      "path": "benchmarks/e_means/large_figures/fp32-comparison.png",
+      "sha256": "352db3df45233e3fc2fe3f5b8c350e75a4af7d09e58aa4cd28d812882f020a3c",
+      "width": 2520,
+      "height": 972
+    },
+    {
+      "path": "benchmarks/e_means/large_figures/bf16-supplement.png",
+      "sha256": "77b7e00548a999ae9bd8ab3e23c61a83a57bb6e60d033591167d18740b212d30",
+      "width": 2520,
+      "height": 972
+    }
+  ],
+  "final_artifact_refresh": {
+    "recorded_at_utc": "2026-11-15T02:26:13.840399+00:00",
+    "status": "PASS",
+    "previous_report_sha256": "5c6a317937307405bbf9c461d0706708887a0ef0149568792838c142f3a766aa",
+    "report_changes": "Only the two final plot embeddings were added; removing them reproduces the previously reviewed report SHA256 exactly.",
+    "validation_and_all_15_raw_evidence_hashes_unchanged": true,
+    "figure_check": "PNG files exist, signatures/dimensions and SHA256 recorded; visual QA owned by parent agent.",
+    "no_benchmark_reruns_or_tests": true
+  }
+}

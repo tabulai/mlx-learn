@@ -1,0 +1,501 @@
+{
+  "status": "completed",
+  "kind": "metal_gap_paired",
+  "config": {
+    "dataset": "deep1b-1M",
+    "mode": "previous",
+    "seed": 10,
+    "epochs": 1.4,
+    "epochs_override": 1.4,
+    "rows": 10000,
+    "k_override": 128,
+    "precision": "bfloat16",
+    "recipe": "faiss",
+    "finalization": "last_epoch",
+    "assignment": "auto",
+    "warmup": true,
+    "capture_assignments": true,
+    "threads": 8,
+    "train_score_rows": 1000,
+    "memory": true,
+    "memory_interval_seconds": 0.01,
+    "protocol_path": "/Users/tunguz/Programming/mlxlearn/benchmarks/e_means/h100_protocol.json",
+    "protocol_config": {
+      "dataset": "deep1b-1M",
+      "suite": "core1m",
+      "n": 1000000,
+      "d": 96,
+      "k": 16384,
+      "epochs": 2.0,
+      "epoch_budget_source": "paper_table4_h100_crossing",
+      "h100_epoch_association_verified": true,
+      "published_h100_epochs": 2.0,
+      "table11_listed_epochs": null,
+      "reported_h100_emeans_seconds": null,
+      "reported_h100_seconds_source": null,
+      "seed_ids": [
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19
+      ],
+      "seed_count": 10,
+      "seed_id_provenance": "upstream_paper_bench_SEEDS_10_to_19",
+      "split_status": "official_pinned_split_fingerprints",
+      "dataset_identity": {
+        "train_sample_sha256": "7b74aeede93a64c6a2e598f021fbaa42061a7e09e9f3f75f1c1254fbb4419368",
+        "test_sha256": "05d685ccf5e413a0559348b3586ec82a72da637d50b7d2b9a521e70c6cd29b6f",
+        "train_rows_used": 1000000,
+        "test_rows_used": 5000,
+        "dimension": 96
+      },
+      "exact_h100_reproduction": false,
+      "notes": []
+    },
+    "cache": "/Users/tunguz/.cache/mlxlearn/e_means",
+    "faiss_source": "/Users/tunguz/Programming/mlxlearn/tmp/e_means/faiss",
+    "archive": "/Users/tunguz/Programming/mlxlearn/benchmarks/e_means/reference/metal-v2-source.zip",
+    "archive_manifest": "/Users/tunguz/Programming/mlxlearn/benchmarks/e_means/reference/metal-v2-source.json",
+    "archive_sha256": "2ac3e346f7a59186631fac850aa1e9831f34288dcb4e93bbc74ebb432b9383e0",
+    "runtime_comparison": {
+      "previous": {
+        "src/mlxlearn/_kernels/e_means.py": "12766f6ba973e29fab849d533bb4f8a98e7ff4d85bc17f735252e41c25a42b81",
+        "src/mlxlearn/_kernels/e_means_bf16.py": "cbe903b6972ab2fcca06b940005a5d3ae4e700f9595460036f14880625f3e4ea",
+        "src/mlxlearn/cluster/__init__.py": "d392c1bfb85290a278128af698108dd59c1ae6f2d225ffe9eeb4f8944812fb79",
+        "src/mlxlearn/cluster/_e_means.py": "fb1db4e9e6edc54df09248c397aab2f20140102b8536b146b718b29171d2c9db",
+        "src/mlxlearn/cluster/_recipe.py": "a384fb14e9fd904b2d07b77f63a5e7c85da5160e73b4e842dd0c44de5ca1c468"
+      },
+      "optimized": {
+        "src/mlxlearn/cluster/__init__.py": "d392c1bfb85290a278128af698108dd59c1ae6f2d225ffe9eeb4f8944812fb79",
+        "src/mlxlearn/cluster/_e_means.py": "6bad5886013c9ef99b544e9a82e2172f5b75cec5e49b70e6340dba3e24ce57f3",
+        "src/mlxlearn/cluster/_recipe.py": "a384fb14e9fd904b2d07b77f63a5e7c85da5160e73b4e842dd0c44de5ca1c468",
+        "src/mlxlearn/_kernels/e_means.py": "6a49eff9212bdd2fb7aee707f3d122abd109300e505a7d524050765924a83c7f",
+        "src/mlxlearn/_kernels/e_means_bf16.py": "783d2f2c5cb2166285532a9ad0001d8f47cecc3ce21577230775b1d8344205f1"
+      }
+    },
+    "shared_source_sha256": {
+      "benchmarks/e_means/gap_bench.py": "31861607e1951c165e96b09ba0b29d5c5aab8e7bf84c3950a7edcee229f18193",
+      "benchmarks/e_means/h100.py": "710d8e1325c6905b3ebe8e6e625a7ef636d5010d52eeef948fc5b1f52e104633",
+      "benchmarks/e_means/run.py": "ba5cde5b87e306ce902fb398bd04750bea0ab7506c9fd0567fa6d201729be399",
+      "benchmarks/e_means/memory.py": "2140f828d3789ec615af6a27499a24ad79432781e4de083cb7ff183e595876e7",
+      "benchmarks/e_means/vibe_manifest.json": "175cdf9c60208be8204eed0c60d7361ea4ccd26caf1a057519062a499213d63d",
+      "benchmarks/e_means/h100_protocol.json": "90c885b91fe5fba59590ebe5872d9d751c80dd2e6e9b732c8907df100da91b28",
+      "benchmarks/e_means/reference/metal-v2-source.zip": "2ac3e346f7a59186631fac850aa1e9831f34288dcb4e93bbc74ebb432b9383e0",
+      "benchmarks/e_means/reference/metal-v2-source.json": "abfd3e36b5f5a7f83b13b3b41de15c7e12a60c372e051319f22ef459ec0c856d"
+    },
+    "expected_source_sha256": {
+      "benchmarks/e_means/gap_bench.py": "31861607e1951c165e96b09ba0b29d5c5aab8e7bf84c3950a7edcee229f18193",
+      "benchmarks/e_means/h100.py": "710d8e1325c6905b3ebe8e6e625a7ef636d5010d52eeef948fc5b1f52e104633",
+      "benchmarks/e_means/run.py": "ba5cde5b87e306ce902fb398bd04750bea0ab7506c9fd0567fa6d201729be399",
+      "benchmarks/e_means/memory.py": "2140f828d3789ec615af6a27499a24ad79432781e4de083cb7ff183e595876e7",
+      "benchmarks/e_means/vibe_manifest.json": "175cdf9c60208be8204eed0c60d7361ea4ccd26caf1a057519062a499213d63d",
+      "benchmarks/e_means/h100_protocol.json": "90c885b91fe5fba59590ebe5872d9d751c80dd2e6e9b732c8907df100da91b28",
+      "benchmarks/e_means/reference/metal-v2-source.zip": "2ac3e346f7a59186631fac850aa1e9831f34288dcb4e93bbc74ebb432b9383e0",
+      "benchmarks/e_means/reference/metal-v2-source.json": "abfd3e36b5f5a7f83b13b3b41de15c7e12a60c372e051319f22ef459ec0c856d",
+      "src/mlxlearn/_kernels/e_means.py": "12766f6ba973e29fab849d533bb4f8a98e7ff4d85bc17f735252e41c25a42b81",
+      "src/mlxlearn/_kernels/e_means_bf16.py": "cbe903b6972ab2fcca06b940005a5d3ae4e700f9595460036f14880625f3e4ea",
+      "src/mlxlearn/cluster/__init__.py": "d392c1bfb85290a278128af698108dd59c1ae6f2d225ffe9eeb4f8944812fb79",
+      "src/mlxlearn/cluster/_e_means.py": "fb1db4e9e6edc54df09248c397aab2f20140102b8536b146b718b29171d2c9db",
+      "src/mlxlearn/cluster/_recipe.py": "a384fb14e9fd904b2d07b77f63a5e7c85da5160e73b4e842dd0c44de5ca1c468"
+    },
+    "expected_versions": {
+      "python": "3.14.2",
+      "numpy": "2.5.4",
+      "scipy": "1.18.1",
+      "mlx": "0.32.4",
+      "scikit-learn": "1.9.1",
+      "faiss-cpu": "1.16.0",
+      "h5py": "3.16.0"
+    },
+    "expected_host": {
+      "machine": "arm64",
+      "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+      "cpu": "Apple M4 Max",
+      "ram_bytes": 137438953472
+    },
+    "output": "/Users/tunguz/Programming/mlxlearn/benchmarks/e_means/results/gap_smoke/deep1b-1M-previous-s10-f2a5efb90828.json",
+    "worker_output": "/Users/tunguz/Programming/mlxlearn/benchmarks/e_means/results/gap_smoke/deep1b-1M-previous-s10-f2a5efb90828.json.worker.tmp"
+  },
+  "dataset": {
+    "paper_split_exact": true,
+    "fingerprints": {
+      "kind": "shipped_queries",
+      "n_val": 5000,
+      "n_test": 5000,
+      "val_sha256": "ca94deceddb13e16d6cfb81365e2e18c319bf704b1d0ea9a28e5067bba03c458",
+      "test_sha256": "05d685ccf5e413a0559348b3586ec82a72da637d50b7d2b9a521e70c6cd29b6f",
+      "n_train": 1000000,
+      "dim": 96,
+      "train_rows_sha256": "7b74aeede93a64c6a2e598f021fbaa42061a7e09e9f3f75f1c1254fbb4419368",
+      "n_eval_rows_in_train": 4
+    },
+    "split": "official upstream paper_data.py + paper_splits fingerprints",
+    "train_rows_used": 10000,
+    "test_rows_used": 5000,
+    "dimension": 96,
+    "requested_row_limit": 10000,
+    "train_sample_sha256": "228ad173fc4f98e57adafa24d23ae1c96a0f40482586d0c54adb7a75353fe2ac",
+    "test_sha256": "05d685ccf5e413a0559348b3586ec82a72da637d50b7d2b9a521e70c6cd29b6f"
+  },
+  "n": 10000,
+  "d": 96,
+  "k": 128,
+  "train_seconds": 0.010161624755710363,
+  "train_seconds_samples": [
+    0.010167791973799467,
+    0.010161624755710363,
+    0.010107458103448153
+  ],
+  "test_mse": 0.5898439463142992,
+  "train_sample_mse": 0.5650453611712765,
+  "train_score_rows": 1000,
+  "initial_centroids_sha256": "f00ded522d02c5be3dacd8e429746001dc06277e711f3fd7435d87c7d20096fd",
+  "final_centroids_sha256": "272ca941522fd017d28e6029185c7272f9840be0f9fb8ca9306de89913f58d22",
+  "recipe_resolved": {
+    "name": "faiss",
+    "batch_law": "throughput",
+    "batch_law_requested": "throughput",
+    "batch_law_reason": "requested",
+    "batch_size": 256,
+    "alpha0": 0.19803039216613405,
+    "nepochs": 1.4,
+    "epoch_rows": [
+      4000,
+      10000
+    ],
+    "epoch_steps": [
+      16,
+      40
+    ],
+    "total_steps": 56,
+    "alpha_min_factor": 0.1,
+    "init_usage": 1.52587890625e-05,
+    "split_epsilon": 0.0001,
+    "unused_threshold": 0.1,
+    "check_unused_every": 5,
+    "tail_policy": "keep",
+    "fractional_policy": "full_closing_pass_when_T_ge_1",
+    "seed": 10,
+    "backend": "metal",
+    "precision": "bfloat16",
+    "assignment": "auto",
+    "finalization": "last_epoch",
+    "spherical": false,
+    "slow_alpha": null,
+    "assignment_centering": "none",
+    "statistics_representation": "bfloat16"
+  },
+  "iteration_history": [
+    {
+      "epoch": 1,
+      "rows": 4000,
+      "steps": 16,
+      "moving_objective": 2665.2041015625,
+      "moving_mse": 0.666301025390625,
+      "seconds": 0.0030541247688233852,
+      "cumulative_seconds": 0.0031970422714948654,
+      "splits": 53,
+      "pass_count_squares": 185298.0
+    },
+    {
+      "epoch": 2,
+      "rows": 10000,
+      "steps": 56,
+      "moving_objective": 5894.72119140625,
+      "moving_mse": 0.589472119140625,
+      "seconds": 0.0058614579029381275,
+      "cumulative_seconds": 0.00920766731724143,
+      "splits": 56,
+      "pass_count_squares": 924210.0
+    }
+  ],
+  "n_splits": 56,
+  "captured_assignments": {
+    "shape": [
+      10000
+    ],
+    "dtype": "mlx.core.int64",
+    "semantics": "online final-pass labels, no extra nearest-centroid pass"
+  },
+  "mlx_memory_samples": [
+    {
+      "peak_active_bytes": 6426052,
+      "active_after_fit_bytes": 4096388,
+      "cached_after_fit_bytes": 2343368
+    },
+    {
+      "peak_active_bytes": 7031484,
+      "active_after_fit_bytes": 4096388,
+      "cached_after_fit_bytes": 3038712
+    },
+    {
+      "peak_active_bytes": 6855248,
+      "active_after_fit_bytes": 4096388,
+      "cached_after_fit_bytes": 2873580
+    }
+  ],
+  "preparation_seconds": 0.010870999656617641,
+  "warmup_seconds": 0.45489520812407136,
+  "source_sha256": {
+    "benchmarks/e_means/gap_bench.py": "31861607e1951c165e96b09ba0b29d5c5aab8e7bf84c3950a7edcee229f18193",
+    "benchmarks/e_means/h100.py": "710d8e1325c6905b3ebe8e6e625a7ef636d5010d52eeef948fc5b1f52e104633",
+    "benchmarks/e_means/run.py": "ba5cde5b87e306ce902fb398bd04750bea0ab7506c9fd0567fa6d201729be399",
+    "benchmarks/e_means/memory.py": "2140f828d3789ec615af6a27499a24ad79432781e4de083cb7ff183e595876e7",
+    "benchmarks/e_means/vibe_manifest.json": "175cdf9c60208be8204eed0c60d7361ea4ccd26caf1a057519062a499213d63d",
+    "benchmarks/e_means/h100_protocol.json": "90c885b91fe5fba59590ebe5872d9d751c80dd2e6e9b732c8907df100da91b28",
+    "benchmarks/e_means/reference/metal-v2-source.zip": "2ac3e346f7a59186631fac850aa1e9831f34288dcb4e93bbc74ebb432b9383e0",
+    "benchmarks/e_means/reference/metal-v2-source.json": "abfd3e36b5f5a7f83b13b3b41de15c7e12a60c372e051319f22ef459ec0c856d",
+    "src/mlxlearn/_kernels/e_means.py": "12766f6ba973e29fab849d533bb4f8a98e7ff4d85bc17f735252e41c25a42b81",
+    "src/mlxlearn/_kernels/e_means_bf16.py": "cbe903b6972ab2fcca06b940005a5d3ae4e700f9595460036f14880625f3e4ea",
+    "src/mlxlearn/cluster/__init__.py": "d392c1bfb85290a278128af698108dd59c1ae6f2d225ffe9eeb4f8944812fb79",
+    "src/mlxlearn/cluster/_e_means.py": "fb1db4e9e6edc54df09248c397aab2f20140102b8536b146b718b29171d2c9db",
+    "src/mlxlearn/cluster/_recipe.py": "a384fb14e9fd904b2d07b77f63a5e7c85da5160e73b4e842dd0c44de5ca1c468"
+  },
+  "versions": {
+    "python": "3.14.2",
+    "numpy": "2.5.4",
+    "scipy": "1.18.1",
+    "mlx": "0.32.4",
+    "scikit-learn": "1.9.1",
+    "faiss-cpu": "1.16.0",
+    "h5py": "3.16.0"
+  },
+  "hardware": {
+    "machine": "arm64",
+    "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "cpu": "Apple M4 Max",
+    "ram_bytes": 137438953472
+  },
+  "metal_device": {
+    "device_name": "Apple M4 Max",
+    "max_recommended_working_set_size": 115448725504,
+    "memory_size": 137438953472,
+    "architecture": "applegpu_g16s",
+    "max_buffer_length": 86586540032,
+    "resource_limit": 499000
+  },
+  "faiss_reference_revision": "ebab8f784c1d177129602269d5ad966c525fbdcb",
+  "timing_scope": "resident FP32 input; identical full warmup; new model plus device fit and sync; shuffling, BF16 casts, online history and final-pass labels included; preparation/upload and host output/scoring excluded",
+  "quality_fit_index": 0,
+  "scoring": "shared Faiss IndexFlatL2 float32 nearest assignment then direct float64 squared residuals",
+  "memory_scope": "sampled per timed-fit process footprint/RSS including resident-input baseline; warmup, cache clearing and output export excluded; MLX allocator recorded separately",
+  "differences_from_h100": [
+    "Apple Metal hardware and kernels, no local H100",
+    "NumPy permutations/donor RNG instead of CUDA Torch RNG",
+    "full input finite/range validation in untimed preparation; per-fit signature/state checks inside timing",
+    "online objective/history accumulation FP32 on Metal versus upstream FP64"
+  ],
+  "runtime_source_sha256": {
+    "src/mlxlearn/_kernels/e_means.py": "12766f6ba973e29fab849d533bb4f8a98e7ff4d85bc17f735252e41c25a42b81",
+    "src/mlxlearn/_kernels/e_means_bf16.py": "cbe903b6972ab2fcca06b940005a5d3ae4e700f9595460036f14880625f3e4ea",
+    "src/mlxlearn/cluster/__init__.py": "d392c1bfb85290a278128af698108dd59c1ae6f2d225ffe9eeb4f8944812fb79",
+    "src/mlxlearn/cluster/_e_means.py": "fb1db4e9e6edc54df09248c397aab2f20140102b8536b146b718b29171d2c9db",
+    "src/mlxlearn/cluster/_recipe.py": "a384fb14e9fd904b2d07b77f63a5e7c85da5160e73b4e842dd0c44de5ca1c468"
+  },
+  "shared_source_sha256": {
+    "benchmarks/e_means/gap_bench.py": "31861607e1951c165e96b09ba0b29d5c5aab8e7bf84c3950a7edcee229f18193",
+    "benchmarks/e_means/h100.py": "710d8e1325c6905b3ebe8e6e625a7ef636d5010d52eeef948fc5b1f52e104633",
+    "benchmarks/e_means/run.py": "ba5cde5b87e306ce902fb398bd04750bea0ab7506c9fd0567fa6d201729be399",
+    "benchmarks/e_means/memory.py": "2140f828d3789ec615af6a27499a24ad79432781e4de083cb7ff183e595876e7",
+    "benchmarks/e_means/vibe_manifest.json": "175cdf9c60208be8204eed0c60d7361ea4ccd26caf1a057519062a499213d63d",
+    "benchmarks/e_means/h100_protocol.json": "90c885b91fe5fba59590ebe5872d9d751c80dd2e6e9b732c8907df100da91b28",
+    "benchmarks/e_means/reference/metal-v2-source.zip": "2ac3e346f7a59186631fac850aa1e9831f34288dcb4e93bbc74ebb432b9383e0",
+    "benchmarks/e_means/reference/metal-v2-source.json": "abfd3e36b5f5a7f83b13b3b41de15c7e12a60c372e051319f22ef459ec0c856d"
+  },
+  "loaded_runtime": {
+    "verified": true,
+    "root": "/private/var/folders/rj/2r_78zvx5r1265qkzhz8xwzc0000gn/T/emeans-frozen-8doa1l8c",
+    "modules": {
+      "mlxlearn._kernels.e_means_bf16": {
+        "relative_path": "src/mlxlearn/_kernels/e_means_bf16.py",
+        "path": "/private/var/folders/rj/2r_78zvx5r1265qkzhz8xwzc0000gn/T/emeans-frozen-8doa1l8c/src/mlxlearn/_kernels/e_means_bf16.py",
+        "sha256": "cbe903b6972ab2fcca06b940005a5d3ae4e700f9595460036f14880625f3e4ea"
+      },
+      "mlxlearn._kernels.e_means": {
+        "relative_path": "src/mlxlearn/_kernels/e_means.py",
+        "path": "/private/var/folders/rj/2r_78zvx5r1265qkzhz8xwzc0000gn/T/emeans-frozen-8doa1l8c/src/mlxlearn/_kernels/e_means.py",
+        "sha256": "12766f6ba973e29fab849d533bb4f8a98e7ff4d85bc17f735252e41c25a42b81"
+      },
+      "mlxlearn.cluster._recipe": {
+        "relative_path": "src/mlxlearn/cluster/_recipe.py",
+        "path": "/private/var/folders/rj/2r_78zvx5r1265qkzhz8xwzc0000gn/T/emeans-frozen-8doa1l8c/src/mlxlearn/cluster/_recipe.py",
+        "sha256": "a384fb14e9fd904b2d07b77f63a5e7c85da5160e73b4e842dd0c44de5ca1c468"
+      },
+      "mlxlearn.cluster._e_means": {
+        "relative_path": "src/mlxlearn/cluster/_e_means.py",
+        "path": "/private/var/folders/rj/2r_78zvx5r1265qkzhz8xwzc0000gn/T/emeans-frozen-8doa1l8c/src/mlxlearn/cluster/_e_means.py",
+        "sha256": "fb1db4e9e6edc54df09248c397aab2f20140102b8536b146b718b29171d2c9db"
+      },
+      "mlxlearn.cluster": {
+        "relative_path": "src/mlxlearn/cluster/__init__.py",
+        "path": "/private/var/folders/rj/2r_78zvx5r1265qkzhz8xwzc0000gn/T/emeans-frozen-8doa1l8c/src/mlxlearn/cluster/__init__.py",
+        "sha256": "d392c1bfb85290a278128af698108dd59c1ae6f2d225ffe9eeb4f8944812fb79"
+      }
+    },
+    "synthetic_namespace_packages": [
+      "mlxlearn",
+      "mlxlearn._kernels"
+    ],
+    "origin": "2ac3e346f7a59186631fac850aa1e9831f34288dcb4e93bbc74ebb432b9383e0"
+  },
+  "comparison_scope": "fresh paired native-BF16 fits; only explicitly recorded runtime sources differ; historical campaign timings are not paired",
+  "memory_samples": [
+    {
+      "supported": true,
+      "source": "proc_pid_rusage",
+      "pid": 98956,
+      "sample_interval_seconds": 0.01,
+      "sample_count": 2,
+      "duration_seconds": 0.010524041,
+      "maximum_sample_gap_seconds": 0.010524041,
+      "baseline": {
+        "supported": true,
+        "source": "proc_pid_rusage",
+        "pid": 98956,
+        "rusage_flavor": 4,
+        "monotonic_ns": 2242133128895604,
+        "collection_duration_ns": 21792,
+        "rss_bytes": 191496192,
+        "physical_footprint_bytes": 330990744,
+        "lifetime_peak_physical_footprint_bytes": 332268696,
+        "process_start_abstime": 53811172159874,
+        "process_exit_abstime": 0
+      },
+      "end": {
+        "supported": true,
+        "source": "proc_pid_rusage",
+        "pid": 98956,
+        "rusage_flavor": 4,
+        "monotonic_ns": 2242133139419645,
+        "collection_duration_ns": 16959,
+        "rss_bytes": 191594496,
+        "physical_footprint_bytes": 331973784,
+        "lifetime_peak_physical_footprint_bytes": 332268696,
+        "process_start_abstime": 53811172159874,
+        "process_exit_abstime": 0
+      },
+      "peak_rss_bytes": 191594496,
+      "peak_physical_footprint_bytes": 331973784,
+      "rss_peak_increase_bytes": 98304,
+      "physical_footprint_peak_increase_bytes": 983040,
+      "lifetime_peak_physical_footprint_bytes": 332268696,
+      "sampling_errors": [],
+      "complete": true,
+      "notes": [
+        "Phase peaks are maxima of current-memory samples, not lifetime maxima.",
+        "Sampling can miss transients shorter than the observed sampling gaps.",
+        "Phase totals include memory allocated before FIT_READY; increments subtract that baseline.",
+        "RSS and physical footprint are different process metrics and must not be added.",
+        "Process footprint is not an exclusive GPU-memory measurement.",
+        "Lifetime peak is diagnostic only and includes preparation/warm-up."
+      ]
+    },
+    {
+      "supported": true,
+      "source": "proc_pid_rusage",
+      "pid": 98956,
+      "sample_interval_seconds": 0.01,
+      "sample_count": 2,
+      "duration_seconds": 0.010367604,
+      "maximum_sample_gap_seconds": 0.010367604,
+      "baseline": {
+        "supported": true,
+        "source": "proc_pid_rusage",
+        "pid": 98956,
+        "rusage_flavor": 4,
+        "monotonic_ns": 2242133152628125,
+        "collection_duration_ns": 20250,
+        "rss_bytes": 191594496,
+        "physical_footprint_bytes": 331220120,
+        "lifetime_peak_physical_footprint_bytes": 332268696,
+        "process_start_abstime": 53811172159874,
+        "process_exit_abstime": 0
+      },
+      "end": {
+        "supported": true,
+        "source": "proc_pid_rusage",
+        "pid": 98956,
+        "rusage_flavor": 4,
+        "monotonic_ns": 2242133162995729,
+        "collection_duration_ns": 10042,
+        "rss_bytes": 192020480,
+        "physical_footprint_bytes": 333350040,
+        "lifetime_peak_physical_footprint_bytes": 333350040,
+        "process_start_abstime": 53811172159874,
+        "process_exit_abstime": 0
+      },
+      "peak_rss_bytes": 192020480,
+      "peak_physical_footprint_bytes": 333350040,
+      "rss_peak_increase_bytes": 425984,
+      "physical_footprint_peak_increase_bytes": 2129920,
+      "lifetime_peak_physical_footprint_bytes": 333350040,
+      "sampling_errors": [],
+      "complete": true,
+      "notes": [
+        "Phase peaks are maxima of current-memory samples, not lifetime maxima.",
+        "Sampling can miss transients shorter than the observed sampling gaps.",
+        "Phase totals include memory allocated before FIT_READY; increments subtract that baseline.",
+        "RSS and physical footprint are different process metrics and must not be added.",
+        "Process footprint is not an exclusive GPU-memory measurement.",
+        "Lifetime peak is diagnostic only and includes preparation/warm-up."
+      ]
+    },
+    {
+      "supported": true,
+      "source": "proc_pid_rusage",
+      "pid": 98956,
+      "sample_interval_seconds": 0.01,
+      "sample_count": 2,
+      "duration_seconds": 0.010352625,
+      "maximum_sample_gap_seconds": 0.010352625,
+      "baseline": {
+        "supported": true,
+        "source": "proc_pid_rusage",
+        "pid": 98956,
+        "rusage_flavor": 4,
+        "monotonic_ns": 2242133174844854,
+        "collection_duration_ns": 11292,
+        "rss_bytes": 191971328,
+        "physical_footprint_bytes": 332104856,
+        "lifetime_peak_physical_footprint_bytes": 333350040,
+        "process_start_abstime": 53811172159874,
+        "process_exit_abstime": 0
+      },
+      "end": {
+        "supported": true,
+        "source": "proc_pid_rusage",
+        "pid": 98956,
+        "rusage_flavor": 4,
+        "monotonic_ns": 2242133185197479,
+        "collection_duration_ns": 15208,
+        "rss_bytes": 192053248,
+        "physical_footprint_bytes": 333202584,
+        "lifetime_peak_physical_footprint_bytes": 333350040,
+        "process_start_abstime": 53811172159874,
+        "process_exit_abstime": 0
+      },
+      "peak_rss_bytes": 192053248,
+      "peak_physical_footprint_bytes": 333202584,
+      "rss_peak_increase_bytes": 81920,
+      "physical_footprint_peak_increase_bytes": 1097728,
+      "lifetime_peak_physical_footprint_bytes": 333350040,
+      "sampling_errors": [],
+      "complete": true,
+      "notes": [
+        "Phase peaks are maxima of current-memory samples, not lifetime maxima.",
+        "Sampling can miss transients shorter than the observed sampling gaps.",
+        "Phase totals include memory allocated before FIT_READY; increments subtract that baseline.",
+        "RSS and physical footprint are different process metrics and must not be added.",
+        "Process footprint is not an exclusive GPU-memory measurement.",
+        "Lifetime peak is diagnostic only and includes preparation/warm-up."
+      ]
+    }
+  ],
+  "wall_seconds_including_load_warmup_score": 1.1046964996494353
+}

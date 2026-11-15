@@ -1,0 +1,84 @@
+{
+  "status": "PASS",
+  "recorded_at_utc": "2026-11-15T11:11:08.605514+00:00",
+  "scope": "Interim independent read-only audit of first full four-method DEEP group; campaign remains incomplete. No GPU work, benchmarks, test reruns or training-array reads.",
+  "coverage": {
+    "dataset": "deep1b-10M",
+    "records": 4,
+    "n": 10000000,
+    "d": 96,
+    "k": 65536,
+    "passes": 2,
+    "seed": 10,
+    "precision": "float32"
+  },
+  "checks": [
+    "Raw/runtime/harness/reference/sklearn SHA256 verified against frozen metadata and current files",
+    "Archive ZIP digest and every archived repository source verified",
+    "Same exact initialization, scoring sample, dataset identities and environment across four modes",
+    "Integer full passes, final nearest labels/inertia timing, matching e-means recipe",
+    "Adaptive timing medians, complete fit-window memory, RSS/footprint/MLX/lifetime scope distinction",
+    "Independent CSV time/MSE/ratio/memory arithmetic; report partial-coverage caveats consistent"
+  ],
+  "comparisons": {
+    "sklearn_over_metal_kmeans": 6.185822018798028,
+    "metal_kmeans_over_metal_emeans": 0.8014149552067319,
+    "faiss_over_metal_emeans": 15.570821647099258,
+    "metal_kmeans_vs_sklearn_mse_change_pct": 0.0004900653645112385,
+    "metal_emeans_vs_metal_kmeans_mse_change_pct": -2.537354911831202,
+    "metal_emeans_vs_faiss_mse_change_pct": -0.09517963091334458
+  },
+  "raw_evidence": [
+    {
+      "path": "benchmarks/e_means/results/kmeans_comparison/deep1b-10M-faiss-emeans-s10-9135c4286f1c.json",
+      "sha256": "536aa7f6c48baf2c9e7eab833bee76e8c0b82099216b2489636e36e056ec0f5e",
+      "mode": "faiss-emeans",
+      "seconds": 1316.1188714592718,
+      "test_mse": 0.342148982304257,
+      "fit_footprint_gib": 4.270389586687088,
+      "fit_rss_gib": 4.3201751708984375,
+      "label_sample_agreement": 1.0
+    },
+    {
+      "path": "benchmarks/e_means/results/kmeans_comparison/deep1b-10M-metal-emeans-s10-f8136fe8093f.json",
+      "sha256": "c3b3d64a0d9a090e7b091de3a89cce54fcab8ad4eecbf0421df048c53c13ac9b",
+      "mode": "metal-emeans",
+      "seconds": 84.52468991605565,
+      "test_mse": 0.341823326165726,
+      "fit_footprint_gib": 6.814334876835346,
+      "fit_rss_gib": 3.9677886962890625,
+      "label_sample_agreement": 1.0
+    },
+    {
+      "path": "benchmarks/e_means/results/kmeans_comparison/deep1b-10M-metal-kmeans-s10-592e0a950692.json",
+      "sha256": "c74aa41e3e7dd87edd6556187ca50de6299d59c52ed77b0d20d39744d6b46d2f",
+      "mode": "metal-kmeans",
+      "seconds": 67.73935058293864,
+      "test_mse": 0.35072239816239165,
+      "fit_footprint_gib": 6.998401626944542,
+      "fit_rss_gib": 3.8113555908203125,
+      "label_sample_agreement": 0.9998
+    },
+    {
+      "path": "benchmarks/e_means/results/kmeans_comparison/deep1b-10M-sklearn-kmeans-s10-af58e876d0a5.json",
+      "sha256": "c0f3a9ef452d59d5c42d617ea2ffc292de3d99bb27ef29e64f8d0529adbd1f6b",
+      "mode": "sklearn-kmeans",
+      "seconds": 419.0235663750209,
+      "test_mse": 0.3507206794018157,
+      "fit_footprint_gib": 11.887735106050968,
+      "fit_rss_gib": 11.930145263671875,
+      "label_sample_agreement": 0.9999
+    }
+  ],
+  "artifact_sha256": {
+    "benchmarks/e_means/kmeans_protocol.json": "743d976b3b632dce060d2f5981cba70d61176774e47a2b30cda4d319f7391d70",
+    "benchmarks/e_means/reference/kmeans-comparison-source.json": "7a99f00d848d53cdd32d8194a509757297b47c1f72f3b62ce8ae8cdca3664c8c",
+    "benchmarks/e_means/reference/kmeans-comparison-source.zip": "a0c98fea2653c920eea9290a44885cbdc546fdefbd12f10e0f129506be4e1ea4",
+    "benchmarks/e_means/results/kmeans_comparison/validation.json": "92d0bb842ba13c822fa7996af575a9e147ef2bbfe019ec3072fabb634d88f23d",
+    "benchmarks/e_means/results/kmeans_comparison/summary.csv": "aa123ff434a7ef52f3f7a72ed3f08915aa474bb49fdd1aa175acbd78b8043562",
+    "benchmarks/e_means/results/kmeans_comparison/comparisons.csv": "b14a561537f035147b7a2bbbd64511edfe4a08c2911057329f3b74bcd03ba78e",
+    "docs/k-means-10m-comparison-2026-11-15.md": "5dc1fc549cf64bc91040c3fafb0cca165adf47093163cb2b9de7130319e7b444",
+    "benchmarks/e_means/kmeans_report.py": "8be15ac2f3a3e923f0f7bf8ffdbb0ec4b7345ffd1c338a6ccb298f9c2b0ef189"
+  },
+  "material_issues": []
+}

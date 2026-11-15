@@ -1,0 +1,141 @@
+"""Diagnostic stage attribution with the same resident workload as h100.py.
+
+Instrumentation serializes stage boundaries; it is not a GPU hardware trace.
+The uninstrumented adaptive timing samples remain the performance measurement.
+"""
+from __future__ import annotations
+
+import argparse
+import gc
+import importlib
+import json
+import sys
+import time
+from collections import defaultdict
+from pathlib import Path
+from statistics import median
+
+import mlx.core as mx
+import numpy as np
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import h100  # noqa: E402
+
+import run as base  # noqa: E402
+
+
+def evaluate(value):
+    if isinstance(value, mx.array):
+        mx.eval(value)
+    elif isinstance(value, (tuple, list)):
+        for item in value:
+            evaluate(item)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--datasets", nargs="+", default=["deep1b-1M", "vibe-glove", "vibe-agnews"])
+    parser.add_argument("--out", type=Path, required=True)
+    args = parser.parse_args()
+    protocol_path = HERE / "h100_protocol.json"
+    protocol = json.loads(protocol_path.read_text())
+    entries = {entry["dataset"]: entry for entry in protocol["configurations"]}
+    module = importlib.import_module("mlxlearn.cluster._e_means")
+    data, _, _ = base.reference_modules(base.REPO / "tmp/e_means/faiss", base.DEFAULT_CACHE)
+    sources = h100.sources(protocol_path)
+    records = []
+    for name in args.datasets:
+        entry = entries[name]
+        x, _, metadata = base.load_dataset(name, data, base.DEFAULT_CACHE)
+        n, d = x.shape
+        k = entry["k"]
+        initial = x[np.random.RandomState(10).permutation(n)[:k]].copy()
+        kwargs = {"n_clusters": k, "max_iter": entry["epochs"], "recipe": "faiss", "init": initial,
+                  "compute_labels": False, "random_state": 10, "precision": "bfloat16",
+                  "assignment": "auto", "batch_law": "throughput", "finalization": "last_epoch"}
+        prepared = module.EMeans(**kwargs).prepare_device(x)
+
+        def fit(kwargs=kwargs, prepared=prepared):
+            output = module.EMeans(**kwargs).train_device(prepared, capture_assignments=True)
+            mx.synchronize()
+            return output
+
+        output = fit()
+        del output
+        times = []
+        for _ in range(3):
+            gc.collect()
+            mx.clear_cache()
+            mx.synchronize()
+            start = time.perf_counter()
+            output = fit()
+            times.append(time.perf_counter() - start)
+            steps, rows = output.steps, sum(v["rows"] for v in output.history)
+            center_hash = base.array_sha256(np.array(output.centers))
+            del output
+            if len(times) >= h100.expected_calls(times[0]):
+                break
+
+        totals = defaultdict(lambda: {"seconds": 0.0, "calls": 0})
+        originals = {}
+
+        def wrap(label, function, totals=totals):
+            def measured(*a, **kw):
+                # Attribute pending argument materialization separately, e.g.
+                # shuffled batch gather/cast and last-pass accumulation.
+                mx.synchronize()
+                start = time.perf_counter()
+                evaluate(a)
+                evaluate(tuple(kw.values()))
+                mx.synchronize()
+                totals[label + "_input_materialization"]["seconds"] += time.perf_counter() - start
+                totals[label + "_input_materialization"]["calls"] += 1
+                start = time.perf_counter()
+                result = function(*a, **kw)
+                evaluate(result)
+                mx.synchronize()
+                totals[label]["seconds"] += time.perf_counter() - start
+                totals[label]["calls"] += 1
+                return result
+            return measured
+
+        for label in ("assign", "batch_stats", "ema_update", "revive"):
+            originals[label] = getattr(module, label)
+            setattr(module, label, wrap(label, originals[label]))
+        gc.collect()
+        mx.clear_cache()
+        mx.synchronize()
+        start = time.perf_counter()
+        try:
+            output = fit()
+        finally:
+            for label, function in originals.items():
+                setattr(module, label, function)
+        instrumented = time.perf_counter() - start
+        instrumented_hash = base.array_sha256(np.array(output.centers))
+        del output
+        record = {"dataset": name, "n": n, "d": d, "k": k, "steps": steps,
+                  "processed_rows": rows, "recipe": prepared.recipe, "dataset_metadata": metadata,
+                  "fit_seconds": median(times), "fit_samples": times,
+                  "instrumented_fit_seconds": instrumented, "stage_totals": dict(totals),
+                  "other_seconds": instrumented - sum(v["seconds"] for v in totals.values()),
+                  "fit_equivalent_assignment_tflops": 2 * rows * k * d / median(times) / 1e12,
+                  "normal_centroids_sha256": center_hash,
+                  "instrumented_centroids_sha256": instrumented_hash}
+        records.append(record)
+        print(json.dumps(record), flush=True)
+        if h100.sources(protocol_path) != sources:
+            raise RuntimeError("Measured source changed during profiling")
+        base.atomic_json(args.out, {"kind": "gap_stage_profile", "source_sha256": sources,
+                                  "profile_sha256": base.file_sha256(Path(__file__)),
+                                  "versions": base.package_versions(), "hardware": base.host_identity(),
+                                  "protocol": "Same seed10 workload, precision, finalization and adaptive warmed/cache-cleared resident timing as h100.py; diagnostic run has no external memory sampler. Instrumented stages serialize GPU execution and separately materialize input arguments.",
+                                  "records": records})
+        del prepared, x, initial
+        gc.collect()
+        mx.clear_cache()
+
+
+if __name__ == "__main__":
+    main()

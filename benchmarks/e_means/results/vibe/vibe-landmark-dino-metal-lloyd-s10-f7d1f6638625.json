@@ -1,0 +1,130 @@
+{
+  "status": "completed",
+  "config": {
+    "dataset": "vibe-landmark-dino",
+    "seed": 10,
+    "method": "metal-lloyd",
+    "epochs": 3.0,
+    "lloyd_iters": 25,
+    "k": null,
+    "rows": null,
+    "threads": 8,
+    "precision": "float32",
+    "recipe": "paper",
+    "finalization": "last_epoch",
+    "assignment": "auto",
+    "batch_size": null,
+    "batch_law": "auto",
+    "repeats": 1,
+    "warmup": false,
+    "train_score_rows": 10000,
+    "cache": "/Users/tunguz/.cache/mlxlearn/e_means",
+    "faiss_source": "/Users/tunguz/Programming/mlxlearn/tmp/e_means/faiss",
+    "expected_source_sha256": {
+      "benchmarks/e_means/run.py": "ba5cde5b87e306ce902fb398bd04750bea0ab7506c9fd0567fa6d201729be399",
+      "benchmarks/e_means/vibe_manifest.json": "175cdf9c60208be8204eed0c60d7361ea4ccd26caf1a057519062a499213d63d",
+      "src/mlxlearn/cluster/__init__.py": "d392c1bfb85290a278128af698108dd59c1ae6f2d225ffe9eeb4f8944812fb79",
+      "src/mlxlearn/cluster/_e_means.py": "4b614a8349711a7afcb3310aa65ad2e2515e990cca4f02b59dffa1a6dd303964",
+      "src/mlxlearn/cluster/_recipe.py": "a384fb14e9fd904b2d07b77f63a5e7c85da5160e73b4e842dd0c44de5ca1c468",
+      "src/mlxlearn/_kernels/e_means.py": "3df3c15a2086ef9f2807ae7a35e3d3ee6588d7162659c832818dfcfce0f0b178"
+    },
+    "expected_versions": {
+      "python": "3.14.2",
+      "numpy": "2.5.4",
+      "scipy": "1.18.1",
+      "mlx": "0.32.4",
+      "scikit-learn": "1.9.1",
+      "faiss-cpu": "1.16.0",
+      "h5py": "3.16.0"
+    },
+    "expected_host": {
+      "machine": "arm64",
+      "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+      "cpu": "Apple M4 Max",
+      "ram_bytes": 137438953472
+    },
+    "output": "/Users/tunguz/Programming/mlxlearn/benchmarks/e_means/results/vibe/vibe-landmark-dino-metal-lloyd-s10-f7d1f6638625.json"
+  },
+  "dataset": {
+    "split_version": 1,
+    "split_seed": 1234,
+    "source_sha256": "b13bf651afbc5963fa2ecca73fa78bac9fe68889528935bdcf26ab333dd792d2",
+    "source_revision": "07b387891a221b7b073b83d2f752b76462e5fa03",
+    "split": "new deterministic 20,000-row holdout, exact duplicates removed from train",
+    "paper_split_exact": false,
+    "source_train_rows": 760757,
+    "train_rows": 740740,
+    "removed_rows": 20017,
+    "test_rows": 10000,
+    "holdout_indices_sha256": "278e37dd91bd704c003f9e086245d197559a4d0edcfb5abd6a33cec2ae1277d2",
+    "test_sha256": "a8cce913dd262a25845834d810b65d1c9a33776a9f39e1de92948b976bd44b40",
+    "train_sample_sha256": "036290f129e905f401a95622d3b55fc9dbe03484700bfbfcd9cd623b88989fbd",
+    "normalization": "as stored in the VIBE file; Euclidean clustering",
+    "train_rows_used": 740740,
+    "test_rows_used": 10000,
+    "dimension": 768,
+    "requested_row_limit": null
+  },
+  "n": 740740,
+  "d": 768,
+  "k": 16384,
+  "train_seconds": 71.70777175016701,
+  "train_seconds_samples": [
+    71.70777175016701
+  ],
+  "test_mse": 2009.4629876578956,
+  "train_sample_mse": 1898.9234165654525,
+  "train_score_rows": 10000,
+  "initial_centroids_sha256": "7c7f759fde9f160f6c1b05d0a9e481c8960d649354fa5159761316961246b48f",
+  "final_centroids_sha256": "80dff204cdb4866edf793ca87d7ad0eb4f11f09c66f9a8848f491faf63545787",
+  "recipe_resolved": {
+    "algorithm": "Lloyd",
+    "iterations": 25,
+    "precision": "float32",
+    "assignment": "auto",
+    "empty_clusters": "retain previous centroid",
+    "subsample": false,
+    "assignment_centering": "global mean, same as EMeans"
+  },
+  "algorithm_applied": {
+    "recipe": "Lloyd",
+    "iterations": 25
+  },
+  "n_splits": null,
+  "timing_scope": "synchronized fit from NumPy input; includes fit validation/upload; excludes data load, init sampling, warmup, scoring",
+  "scoring": "Faiss IndexFlatL2 float32 assignment, residual recomputed by direct float64 difference",
+  "initialization": "NumPy RandomState(seed) permutation shared across methods; differs paper CUDA RNG",
+  "hardware": {
+    "machine": "arm64",
+    "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "cpu": "Apple M4 Max",
+    "ram_bytes": 137438953472,
+    "metal": {
+      "device_name": "Apple M4 Max",
+      "max_recommended_working_set_size": 115448725504,
+      "memory_size": 137438953472,
+      "architecture": "applegpu_g16s",
+      "max_buffer_length": 86586540032,
+      "resource_limit": 499000
+    }
+  },
+  "versions": {
+    "python": "3.14.2",
+    "numpy": "2.5.4",
+    "scipy": "1.18.1",
+    "mlx": "0.32.4",
+    "scikit-learn": "1.9.1",
+    "faiss-cpu": "1.16.0",
+    "h5py": "3.16.0"
+  },
+  "faiss_reference_revision": "ebab8f784c1d177129602269d5ad966c525fbdcb",
+  "source_sha256": {
+    "benchmarks/e_means/run.py": "ba5cde5b87e306ce902fb398bd04750bea0ab7506c9fd0567fa6d201729be399",
+    "benchmarks/e_means/vibe_manifest.json": "175cdf9c60208be8204eed0c60d7361ea4ccd26caf1a057519062a499213d63d",
+    "src/mlxlearn/cluster/__init__.py": "d392c1bfb85290a278128af698108dd59c1ae6f2d225ffe9eeb4f8944812fb79",
+    "src/mlxlearn/cluster/_e_means.py": "4b614a8349711a7afcb3310aa65ad2e2515e990cca4f02b59dffa1a6dd303964",
+    "src/mlxlearn/cluster/_recipe.py": "a384fb14e9fd904b2d07b77f63a5e7c85da5160e73b4e842dd0c44de5ca1c468",
+    "src/mlxlearn/_kernels/e_means.py": "3df3c15a2086ef9f2807ae7a35e3d3ee6588d7162659c832818dfcfce0f0b178"
+  },
+  "peak_gpu_memory_bytes": 3803401232
+}

@@ -1,0 +1,46 @@
+{
+  "status": "passed",
+  "kind": "h100_harness_report_validation",
+  "recorded_at_utc": "2026-11-14T19:19:46.298068+00:00",
+  "tests": {
+    "command": ".venv/bin/python -m pytest -q benchmarks/e_means/test_h100.py",
+    "result": "32 passed in 0.43s",
+    "exit_code": 0
+  },
+  "lint": {
+    "command": ".venv/bin/ruff check benchmarks/e_means/h100_report.py benchmarks/e_means/test_h100.py",
+    "result": "All checks passed!",
+    "exit_code": 0
+  },
+  "source_sha256": {
+    "benchmarks/e_means/h100.py": "710d8e1325c6905b3ebe8e6e625a7ef636d5010d52eeef948fc5b1f52e104633",
+    "benchmarks/e_means/h100_report.py": "647afac19cbb539cfe2f821276e21683f514683801895678e130710ddfb92d0c",
+    "benchmarks/e_means/test_h100.py": "f19a5c3d5cf3488151d800ec5d0d3c09d6733dc2df8b7ec76201afbfe11ebf6b",
+    "benchmarks/e_means/h100_protocol.json": "90c885b91fe5fba59590ebe5872d9d751c80dd2e6e9b732c8907df100da91b28",
+    "benchmarks/e_means/H100_PROTOCOL.md": "2ebb5ffbb7bb38d8b545333a82c6579bfd3e18c0af3e62ee1a897b9af44e93f0"
+  },
+  "coverage": [
+    "adaptive1or3calls and perfit memory handshakes",
+    "failure cleanup including sampler and selector errors",
+    "source/software/host provenance",
+    "dataset fingerprint and seed manifest enforcement",
+    "unpaired optimized seeds not pooled into speedup",
+    "memory suppression",
+    "contextual H100 comparisons",
+    "time quartiles and one-seed dispersion unavailable",
+    "distinct core and VIBE ImageNet labels",
+    "per-dataset/mode memory medians use per-seed peaks and preserve raw links",
+    "all available memory seeds counted independently of matched-pair coverage",
+    "paired-seed MLX active allocation increases reported separately from process footprint; incomplete and unpaired records excluded from tradeoffs",
+    "quality plot zero medians retain dots with observed paired min-max whiskers; global range distinguishes seed pairs from medians"
+  ],
+  "independent_review": "review_tests agent read-only review: no remaining blockers after fingerprint/seed/selector-cleanup fixes.",
+  "scope": "Pure CPU tests, py_compile, CLI help and empty-evidence report; no GPU or data-load benchmark performed by this agent.",
+  "note": "Report/protocol-note clarification: published core budgets are upper medians of per-seed crossings, held fixed across local seeds; Table11 per-seed budgets and epoch aggregation unavailable. Timed harness and protocol JSON unchanged. Presentation-only follow-up replaces the per-seed memory appendix with dataset/mode aggregates and distinct ImageNet labels. No measured sources or results changed; no plots or GPU work performed. Dynamic allocator-tradeoff note uses only complete paired seeds and makes no causal memory claim. Quality-panel coordinates tested with a fake axis without importing plotting libraries or rendering figures; original table medians unchanged.",
+  "final_report_followup": {
+    "tests": "32 passed in 0.43s",
+    "ruff": "passed for h100_report.py",
+    "visual_qa": "Root inspected final core1m and VIBE plots; labels and rows readable.",
+    "report_sha256": "507f895c38778bb9af0c9f78d462e85968d4ce050ecce6779a258bc7d4c13556"
+  }
+}

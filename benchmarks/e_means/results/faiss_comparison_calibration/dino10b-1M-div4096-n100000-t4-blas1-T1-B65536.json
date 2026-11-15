@@ -1,0 +1,80 @@
+{
+  "status": "calibrated",
+  "kind": "thread_calibration",
+  "config": {
+    "dataset": "dino10b-1M-div4096",
+    "rows": 100000,
+    "epochs": 1,
+    "batch": 65536,
+    "threads": 4,
+    "blas": 1
+  },
+  "seconds": 2.980465583037585,
+  "n": 100000,
+  "d": 1024,
+  "k": 16384,
+  "recipe": {
+    "name": "manual_batch",
+    "batch_law": null,
+    "batch_law_requested": null,
+    "batch_law_reason": null,
+    "batch_size": 65536,
+    "batch_size_requested": 65536,
+    "alpha0": 1.0,
+    "alpha0_source": "step_law",
+    "nepochs": 1,
+    "steps_per_pass": 2,
+    "total_steps": 2,
+    "epoch_rows": [
+      100000
+    ],
+    "epoch_steps": [
+      2
+    ],
+    "tail_policy": "keep",
+    "alpha_min_factor": 0.1,
+    "check_unused_every": 5,
+    "unused_threshold": 0.1,
+    "split_epsilon": 0.0001,
+    "init_usage": 1.52587890625e-05,
+    "seed": 10,
+    "backend": "faiss",
+    "assignment_chunk_size": 65536
+  },
+  "faiss_compile_options": "OPTIMIZE DD ARM_NEON MAC_METAL ",
+  "effective_omp_threads": 4,
+  "environment": {
+    "OMP_NUM_THREADS": "4",
+    "VECLIB_MAXIMUM_THREADS": "1",
+    "OMP_DYNAMIC": null,
+    "OMP_PROC_BIND": null,
+    "OMP_PLACES": null
+  },
+  "versions": {
+    "numpy": "2.5.4",
+    "scipy": "1.18.1",
+    "faiss-cpu": "1.16.0"
+  },
+  "reference_revision": "ebab8f784c1d177129602269d5ad966c525fbdcb",
+  "source_sha256": {
+    "benchmarks/e_means/results/faiss_comparison_calibration/calibrate.py": "92cc8e8de8e2014d32f4befc073a4790d8337e1ff6337a8734e0d6e16a19feff",
+    "tmp/e_means/faiss/contrib/e_means/e_means.py": "b1710504fdbef21efdd33d8489a56f8e7fc6056182afbed3f355985302c2e77c",
+    "tmp/e_means/faiss/contrib/e_means/base.py": "bcffd7829ebfc25e1354308770b49e6f99d8566ba5e474a41a22e9ec414b17cd",
+    "tmp/e_means/faiss/benchs/e_means/paper_data.py": "a8cd60529547f8a0d525dd5e96c2a4987bb2bf27bc95e78530228595c1f2fd4a"
+  },
+  "faiss_binary_sha256": "05fd425cb3fb4c873e76e990576923094580d2f84a1a0c23844148b4b919ec0e",
+  "initial_centroids_sha256": "96d24477efef72ac0d376a17984d0a27f028c8deb4125e34f7e9be6589893e71",
+  "final_centroids_sha256": "3b0f916f967ba0a1f6c15d6da6de6fea3892293f286f8009fee3e8b365aeef54",
+  "timing_scope": "one fit; excludes imports/data load/init sampling and 1024-query Faiss warmup",
+  "hardware": {
+    "cpu": "Apple M4 Max",
+    "physical_cores": 16,
+    "performance_cores": 12,
+    "efficiency_cores": 4
+  },
+  "source_artifacts": {
+    "original_executed_filename": "calibrate.py",
+    "archived_source": "calibrate.py.txt",
+    "sha256": "92cc8e8de8e2014d32f4befc073a4790d8337e1ff6337a8734e0d6e16a19feff"
+  }
+}

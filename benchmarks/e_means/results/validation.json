@@ -1,0 +1,110 @@
+{
+  "status": "passed",
+  "kind": "validation_evidence",
+  "recorded_at_utc": "2026-11-14T14:49:59.459868+00:00",
+  "observations": [
+    {
+      "command": ".venv/bin/python -m pytest tests/unit/test_e_means.py tests/unit/test_e_means_benchmark.py -q",
+      "result": "63 passed in 0.50s",
+      "exit_code": 0,
+      "scope": "56 algorithm/GPU cases including exact-count batch limit and 7 CPU benchmark provenance cases."
+    },
+    {
+      "command": ".venv/bin/python -m ruff check src/mlxlearn/cluster src/mlxlearn/_kernels/e_means.py tests/unit/test_e_means.py tests/unit/test_e_means_benchmark.py benchmarks/e_means/run.py",
+      "result": "All checks passed!",
+      "exit_code": 0
+    },
+    {
+      "command": ".venv/bin/python tools/compliance.py",
+      "result": "branding PASS (1327); private-imports PASS (51); headers PASS (1335); licenses PASS (4); layout PASS (9)",
+      "exit_code": 0
+    },
+    {
+      "command": ".venv/bin/python -m build --no-isolation --outdir tmp/e_means/package-smoke",
+      "result": "Wheel and source distribution built successfully",
+      "exit_code": 0,
+      "log": "/Users/tunguz/Programming/mlxlearn/tmp/e_means/package-smoke.log"
+    },
+    {
+      "check": "Archive membership and source integrity",
+      "result": "Both wheel and sdist include all four new implementation files, byte-identical to final frozen checkout",
+      "validated_source_sha256": {
+        "src/mlxlearn/cluster/__init__.py": "d392c1bfb85290a278128af698108dd59c1ae6f2d225ffe9eeb4f8944812fb79",
+        "src/mlxlearn/cluster/_e_means.py": "4b614a8349711a7afcb3310aa65ad2e2515e990cca4f02b59dffa1a6dd303964",
+        "src/mlxlearn/cluster/_recipe.py": "a384fb14e9fd904b2d07b77f63a5e7c85da5160e73b4e842dd0c44de5ca1c468",
+        "src/mlxlearn/_kernels/e_means.py": "3df3c15a2086ef9f2807ae7a35e3d3ee6588d7162659c832818dfcfce0f0b178"
+      }
+    },
+    {
+      "check": "Extracted wheel smoke",
+      "result": "Confirmed import from extracted wheel, sklearn clone, Metal fit and predict on 32x5 float32 data; finite inertia",
+      "exit_code": 0,
+      "import_path": "/Users/tunguz/Programming/mlxlearn/tmp/e_means/extracted-wheel/mlxlearn/__init__.py"
+    },
+    {
+      "command": ".venv/bin/python -m pytest benchmarks/e_means/test_report.py -q",
+      "result": "11 passed in 0.02s",
+      "exit_code": 0,
+      "scope": "Pure-CPU checks for provenance-safe pairing, same-seed repetition handling, observed quality crossings, recorded medians, and cold-fit labels."
+    },
+    {
+      "command": ".venv/bin/python -m ruff check benchmarks/e_means/report.py benchmarks/e_means/test_report.py",
+      "result": "All checks passed!",
+      "exit_code": 0
+    },
+    {
+      "command": ".venv/bin/python -m pytest tests/unit/test_e_means.py tests/unit/test_e_means_benchmark.py benchmarks/e_means/test_report.py -q",
+      "result": "74 passed in 0.48s",
+      "exit_code": 0,
+      "scope": "Final combined check after figure-label and CPU-reference documentation changes; scoped Ruff and git diff --check also pass."
+    },
+    {
+      "command": ".venv/bin/python -m pytest benchmarks/e_means/test_report.py -q",
+      "result": "11 passed in 0.02s; scoped Ruff passed",
+      "exit_code": 0,
+      "scope": "Final report-only host metadata deduplication; benchmark/runtime sources unchanged."
+    }
+  ],
+  "validated_source_sha256": {
+    "src/mlxlearn/cluster/__init__.py": "d392c1bfb85290a278128af698108dd59c1ae6f2d225ffe9eeb4f8944812fb79",
+    "src/mlxlearn/cluster/_e_means.py": "4b614a8349711a7afcb3310aa65ad2e2515e990cca4f02b59dffa1a6dd303964",
+    "src/mlxlearn/cluster/_recipe.py": "a384fb14e9fd904b2d07b77f63a5e7c85da5160e73b4e842dd0c44de5ca1c468",
+    "src/mlxlearn/_kernels/e_means.py": "3df3c15a2086ef9f2807ae7a35e3d3ee6588d7162659c832818dfcfce0f0b178"
+  },
+  "test_source_sha256": {
+    "tests/unit/test_e_means.py": "aee43365ec17bee4dd587c933e076831613d454315b2ba8ce9a55913bf75f21d",
+    "tests/unit/test_e_means_benchmark.py": "535df43e2ae8b92e8d128be3e879cf5d981b5afa483079734adde306c1264852"
+  },
+  "benchmark_test_source_sha256": {
+    "benchmarks/e_means/run.py": "ba5cde5b87e306ce902fb398bd04750bea0ab7506c9fd0567fa6d201729be399"
+  },
+  "artifacts": [
+    {
+      "path": "/Users/tunguz/Programming/mlxlearn/tmp/e_means/package-smoke/mlx_learn-0.1.2-cp314-cp314-macosx_11_0_arm64.whl",
+      "sha256": "cde526ee3e841827d28ee93ed23ad58f0335ade2c944830409d7bec81ff4b04f"
+    },
+    {
+      "path": "/Users/tunguz/Programming/mlxlearn/tmp/e_means/package-smoke/mlx_learn-0.1.2.tar.gz",
+      "sha256": "f4bc3b16efac4bca42b2cfcf4722565f2ecfe0de41a0b1cd30bce6d5568bf017"
+    },
+    {
+      "path": "/Users/tunguz/Programming/mlxlearn/tmp/e_means/package-smoke.log",
+      "sha256": "ad19d04390e52e40ec0a71a18735264d16e5e1d9e52311d757e088c409852851"
+    }
+  ],
+  "note": "Recorded from actual final validation tool outputs after count-bound fixes and before the resumed timed GPU campaign. Compare source hashes before applying this evidence to later code.",
+  "report_test_source_sha256": {
+    "benchmarks/e_means/report.py": "066cda627549729ffbe41dc5b54f47a449e986be775ad965188a9c94e7f95721",
+    "benchmarks/e_means/test_report.py": "b245992046e443e2b6345f903f28ed5c54a970a01998bcc0b6875f4473c1a57e"
+  },
+  "test_totals": {
+    "algorithm_and_benchmark": 63,
+    "report": 11,
+    "combined": 74
+  },
+  "final_check_utc": "2026-11-14T16:00:50.811132+00:00",
+  "report_source_sha256": {
+    "benchmarks/e_means/report.py": "1e6eda8d6a8796c6adc759071356d9262968edb730090eb954a6f69f2d7d6be2",
+    "benchmarks/e_means/test_report.py": "b245992046e443e2b6345f903f28ed5c54a970a01998bcc0b6875f4473c1a57e"
+  }
+}

@@ -1,0 +1,230 @@
+{
+  "protocol": "resident random normal / sqrt(d) represented BF16 matrices; preparation excluded; one warmup, synchronized repeats; sample labels checked against CPU FP64 represented-value oracle",
+  "command_args": {
+    "roofline": true,
+    "stage": "schedule",
+    "dims": "96,1024,3072",
+    "rows": 8192,
+    "clusters": 16384,
+    "repeats": 5,
+    "output": "benchmarks/e_means/results/gap_investigation/roofline.json"
+  },
+  "hardware": {
+    "device_name": "Apple M4 Max",
+    "max_recommended_working_set_size": 115448725504,
+    "memory_size": 137438953472,
+    "architecture": "applegpu_g16s",
+    "max_buffer_length": 86586540032,
+    "resource_limit": 499000
+  },
+  "script": "\"\"\"Reproducible BF16 scheduling/tiling experiments; no runtime mutations.\n\nUse --roofline for diagnostic MLX matmuls. FP16 and BF16-output matmuls in\nthat diagnostic are not valid substitutes for BF16-input/FP32-output assignment.\nKernel source derives from the attributed production implementation; each\nresult records the exact generated source, source hashes, and configurations.\n\"\"\"\nfrom __future__ import annotations\n\nimport argparse\nfrom dataclasses import asdict, dataclass\nfrom functools import lru_cache\nimport hashlib\nimport json\nfrom pathlib import Path\nimport time\n\nimport mlx.core as mx\nimport numpy as np\n\nfrom mlxlearn._kernels import e_means_bf16 as production\n\n\n@dataclass(frozen=True)\nclass Config:\n    bm: int = 64\n    bn: int = 64\n    bk: int = 32\n    wm: int = 2\n    wn: int = 2\n    padding: int = 8\n    barriers: int = 0\n    reverse_mma: bool = False\n    inner_unroll: bool = True\n\n    def validate(self):\n        assert min(self.bm, self.bn, self.bk, self.wm, self.wn) > 0\n        assert self.bm % (8 * self.wm) == self.bn % (8 * self.wn) == self.bk % 8 == 0\n        threads = self.wm * self.wn * 32\n        assert threads <= 1024\n        for rows in [self.bm, self.bn]:\n            vector = rows * self.bk // threads\n            assert vector > 0 and self.bk % vector == 0\n        shared = (self.bm + self.bn) * (self.bk + self.padding) * 2 + 8 * self.wn * self.bm\n        assert shared <= 32768, shared\n        return threads\n\n\nHEADER = r\"\"\"\n#include <metal_simdgroup_matrix>\ntemplate <typename V, typename U>\nV emeans_bf16_load_vector(const device U* pointer) {\n    return *reinterpret_cast<const device V*>(pointer);\n}\ntemplate <typename V, typename U>\nV emeans_bf16_load_vector(const constant U* pointer) {\n    return *reinterpret_cast<const constant V*>(pointer);\n}\n\"\"\"\n\n\ndef kernel_source(config):\n    source = production._TILE_SOURCE\n    source = source.replace(\n        'metal::simdgroup_matrix<T,8,8> aa[TM], bb[TN];',\n        'if constexpr (BARRIERS == 1 || BARRIERS == 3) metal::simdgroup_barrier(mem_flags::mem_none);\\n'\n        '            metal::simdgroup_matrix<T,8,8> aa[TM], bb[TN];')\n    source = source.replace(\n        '            for (uint n = 0; n < TN; ++n) {\\n                if constexpr (MANUAL)',\n        '            for (uint n = 0; n < TN; ++n) {\\n                if constexpr (MANUAL)', 1)\n    before_b = '            #pragma clang loop unroll(full)\\n            for (uint n = 0; n < TN; ++n) {\\n                if constexpr (MANUAL)'\n    source = source.replace(before_b, '            if constexpr (BARRIERS == 1) metal::simdgroup_barrier(mem_flags::mem_none);\\n' + before_b)\n    mma = '''            #pragma clang loop unroll(full)\n            for (uint m = 0; m < TM; ++m)\n                #pragma clang loop unroll(full)\n                for (uint n = 0; n < TN; ++n)\n                    metal::simdgroup_multiply_accumulate(acc[m][n], aa[m], bb[n], acc[m][n]);'''\n    replacement = mma\n    if config.reverse_mma:\n        replacement = mma.replace('uint m = 0; m < TM; ++m', 'uint placeholder = 0; placeholder < TN; ++placeholder').replace('uint n = 0; n < TN; ++n', 'uint m = 0; m < TM; ++m').replace('uint placeholder = 0; placeholder < TN; ++placeholder', 'uint n = 0; n < TN; ++n')\n    source = source.replace(mma, '            if constexpr (BARRIERS == 1 || BARRIERS == 2) metal::simdgroup_barrier(mem_flags::mem_none);\\n' + replacement)\n    if not config.inner_unroll:\n        source = source.replace('#pragma clang loop unroll(full)\\n        for (uint f = 0;', '#pragma clang loop unroll(disable)\\n        for (uint f = 0;')\n    return source\n\n\n@lru_cache(None)\ndef kernel(config):\n    config.validate()\n    return mx.fast.metal_kernel(\n        name='emeans_gap_scheduling', input_names=['x', 'centers', 'norms'],\n        output_names=['partial_scores', 'partial_indices'],\n        source=kernel_source(config), header=HEADER,\n        compile_options={'math_mode': 'safe'},\n    )\n\n\ndef assign(x, centers, norms, config):\n    n, d = x.shape\n    k = centers.shape[0]\n    parts = (k + config.bn - 1) // config.bn\n    threads = config.validate()\n    partial = kernel(config)(\n        inputs=[x, centers, norms],\n        template=[('T', mx.bfloat16), ('N', n), ('K', k), ('D', d),\n                  ('BM', config.bm), ('BN', config.bn), ('BK', config.bk),\n                  ('WM', config.wm), ('WN', config.wn), ('PAD', config.padding),\n                  ('PARTS', parts), ('MANUAL', True), ('VECTOR_LOAD', True),\n                  ('NATIVE', True), ('SPHERICAL', False), ('BARRIERS', config.barriers)],\n        grid=(((n + config.bm - 1) // config.bm) * threads, parts, 1),\n        threadgroup=(threads, 1, 1), output_shapes=[(n, parts), (n, parts)],\n        output_dtypes=[mx.float32, mx.uint32], stream=mx.gpu,\n    )\n    return tuple(production._merge_kernel()(\n        inputs=partial, template=[('N', n), ('PARTS', parts)],\n        grid=(n * 32, 1, 1), threadgroup=(256, 1, 1),\n        output_shapes=[(n,), (n,)], output_dtypes=[mx.uint32, mx.float32], stream=mx.gpu,\n    ))\n\n\ndef timed(fun, repetitions):\n    out = fun()\n    mx.eval(out)\n    mx.synchronize()\n    timings = []\n    for _ in range(repetitions):\n        started = time.perf_counter()\n        out = fun()\n        mx.eval(out)\n        mx.synchronize()\n        timings.append(time.perf_counter() - started)\n    return timings, out\n\n\ndef configurations(stage):\n    if stage == 'schedule':\n        return [Config(barriers=b, reverse_mma=reverse, inner_unroll=unroll)\n                for b in range(4) for reverse, unroll in [(False, True), (True, True), (False, False)]]\n    if stage == 'tiles':\n        return [Config(bm=bm, bn=bn, bk=bk, wm=wm, wn=wn, barriers=barriers)\n                for bm,bn,wm,wn in [(32,64,2,2),(64,64,2,2),(64,128,2,4),(128,64,4,2),\n                                     (64,128,2,2),(128,64,2,2),(128,128,4,2)]\n                for bk in [16,32,64] for barriers in [0,1]]\n    raise ValueError(stage)\n\n\ndef main():\n    parser = argparse.ArgumentParser(description=__doc__)\n    parser.add_argument('--roofline', action='store_true')\n    parser.add_argument('--stage', choices=['schedule','tiles'], default='schedule')\n    parser.add_argument('--dims', default='96,1024,3072')\n    parser.add_argument('--rows', type=int, default=8192)\n    parser.add_argument('--clusters', type=int, default=16384)\n    parser.add_argument('--repeats', type=int, default=5)\n    parser.add_argument('--output', required=True)\n    args = parser.parse_args()\n    script = Path(__file__).read_text()\n    source = Path(production.__file__).read_text()\n    result = {'protocol':'resident random normal / sqrt(d) represented BF16 matrices; preparation excluded; one warmup, synchronized repeats; sample labels checked against CPU FP64 represented-value oracle',\n              'command_args':vars(args), 'hardware':mx.device_info(), 'script':script,\n              'script_sha256':hashlib.sha256(script.encode()).hexdigest(),\n              'production_source':source, 'production_sha256':hashlib.sha256(source.encode()).hexdigest(),\n              'records':[]}\n    outpath = Path(args.output)\n    outpath.parent.mkdir(parents=True,exist_ok=True)\n    def save():\n        outpath.write_text(json.dumps(result,indent=2)+'\\n')\n    rng = np.random.default_rng(701)\n    for d in map(int,args.dims.split(',')):\n        n,k=args.rows,args.clusters\n        x=mx.array(rng.standard_normal((n,d),dtype=np.float32)/np.sqrt(d)).astype(mx.bfloat16)\n        centers,norms=production.prepare_centers(mx.array(rng.standard_normal((k,d),dtype=np.float32)/np.sqrt(d)))\n        mx.eval(x,centers,norms)\n        cn=np.asarray(centers.astype(mx.float32)).astype(np.float64)\n        xn=np.asarray(x[:19].astype(mx.float32)).astype(np.float64)\n        oracle=np.argmin(np.sum(cn*cn,axis=1)-2*(xn@cn.T),axis=1)\n        methods=[('production',lambda:production.assign_bf16(x,centers,norms=norms),None)]\n        if args.roofline:\n            for dtype,name in [(mx.float16,'diagnostic_fp16_output'),(mx.bfloat16,'diagnostic_bf16_output'),(mx.float32,'represented_fp32_output')]:\n                a,b=x.astype(dtype),centers.astype(dtype).T\n                mx.eval(a,b)\n                methods.append((name,lambda a=a,b=b:a@b,None))\n        else:\n            for config in configurations(args.stage):\n                try:\n                    config.validate()\n                except AssertionError:\n                    continue\n                methods.append(('candidate',lambda config=config:assign(x,centers,norms,config),config))\n        for name,fun,config in methods:\n            row={'n':n,'k':k,'d':d,'method':name,'config':asdict(config) if config else None}\n            if config:\n                row['kernel_source']=kernel_source(config)\n            try:\n                seconds,out=timed(fun,args.repeats)\n                median=float(np.median(seconds))\n                row.update(seconds=seconds,median_seconds=median,dot_tflops=2*n*k*d/median/1e12)\n                if name in ['production','candidate']:\n                    row['oracle_mismatches_first19']=int(np.count_nonzero(np.asarray(out[0][:19])!=oracle))\n                    if row['oracle_mismatches_first19']:\n                        raise AssertionError(f\"oracle mismatch: {row['oracle_mismatches_first19']}\")\n                else:\n                    row['diagnostic_only']='matmul output precision differs or excludes argmin; not a production assignment substitute'\n            except Exception as exc:\n                row['error']=str(exc)\n            result['records'].append(row)\n            print(d,name,asdict(config) if config else '',row.get('median_seconds'),row.get('error',''),flush=True)\n            save()\n\n\nif __name__=='__main__':\n    main()\n",
+  "script_sha256": "bf6514349a7834660f302dc3ee4ac18f73bbf57118693836beb6472acbf3c640",
+  "production_source": "\"\"\"Native BF16 Metal nearest-centroid assignment with FP32 accumulation.\n\nThe fused tile kernel keeps scores in registers and writes only one winning\nscore/index per row and centroid tile. A second SIMD reduction merges tiles.\nInputs and centroid mirrors are explicitly BF16; no FP16 approximation occurs.\n\nThe fragment coordinates and vector load strategy are derived from MLX 0.32.4\n``mlx/backend/metal/kernels/steel/gemm/{mma,loader}.h`` (MIT).\nCopyright \u00a9 2024 Apple Inc.\nModified for mlxlearn on 2026-11-14: BF16 native fragments, fused nearest-center\nreduction, guarded ragged loads, bounded row batching, and Python dispatch.\nSee THIRD_PARTY_NOTICES.md section 1 for the upstream MIT license.\n\"\"\"\n\nfrom __future__ import annotations\n\nimport operator\nfrom functools import lru_cache\n\nimport mlx.core as mx\n\n_UINT32_MAX = 2**32 - 1\n_SCRATCH_BYTES = 256 * 1024**2\n\n# Copyright \u00a9 2024 Apple Inc.\n# Modified for mlxlearn: native BF16 loads and fused centroid argmin, 2026-11-14.\n_TILE_SOURCE = r\"\"\"\n\n    constexpr uint TM = BM / (8 * WM);\n    constexpr uint TN = BN / (8 * WN);\n    constexpr uint LD = BK + PAD;\n    constexpr uint THREADS = 32 * WM * WN;\n    threadgroup T xs[BM * LD];\n    // Store centroids in their natural [centroid,feature] layout so that\n    // adjacent loading lanes read adjacent global addresses.\n    threadgroup T cs[BN * LD];\n    uint tid = thread_index_in_threadgroup;\n    uint sg = simdgroup_index_in_threadgroup;\n    uint lane = thread_index_in_simdgroup;\n    uint r0 = threadgroup_position_in_grid.x * BM;\n    uint c0 = threadgroup_position_in_grid.y * BN;\n    if (r0 >= N || c0 >= K) return;\n    uint wm = sg / WN, wn = sg % WN;\n    const uint qid_load = lane / 4;\n    const uint fm_load = (qid_load & 4) + ((lane / 2) % 4);\n    const uint fn_load = (qid_load & 2) * 2 + (lane % 2) * 2;\n    metal::simdgroup_float8x8 acc[TM][TN];\n    #pragma clang loop unroll(full)\n    for (uint m = 0; m < TM; ++m)\n        #pragma clang loop unroll(full)\n        for (uint n = 0; n < TN; ++n)\n            acc[m][n] = metal::simdgroup_float8x8(0);\n    #pragma clang loop unroll(disable)\n    for (uint f0 = 0; f0 < D; f0 += BK) {\n        if constexpr (VECTOR_LOAD) {\n            constexpr uint AV = BM * BK / THREADS;\n            constexpr uint BV = BN * BK / THREADS;\n            constexpr uint AC = BK / AV, BC = BK / BV;\n            constexpr uint AR = THREADS / AC, BR = THREADS / BC;\n            struct alignas(2) AVector { uint8_t values[2 * AV]; };\n            struct alignas(2) BVector { uint8_t values[2 * BV]; };\n            #pragma clang loop unroll(full)\n            for (uint i = 0; i < BM; i += AR) {\n                uint r = i + tid / AC, f = (tid % AC) * AV;\n                if (NATIVE && r0 + r < N && f0 + f + AV <= D) {\n                    *reinterpret_cast<threadgroup AVector*>(xs + r * LD + f) =\n                        emeans_bf16_load_vector<AVector>(x + (r0 + r) * D + f0 + f);\n                } else {\n                    #pragma clang loop unroll(full)\n                    for (uint j = 0; j < AV; ++j)\n                        xs[r * LD + f + j] = r0 + r < N && f0 + f + j < D ? T(x[(r0 + r) * D + f0 + f + j]) : T(0);\n                }\n            }\n            #pragma clang loop unroll(full)\n            for (uint i = 0; i < BN; i += BR) {\n                uint c = i + tid / BC, f = (tid % BC) * BV;\n                if (NATIVE && c0 + c < K && f0 + f + BV <= D) {\n                    *reinterpret_cast<threadgroup BVector*>(cs + c * LD + f) =\n                        emeans_bf16_load_vector<BVector>(centers + (c0 + c) * D + f0 + f);\n                } else {\n                    #pragma clang loop unroll(full)\n                    for (uint j = 0; j < BV; ++j)\n                        cs[c * LD + f + j] = c0 + c < K && f0 + f + j < D ? T(centers[(c0 + c) * D + f0 + f + j]) : T(0);\n                }\n            }\n        } else {\n            for (uint i = tid; i < BM * BK; i += THREADS) {\n                uint r = i / BK, f = i % BK;\n                xs[r * LD + f] = r0 + r < N && f0 + f < D ? T(x[(r0 + r) * D + f0 + f]) : T(0);\n            }\n            for (uint i = tid; i < BN * BK; i += THREADS) {\n                uint c = i / BK, f = i % BK;\n                cs[c * LD + f] = c0 + c < K && f0 + f < D ? T(centers[(c0 + c) * D + f0 + f]) : T(0);\n            }\n        }\n        threadgroup_barrier(mem_flags::mem_threadgroup);\n        #pragma clang loop unroll(full)\n        for (uint f = 0; f < BK; f += 8) {\n            metal::simdgroup_matrix<T,8,8> aa[TM], bb[TN];\n            #pragma clang loop unroll(full)\n            for (uint m = 0; m < TM; ++m) {\n                if constexpr (MANUAL) {\n                    uint offset = ((m * WM + wm) * 8 + fm_load) * LD + f + fn_load;\n                    reinterpret_cast<thread metal::vec<T,2>&>(aa[m].thread_elements()) = metal::vec<T,2>(xs[offset],xs[offset+1]);\n                } else {\n                    metal::simdgroup_load(aa[m], xs + (m * WM + wm) * 8 * LD + f, LD);\n                }\n            }\n            #pragma clang loop unroll(full)\n            for (uint n = 0; n < TN; ++n) {\n                if constexpr (MANUAL) {\n                    uint offset = ((n * WN + wn) * 8 + fn_load) * LD + f + fm_load;\n                    reinterpret_cast<thread metal::vec<T,2>&>(bb[n].thread_elements()) = metal::vec<T,2>(cs[offset],cs[offset+LD]);\n                } else {\n                    metal::simdgroup_load(bb[n], cs + (n * WN + wn) * 8 * LD + f, LD, ulong2(0,0), true);\n                }\n            }\n            #pragma clang loop unroll(full)\n            for (uint m = 0; m < TM; ++m)\n                #pragma clang loop unroll(full)\n                for (uint n = 0; n < TN; ++n)\n                    metal::simdgroup_multiply_accumulate(acc[m][n], aa[m], bb[n], acc[m][n]);\n        }\n        threadgroup_barrier(mem_flags::mem_threadgroup);\n    }\n\n    threadgroup float row_scores[WN * BM];\n    threadgroup uint row_indices[WN * BM];\n    const uint qid = lane / 4;\n    const uint fm = (qid & 4) + ((lane / 2) % 4);\n    const uint fn = (qid & 2) * 2 + (lane % 2) * 2;\n    #pragma clang loop unroll(full)\n    for (uint m = 0; m < TM; ++m) {\n        float best = INFINITY;\n        uint index = c0;\n        #pragma clang loop unroll(full)\n        for (uint n = 0; n < TN; ++n) {\n            const uint col = c0 + (n * WN + wn) * 8 + fn;\n            const auto values = reinterpret_cast<thread float2&>(acc[m][n].thread_elements());\n            #pragma clang loop unroll(full)\n            for (uint q = 0; q < 2; ++q) {\n                float value = col + q < K ? (SPHERICAL ? -values[q] : norms[col + q] - 2.0f * values[q]) : INFINITY;\n                if (value < best || (value == best && col + q < index)) {\n                    best = value; index = col + q;\n                }\n            }\n        }\n        // The four lanes with the same row differ only in lane bits 0 and 3.\n        float other = metal::simd_shuffle_xor(best, 1);\n        uint other_index = metal::simd_shuffle_xor(index, 1);\n        if (other < best || (other == best && other_index < index)) {\n            best = other; index = other_index;\n        }\n        other = metal::simd_shuffle_xor(best, 8);\n        other_index = metal::simd_shuffle_xor(index, 8);\n        if (other < best || (other == best && other_index < index)) {\n            best = other; index = other_index;\n        }\n        if (fn == 0) {\n            uint row = (m * WM + wm) * 8 + fm;\n            row_scores[wn * BM + row] = best;\n            row_indices[wn * BM + row] = index;\n        }\n    }\n    threadgroup_barrier(mem_flags::mem_threadgroup);\n    for (uint row = tid; row < BM; row += THREADS) {\n        if (r0 + row >= N) continue;\n        float best = INFINITY;\n        uint index = c0;\n        #pragma clang loop unroll(full)\n        for (uint j = 0; j < WN; ++j) {\n            float value = row_scores[j * BM + row];\n            uint candidate = row_indices[j * BM + row];\n            if (value < best || (value == best && candidate < index)) {\n                best = value; index = candidate;\n            }\n        }\n        partial_scores[(r0 + row) * PARTS + c0 / BN] = best;\n        partial_indices[(r0 + row) * PARTS + c0 / BN] = index;\n    }\n\"\"\"\n\n@lru_cache(None)\ndef _tile_kernel():\n    return mx.fast.metal_kernel(\n        name=\"emeans_bf16_tiled\", input_names=[\"x\", \"centers\", \"norms\"],\n        output_names=[\"partial_scores\", \"partial_indices\"], source=_TILE_SOURCE,\n        header=r\"\"\"\n        #include <metal_simdgroup_matrix>\n        template <typename V, typename U>\n        V emeans_bf16_load_vector(const device U* pointer) {\n            return *reinterpret_cast<const device V*>(pointer);\n        }\n        // MLX binds one-element arrays in the constant address space.\n        template <typename V, typename U>\n        V emeans_bf16_load_vector(const constant U* pointer) {\n            return *reinterpret_cast<const constant V*>(pointer);\n        }\n        \"\"\",\n        compile_options={\"math_mode\": \"safe\"},\n    )\n\n\n@lru_cache(None)\ndef _norm_kernel():\n    return mx.fast.metal_kernel(\n        name=\"emeans_bf16_norms\", input_names=[\"centers\"], output_names=[\"norms\"],\n        source=r\"\"\"\n        uint row = thread_position_in_grid.x / 32;\n        uint lane = thread_index_in_simdgroup;\n        if (row >= K) return;\n        float sum = 0;\n        for (uint f = lane; f < D; f += 32) {\n            float v = float(centers[row * D + f]);\n            sum += v * v;\n        }\n        sum = metal::simd_sum(sum);\n        if (lane == 0) norms[row] = sum;\n        \"\"\",\n    )\n\n\n@lru_cache(None)\ndef _merge_kernel():\n    return mx.fast.metal_kernel(\n        name=\"emeans_bf16_merge\", input_names=[\"scores\", \"indices\"],\n        output_names=[\"labels\", \"best_scores\"], source=r\"\"\"\n        uint row = thread_position_in_grid.x / 32;\n        uint lane = thread_index_in_simdgroup;\n        if (row >= N) return;\n        float best = INFINITY;\n        uint index = 0;\n        for (uint part = lane; part < PARTS; part += 32) {\n            float score = scores[row * PARTS + part];\n            uint candidate = indices[row * PARTS + part];\n            if (score < best || (score == best && candidate < index)) {\n                best = score; index = candidate;\n            }\n        }\n        float value = metal::simd_min(best);\n        uint winner = metal::simd_min(best == value ? index : 0xffffffff);\n        if (lane == 0) {labels[row] = winner; best_scores[row] = value;}\n        \"\"\",\n    )\n\n\ndef _check_centers(centers):\n    if centers.ndim != 2 or min(centers.shape) < 1:\n        raise ValueError(\"centers must be a nonempty matrix\")\n    k, d = centers.shape\n    if k * d > _UINT32_MAX or k * 32 > _UINT32_MAX:\n        raise ValueError(\"centers exceed the Metal uint32 indexing limit\")\n    return k, d\n\n\ndef prepare_centers(centers):\n    \"\"\"Return BF16 centers and FP32 squared norms of the same BF16 values.\n\n    Inputs must be finite and small enough for FP32 norm/dot accumulation.\n    The public estimator performs this magnitude check before kernel dispatch.\n    \"\"\"\n    k, d = _check_centers(centers)\n    represented = centers.astype(mx.bfloat16)\n    norms = _norm_kernel()(\n        inputs=[represented], template=[(\"K\", k), (\"D\", d)],\n        grid=(k * 32, 1, 1), threadgroup=(256, 1, 1),\n        output_shapes=[(k,)], output_dtypes=[mx.float32], stream=mx.gpu,\n    )[0]\n    return represented, norms\n\n\ndef assign_bf16(x, centers, *, norms=None, batch_size=None, spherical=False):\n    \"\"\"Return uint32 labels and FP32 winning assignment scores.\n\n    Euclidean scores are ``||BF16(center)||\u00b2 - 2*dot(BF16(x), BF16(center))``;\n    they omit the row-constant input norm and are not squared distances.\n    Spherical scores are ``-dot(BF16(x), BF16(center))``. Ties select the\n    smallest centroid index. This low-level routine assumes finite operands\n    whose magnitudes are safe for FP32 arithmetic.\n\n    Supplying BF16 ``centers`` and their FP32 ``norms`` avoids preparation.\n    ``batch_size`` is an optional row limit; all calls also respect a 256 MiB\n    partial-score/index workspace limit and uint32 Metal indexing limits.\n    \"\"\"\n    k, d = _check_centers(centers)\n    if x.ndim != 2 or x.shape[1] != d or x.shape[0] < 1:\n        raise ValueError(\"x and centers must be nonempty compatible matrices\")\n    n = x.shape[0]\n    if norms is None:\n        centers, norms = prepare_centers(centers)\n    elif centers.dtype != mx.bfloat16 or norms.shape != (k,) or norms.dtype != mx.float32:\n        raise ValueError(\"supplied norms require BF16 centers and a matching FP32 vector\")\n    represented_x = x.astype(mx.bfloat16)\n    # Tuned on M4 Max; raw dispatch sweeps are retained with benchmark results.\n    bm, bn, bk = (32, 64, 16) if d <= 128 else (64, 64, 32)\n    wm = wn = 2\n    threads = 32 * wm * wn\n    parts = (k + bn - 1) // bn\n    block = min(n, _UINT32_MAX // d, _UINT32_MAX // parts,\n                _UINT32_MAX // 32, max(1, _SCRATCH_BYTES // (8 * parts)))\n    if batch_size is not None:\n        try:\n            requested = operator.index(batch_size)\n        except TypeError as exc:\n            raise ValueError(\"batch_size must be a positive integer\") from exc\n        if requested < 1 or isinstance(batch_size, bool):\n            raise ValueError(\"batch_size must be a positive integer\")\n        block = min(block, requested)\n    if block < 1:\n        raise ValueError(\"matrix exceeds the Metal uint32 indexing limit\")\n    labels, scores = [], []\n    for start in range(0, n, block):\n        xb = represented_x[start:start + block]\n        rows = xb.shape[0]\n        partial_scores, partial_indices = _tile_kernel()(\n            inputs=[xb, centers, norms],\n            template=[(\"T\", mx.bfloat16), (\"N\", rows), (\"K\", k), (\"D\", d),\n                      (\"BM\", bm), (\"BN\", bn), (\"BK\", bk), (\"WM\", wm),\n                      (\"WN\", wn), (\"PAD\", 8), (\"PARTS\", parts),\n                      (\"MANUAL\", True), (\"VECTOR_LOAD\", True), (\"NATIVE\", True),\n                      (\"SPHERICAL\", bool(spherical))],\n            grid=(((rows + bm - 1) // bm) * threads, parts, 1),\n            threadgroup=(threads, 1, 1),\n            output_shapes=[(rows, parts), (rows, parts)],\n            output_dtypes=[mx.float32, mx.uint32], stream=mx.gpu,\n        )\n        batch_labels, batch_scores = _merge_kernel()(\n            inputs=[partial_scores, partial_indices],\n            template=[(\"N\", rows), (\"PARTS\", parts)],\n            grid=(rows * 32, 1, 1), threadgroup=(256, 1, 1),\n            output_shapes=[(rows,), (rows,)],\n            output_dtypes=[mx.uint32, mx.float32], stream=mx.gpu,\n        )\n        # Materialize each chunk before dispatching another to bound workspace.\n        # A single training batch stays lazy for fusion into the fit graph.\n        if rows < n:\n            mx.eval(batch_labels, batch_scores)\n        labels.append(batch_labels)\n        scores.append(batch_scores)\n    if len(labels) == 1:\n        return labels[0], scores[0]\n    return mx.concatenate(labels), mx.concatenate(scores)\n",
+  "production_sha256": "cbe903b6972ab2fcca06b940005a5d3ae4e700f9595460036f14880625f3e4ea",
+  "records": [
+    {
+      "n": 8192,
+      "k": 16384,
+      "d": 96,
+      "method": "production",
+      "config": null,
+      "seconds": [
+        0.011165665928274393,
+        0.009375125169754028,
+        0.0024054166860878468,
+        0.002626416739076376,
+        0.002856832928955555
+      ],
+      "median_seconds": 0.002856832928955555,
+      "dot_tflops": 9.020409809341325,
+      "oracle_mismatches_first19": 0
+    },
+    {
+      "n": 8192,
+      "k": 16384,
+      "d": 96,
+      "method": "diagnostic_fp16_output",
+      "config": null,
+      "seconds": [
+        0.0020361249335110188,
+        0.0019969576969742775,
+        0.002094124909490347,
+        0.0019625001586973667,
+        0.0019821668975055218
+      ],
+      "median_seconds": 0.0019969576969742775,
+      "dot_tflops": 12.904531635820593,
+      "diagnostic_only": "matmul output precision differs or excludes argmin; not a production assignment substitute"
+    },
+    {
+      "n": 8192,
+      "k": 16384,
+      "d": 96,
+      "method": "diagnostic_bf16_output",
+      "config": null,
+      "seconds": [
+        0.0022950838319957256,
+        0.002227041870355606,
+        0.0022630831226706505,
+        0.0021907081827521324,
+        0.002705375198274851
+      ],
+      "median_seconds": 0.0022630831226706505,
+      "dot_tflops": 11.387033696574616,
+      "diagnostic_only": "matmul output precision differs or excludes argmin; not a production assignment substitute"
+    },
+    {
+      "n": 8192,
+      "k": 16384,
+      "d": 96,
+      "method": "represented_fp32_output",
+      "config": null,
+      "seconds": [
+        0.0029337918385863304,
+        0.002326374873518944,
+        0.002315749879926443,
+        0.002550083678215742,
+        0.0023111249320209026
+      ],
+      "median_seconds": 0.002326374873518944,
+      "dot_tflops": 11.07723611931031,
+      "diagnostic_only": "matmul output precision differs or excludes argmin; not a production assignment substitute"
+    },
+    {
+      "n": 8192,
+      "k": 16384,
+      "d": 1024,
+      "method": "production",
+      "config": null,
+      "seconds": [
+        0.01953262509778142,
+        0.01960754208266735,
+        0.019557499792426825,
+        0.01939970813691616,
+        0.019451499916613102
+      ],
+      "median_seconds": 0.01953262509778142,
+      "dot_tflops": 14.072758042912602,
+      "oracle_mismatches_first19": 0
+    },
+    {
+      "n": 8192,
+      "k": 16384,
+      "d": 1024,
+      "method": "diagnostic_fp16_output",
+      "config": null,
+      "seconds": [
+        0.018701832741498947,
+        0.01859499979764223,
+        0.018685666378587484,
+        0.0187825420871377,
+        0.0187029168009758
+      ],
+      "median_seconds": 0.018701832741498947,
+      "dot_tflops": 14.697912805842396,
+      "diagnostic_only": "matmul output precision differs or excludes argmin; not a production assignment substitute"
+    },
+    {
+      "n": 8192,
+      "k": 16384,
+      "d": 1024,
+      "method": "diagnostic_bf16_output",
+      "config": null,
+      "seconds": [
+        0.018456249963492155,
+        0.01870858296751976,
+        0.018490915652364492,
+        0.018816084135323763,
+        0.01873966585844755
+      ],
+      "median_seconds": 0.01870858296751976,
+      "dot_tflops": 14.69260966590679,
+      "diagnostic_only": "matmul output precision differs or excludes argmin; not a production assignment substitute"
+    },
+    {
+      "n": 8192,
+      "k": 16384,
+      "d": 1024,
+      "method": "represented_fp32_output",
+      "config": null,
+      "seconds": [
+        0.020992291159927845,
+        0.020808833185583353,
+        0.020822207909077406,
+        0.02083745924755931,
+        0.020948875229805708
+      ],
+      "median_seconds": 0.02083745924755931,
+      "dot_tflops": 13.19152703207789,
+      "diagnostic_only": "matmul output precision differs or excludes argmin; not a production assignment substitute"
+    },
+    {
+      "n": 8192,
+      "k": 16384,
+      "d": 3072,
+      "method": "production",
+      "config": null,
+      "seconds": [
+        0.058237750083208084,
+        0.058192250318825245,
+        0.05829091602936387,
+        0.05811758292838931,
+        0.05829404154792428
+      ],
+      "median_seconds": 0.058237750083208084,
+      "dot_tflops": 14.15977986192447,
+      "oracle_mismatches_first19": 0
+    },
+    {
+      "n": 8192,
+      "k": 16384,
+      "d": 3072,
+      "method": "diagnostic_fp16_output",
+      "config": null,
+      "seconds": [
+        0.05549587495625019,
+        0.055677167139947414,
+        0.05591312516480684,
+        0.05573258316144347,
+        0.05535420821979642
+      ],
+      "median_seconds": 0.055677167139947414,
+      "dot_tflops": 14.810985601319135,
+      "diagnostic_only": "matmul output precision differs or excludes argmin; not a production assignment substitute"
+    },
+    {
+      "n": 8192,
+      "k": 16384,
+      "d": 3072,
+      "method": "diagnostic_bf16_output",
+      "config": null,
+      "seconds": [
+        0.05546345841139555,
+        0.05557179171591997,
+        0.055693333968520164,
+        0.05555750010535121,
+        0.055325083900243044
+      ],
+      "median_seconds": 0.05555750010535121,
+      "dot_tflops": 14.842887445768508,
+      "diagnostic_only": "matmul output precision differs or excludes argmin; not a production assignment substitute"
+    },
+    {
+      "n": 8192,
+      "k": 16384,
+      "d": 3072,
+      "method": "represented_fp32_output",
+      "config": null,
+      "seconds": [
+        0.06187241617590189,
+        0.061886333394795656,
+        0.06191354198381305,
+        0.0621327911503613,
+        0.061641667038202286
+      ],
+      "median_seconds": 0.061886333394795656,
+      "dot_tflops": 13.324972988322939,
+      "diagnostic_only": "matmul output precision differs or excludes argmin; not a production assignment substitute"
+    }
+  ]
+}
