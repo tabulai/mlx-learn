@@ -38,7 +38,7 @@ stock inheritance. See the [compatibility details](docs/support_matrix.md).
 
 ## Status
 
-**`0.1.2` — alpha.** The API may change. See [CHANGELOG.md](CHANGELOG.md).
+**`0.1.3` — alpha.** The API may change. See [CHANGELOG.md](CHANGELOG.md).
 
 | Estimator | Status |
 |---|---|
@@ -48,15 +48,15 @@ stock inheritance. See the [compatibility details](docs/support_matrix.md).
 | `mlxlearn.linear_model.LogisticRegression` | 0.1.0 |
 | `mlxlearn.svm.SVC` (exact) | 0.1.0 |
 | `mlxlearn.decomposition.PCA` | 0.1.2 |
-| `mlxlearn.cluster.EMeans` | development; Metal GPU, paper/Faiss recipes |
-| `mlxlearn.cluster.KMeans` | development; Metal GPU, Lloyd clustering |
+| `mlxlearn.cluster.EMeans` | 0.1.3; Metal GPU, paper/Faiss recipes |
+| `mlxlearn.cluster.KMeans` | 0.1.3; Metal GPU, Lloyd clustering |
 | `LinearRegression`, `Ridge`, `DBSCAN`, `TSNE` | planned, 0.2.x |
 | `SVR`, `NuSVR`, `NuSVC` | deferred — will not ship until they implement the true objective |
 | tree ensembles | out of scope |
 
 ## E-means clustering
 
-The development tree includes [e-means](https://arxiv.org/abs/2611.09501),
+Version 0.1.3 includes [e-means](https://arxiv.org/abs/2611.09501),
 with Metal assignment and update kernels for Apple Silicon:
 
 ```python
@@ -91,6 +91,9 @@ explicit, random or k-means++ initialization, multiple restarts, and final
 nearest-centroid labels and inertia. Use the direct estimator; it is not part
 of `patch_sklearn()`.
 
+The [four-method 10M-vector comparison](docs/k-means-10m-comparison-2026-11-15.md)
+reports runtime, peak fit memory, and test MSE on five datasets.
+
 ## Requirements
 
 - macOS on Apple silicon (arm64)
@@ -106,7 +109,7 @@ CI tests only valid pairs — see [`docs/support_matrix.md`](docs/support_matrix
 pip install mlx-learn
 ```
 
-Version `0.1.2` provides Apple silicon wheels for Python 3.10–3.13 with Metal
+Version `0.1.3` provides Apple silicon wheels for Python 3.10–3.13 with Metal
 and C++ CPU extensions. Source builds can also include these optional extensions.
 The KNN CPU extension handles small workloads and is compiled at build time;
 fitting or querying never invokes the C++ compiler. A compatible wheel includes

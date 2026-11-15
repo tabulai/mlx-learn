@@ -6,6 +6,30 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.3] — 2026-11-15
+
+### Added
+
+- `mlxlearn.cluster.EMeans` implements the paper and pinned Faiss e-means
+  recipes on Apple Silicon GPUs. It supports FP32, FP16, and native BF16
+  assignment, final nearest-centroid labels and inertia, spherical clustering,
+  and the published finalization choices. See the [estimator guide](docs/e-means.md).
+- `mlxlearn.cluster.KMeans` implements dense FP32 Lloyd clustering on Metal with
+  scikit-learn-style `fit`, `predict`, `transform`, and `score` methods, multiple
+  initializations, bounded work tiles, and final labels and inertia. See the
+  [KMeans guide](docs/k-means.md).
+- Reproducible benchmark drivers, pinned source archives, raw results, and
+  hardware and quality reports for the paper datasets and Faiss reference.
+
+### Measured
+
+- On five 10M-vector datasets with 65,536 centers and matched FP32 pass budgets,
+  Metal KMeans ran **1.96–6.19×** faster than scikit-learn KMeans with test-MSE
+  differences under **0.003%**. Metal e-means reduced test MSE by **1.43–4.48%**
+  compared with Metal KMeans at those budgets. These are single-seed, single-fit
+  results; see the [complete comparison](docs/k-means-10m-comparison-2026-11-15.md)
+  for memory, timings, and limits.
+
 ## [0.1.2] — 2026-11-11
 
 ### Added
@@ -564,7 +588,8 @@ Each of these is now covered by a regression test:
   shape, making `fit` a non-pure function of its arguments.
 - `except Exception:` around the accelerated path, rerunning silently on scikit-learn.
 
-[Unreleased]: https://github.com/tabulai/mlx-learn/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/tabulai/mlx-learn/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/tabulai/mlx-learn/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/tabulai/mlx-learn/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/tabulai/mlx-learn/compare/v0.1.0a2...v0.1.1
 [0.1.0a2]: https://github.com/tabulai/mlx-learn/compare/v0.1.0a1...v0.1.0a2
