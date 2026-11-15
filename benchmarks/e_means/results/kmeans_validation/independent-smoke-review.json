@@ -1,0 +1,89 @@
+{
+  "status": "PASS",
+  "recorded_at_utc": "2026-11-15T10:06:50.088771+00:00",
+  "scope": "Independent lightweight read-only smoke audit; no benchmarks, GPU work, data-array reads, or source edits. Six diagnostic records only; not full campaign performance evidence.",
+  "checks": [
+    "Preflight raw SHA256 matches",
+    "Exact current runtime/harness/reference/sklearn source SHA256 matches",
+    "Matched initial centroids, scoring samples, software/hardware within each diagnostic workload",
+    "FP32, integer pass cap, native fresh final labels and selected-nearest residual quality",
+    "Adaptive 1-or-3 timing median and complete fit-window memory samples; physical footprint distinct from RSS/lifetime peak",
+    "Metal full host input released; OpenMP 8 and unrestricted Accelerate"
+  ],
+  "preflight_sha256": "9e94aa826396ebb1d856f754a31ae687a35353e810f59999467989c65e841b26",
+  "records": [
+    {
+      "file": "benchmarks/e_means/results/kmeans_smoke/deep1b-10M-sklearn-kmeans-s10-62ab73ade114.json",
+      "sha256": "43d2861889a8f6afdb7990b4331098a2e781c1ff1e2e750803233e12df9b73c1",
+      "mode": "sklearn-kmeans",
+      "n": 10000,
+      "k": 64,
+      "train_seconds": 0.002223040908575058,
+      "timed_calls": 3,
+      "test_mse": 0.6396434748864239,
+      "label_sample_agreement": 1.0,
+      "status": "PASS"
+    },
+    {
+      "file": "benchmarks/e_means/results/kmeans_smoke/deep1b-10M-metal-kmeans-s10-86dd6ceb355b.json",
+      "sha256": "1ac303eb7a7933f7b977858fa497123970f2bace109d2c0e37cf445eda4c6bed",
+      "mode": "metal-kmeans",
+      "n": 10000,
+      "k": 64,
+      "train_seconds": 0.006203332915902138,
+      "timed_calls": 3,
+      "test_mse": 0.639643474513354,
+      "label_sample_agreement": 1.0,
+      "status": "PASS"
+    },
+    {
+      "file": "benchmarks/e_means/results/kmeans_smoke/deep1b-10M-metal-emeans-s10-04cb8d4828de.json",
+      "sha256": "474c3f243cb25f3e49daa77ecd8870dd08109531367a19c8fecdd12a6fedacde",
+      "mode": "metal-emeans",
+      "n": 10000,
+      "k": 64,
+      "train_seconds": 0.06258045881986618,
+      "timed_calls": 3,
+      "test_mse": 0.6156488918772135,
+      "label_sample_agreement": 1.0,
+      "status": "PASS"
+    },
+    {
+      "file": "benchmarks/e_means/results/kmeans_smoke/deep1b-10M-faiss-emeans-s10-e6b34454043b.json",
+      "sha256": "f5d5d3950d5c0a007d40e79df9f970b20d1e464e2cd26256474b3304f127a3fb",
+      "mode": "faiss-emeans",
+      "n": 10000,
+      "k": 64,
+      "train_seconds": 0.07589262491092086,
+      "timed_calls": 3,
+      "test_mse": 0.6157585103307556,
+      "label_sample_agreement": 1.0,
+      "status": "PASS"
+    },
+    {
+      "file": "benchmarks/e_means/results/kmeans_scale_smoke/dino10b-10M-div4096-sklearn-kmeans-s10-d14886294806.json",
+      "sha256": "95450185db57e27d0b454b01da417327ea843b1c6d2dbf9b9c33d233581ae25c",
+      "mode": "sklearn-kmeans",
+      "n": 100000,
+      "k": 65536,
+      "train_seconds": 13.07258241577074,
+      "timed_calls": 1,
+      "test_mse": 0.015286182911415435,
+      "label_sample_agreement": 1.0,
+      "status": "PASS"
+    },
+    {
+      "file": "benchmarks/e_means/results/kmeans_scale_smoke/dino10b-10M-div4096-metal-kmeans-s10-028ca778cd5f.json",
+      "sha256": "2bdc5c5adb96d880f1912a05ead4581523c0413460e92405c8f0270889198dc5",
+      "mode": "metal-kmeans",
+      "n": 100000,
+      "k": 65536,
+      "train_seconds": 3.685664457734674,
+      "timed_calls": 1,
+      "test_mse": 0.015286182742652792,
+      "label_sample_agreement": 1.0,
+      "status": "PASS"
+    }
+  ],
+  "timed_calls": 14
+}

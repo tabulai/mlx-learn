@@ -1,0 +1,387 @@
+{
+  "status": "PASS",
+  "recorded_at_utc": "2026-11-15T18:01:06.087743+00:00",
+  "scope": "Independent final audit of all20 full four-method records. Full source/member/reference hashes rechecked, all dataset groups and all CSV/report arithmetic checked. No benchmarks/test reruns/GPU work/training-array reads or measured-source edits. Final report and figure artifacts were refreshed after plot embedding; all raw evidence remains unchanged.",
+  "coverage": {
+    "datasets": [
+      "deep1b-10M",
+      "spacev-10M",
+      "fb-ssnpp-10M",
+      "dino10b-10M-div4096",
+      "sift1b-10M-div512"
+    ],
+    "records": 20,
+    "n_each": 10000000,
+    "k": 65536,
+    "passes": [
+      2,
+      2,
+      2,
+      2,
+      3
+    ],
+    "seed": 10,
+    "precision": "float32",
+    "timed_calls": 20,
+    "unique_worker_pids": 20,
+    "timed_windows_overlap": false
+  },
+  "archive": {
+    "sha256": "a0c98fea2653c920eea9290a44885cbdc546fdefbd12f10e0f129506be4e1ea4",
+    "source_members_verified": 59,
+    "faiss_revision": "ebab8f784c1d177129602269d5ad966c525fbdcb",
+    "reference_files_verified": 27,
+    "sklearn_files_verified": 5
+  },
+  "checks": [
+    "Exact coverage5datasets x4modes, FP32,seed10 and no diagnostic overrides",
+    "FrozenZIP digest/every member plus current complete runtime source membership",
+    "All runtime/harness/protocol/reference/sklearn SHA256; pinned Faiss gitrevision",
+    "Same exact dataset/initialization/scoring-sample identity across modes and same global environment",
+    "Integer budgets2/2/2/2/3; matching e-means quality law and closing finalization, fresh final labels/inertia",
+    "Adaptive timing/median, fullwarmup, first-fit scoring,20nonoverlapping completed sampled-memory windows",
+    "Physical footprint/RSS/MLX allocator/preparation-lifetime separation",
+    "Exact raw-to-CSV time/quality/memory and speedup/MSE-difference arithmetic; every headline table row matches raw values"
+  ],
+  "ranges": {
+    "sklearn_over_metal_kmeans": [
+      1.9639286717730353,
+      6.185822018798028
+    ],
+    "metal_kmeans_vs_sklearn_test_mse_change_pct": [
+      -0.002968243839207574,
+      0.0004900653645112385
+    ],
+    "metal_emeans_test_mse_reduction_vs_metal_kmeans_pct": [
+      1.4339140712097298,
+      4.481156970727184
+    ]
+  },
+  "comparisons": {
+    "deep1b-10M": {
+      "sklearn_over_metal_kmeans": 6.185822018798028,
+      "metal_kmeans_over_metal_emeans": 0.8014149552067319,
+      "faiss_over_metal_emeans": 15.570821647099258,
+      "metal_kmeans_vs_sklearn_mse_change_pct": 0.0004900653645112385,
+      "metal_emeans_vs_metal_kmeans_mse_change_pct": -2.537354911831202,
+      "metal_emeans_vs_faiss_mse_change_pct": -0.09517963091334458
+    },
+    "spacev-10M": {
+      "sklearn_over_metal_kmeans": 5.21394182384947,
+      "metal_kmeans_over_metal_emeans": 0.9154168901229541,
+      "faiss_over_metal_emeans": 14.390914025594892,
+      "metal_kmeans_vs_sklearn_mse_change_pct": 0.00013703552474986225,
+      "metal_emeans_vs_metal_kmeans_mse_change_pct": -4.481156970727184,
+      "metal_emeans_vs_faiss_mse_change_pct": -0.06003140498181958
+    },
+    "fb-ssnpp-10M": {
+      "sklearn_over_metal_kmeans": 3.3526443303861657,
+      "metal_kmeans_over_metal_emeans": 1.0830963448366917,
+      "faiss_over_metal_emeans": 9.569400323546569,
+      "metal_kmeans_vs_sklearn_mse_change_pct": -0.0005580560249129896,
+      "metal_emeans_vs_metal_kmeans_mse_change_pct": -1.4899181711588216,
+      "metal_emeans_vs_faiss_mse_change_pct": 0.018566850447521155
+    },
+    "dino10b-10M-div4096": {
+      "sklearn_over_metal_kmeans": 1.9639286717730353,
+      "metal_kmeans_over_metal_emeans": 1.0506400522709425,
+      "faiss_over_metal_emeans": 3.5341707581050446,
+      "metal_kmeans_vs_sklearn_mse_change_pct": -8.196613102695594e-05,
+      "metal_emeans_vs_metal_kmeans_mse_change_pct": -1.5562746893969193,
+      "metal_emeans_vs_faiss_mse_change_pct": 0.032872609429546173
+    },
+    "sift1b-10M-div512": {
+      "sklearn_over_metal_kmeans": 4.524168963099052,
+      "metal_kmeans_over_metal_emeans": 0.9994706162649089,
+      "faiss_over_metal_emeans": 13.229706936115578,
+      "metal_kmeans_vs_sklearn_mse_change_pct": -0.002968243839207574,
+      "metal_emeans_vs_metal_kmeans_mse_change_pct": -1.4339140712097298,
+      "metal_emeans_vs_faiss_mse_change_pct": 0.05540793766887209
+    }
+  },
+  "interpretation_notes": [
+    "All20 timed samples exceed2s, so prescribed adaptive policy correctly yields one timed call after one full warmup each. No fit-window overlap and20distinct worker PIDs observed.",
+    "DINO and SIFT sklearn fit footprints are lower than Metal KMeans: 42.193863<43.427993 GiB and5.943059<8.019887 GiB. No universal memory-win claim is supported.",
+    "DINO Metal KMeans78.152950 GiB lifetime peak includes preparation;43.427993 GiB is fit footprint and1.403336 GiB is RSS. These metrics are distinct.",
+    "No large DINO sklearn relocation spike inferred. Full native inertia uses different reductions, so shared test/sample MSE supports quality comparisons.",
+    "SIFT Metal KMeans/e-means timing ratio0.999470616 is effectively tied in this single-seed single-timed-call evidence; no significance claim."
+  ],
+  "raw_evidence": [
+    {
+      "path": "benchmarks/e_means/results/kmeans_comparison/deep1b-10M-faiss-emeans-s10-9135c4286f1c.json",
+      "sha256": "536aa7f6c48baf2c9e7eab833bee76e8c0b82099216b2489636e36e056ec0f5e",
+      "dataset": "deep1b-10M",
+      "mode": "faiss-emeans",
+      "seconds": 1316.1188714592718,
+      "test_mse": 0.342148982304257,
+      "actual_passes": 2,
+      "fit_footprint_gib": 4.270389586687088,
+      "fit_rss_gib": 4.3201751708984375,
+      "label_sample_agreement": 1.0
+    },
+    {
+      "path": "benchmarks/e_means/results/kmeans_comparison/deep1b-10M-metal-emeans-s10-f8136fe8093f.json",
+      "sha256": "c3b3d64a0d9a090e7b091de3a89cce54fcab8ad4eecbf0421df048c53c13ac9b",
+      "dataset": "deep1b-10M",
+      "mode": "metal-emeans",
+      "seconds": 84.52468991605565,
+      "test_mse": 0.341823326165726,
+      "actual_passes": 2,
+      "fit_footprint_gib": 6.814334876835346,
+      "fit_rss_gib": 3.9677886962890625,
+      "label_sample_agreement": 1.0
+    },
+    {
+      "path": "benchmarks/e_means/results/kmeans_comparison/deep1b-10M-metal-kmeans-s10-592e0a950692.json",
+      "sha256": "c74aa41e3e7dd87edd6556187ca50de6299d59c52ed77b0d20d39744d6b46d2f",
+      "dataset": "deep1b-10M",
+      "mode": "metal-kmeans",
+      "seconds": 67.73935058293864,
+      "test_mse": 0.35072239816239165,
+      "actual_passes": 2,
+      "fit_footprint_gib": 6.998401626944542,
+      "fit_rss_gib": 3.8113555908203125,
+      "label_sample_agreement": 0.9998
+    },
+    {
+      "path": "benchmarks/e_means/results/kmeans_comparison/deep1b-10M-sklearn-kmeans-s10-af58e876d0a5.json",
+      "sha256": "c0f3a9ef452d59d5c42d617ea2ffc292de3d99bb27ef29e64f8d0529adbd1f6b",
+      "dataset": "deep1b-10M",
+      "mode": "sklearn-kmeans",
+      "seconds": 419.0235663750209,
+      "test_mse": 0.3507206794018157,
+      "actual_passes": 2,
+      "fit_footprint_gib": 11.887735106050968,
+      "fit_rss_gib": 11.930145263671875,
+      "label_sample_agreement": 0.9999
+    },
+    {
+      "path": "benchmarks/e_means/results/kmeans_comparison/dino10b-10M-div4096-faiss-emeans-s10-4cf8fb739bb3.json",
+      "sha256": "82d24fe85e2742160c188751d9cb31ca778e17b83e07c254b1e5be337f227385",
+      "dataset": "dino10b-10M-div4096",
+      "mode": "faiss-emeans",
+      "seconds": 2414.1870753751136,
+      "test_mse": 0.011212363490351106,
+      "actual_passes": 2,
+      "fit_footprint_gib": 44.99173225462437,
+      "fit_rss_gib": 45.015106201171875,
+      "label_sample_agreement": 1.0
+    },
+    {
+      "path": "benchmarks/e_means/results/kmeans_comparison/dino10b-10M-div4096-metal-emeans-s10-db738ffabcc7.json",
+      "sha256": "a6073e6e2385520974aae9c87c4a7abeee1872eb5c1064c2aa029c53a59b6d1f",
+      "dataset": "dino10b-10M-div4096",
+      "mode": "metal-emeans",
+      "seconds": 683.0985938748345,
+      "test_mse": 0.01121604928680911,
+      "actual_passes": 2,
+      "fit_footprint_gib": 44.34438945353031,
+      "fit_rss_gib": 12.363845825195312,
+      "label_sample_agreement": 0.9999
+    },
+    {
+      "path": "benchmarks/e_means/results/kmeans_comparison/dino10b-10M-div4096-metal-kmeans-s10-93d60e0caf4f.json",
+      "sha256": "0c5775bb3a6d86005ab7144b88ffa38558c96732c024f358a045eba4e0f880b7",
+      "dataset": "dino10b-10M-div4096",
+      "mode": "metal-kmeans",
+      "seconds": 717.6907423748635,
+      "test_mse": 0.011393361284755304,
+      "actual_passes": 2,
+      "fit_footprint_gib": 43.42799278348684,
+      "fit_rss_gib": 1.4033355712890625,
+      "label_sample_agreement": 0.9996
+    },
+    {
+      "path": "benchmarks/e_means/results/kmeans_comparison/dino10b-10M-div4096-sklearn-kmeans-s10-7966b44fb14b.json",
+      "sha256": "6cae48700846637419a023cc75b13f922c0ad7568aa59668ec0be6e859eeeade",
+      "dataset": "dino10b-10M-div4096",
+      "mode": "sklearn-kmeans",
+      "seconds": 1409.4934264160693,
+      "test_mse": 0.011393370623460398,
+      "actual_passes": 2,
+      "fit_footprint_gib": 42.19386337697506,
+      "fit_rss_gib": 42.21534729003906,
+      "label_sample_agreement": 0.9997
+    },
+    {
+      "path": "benchmarks/e_means/results/kmeans_comparison/fb-ssnpp-10M-faiss-emeans-s10-9a2ce0e31135.json",
+      "sha256": "d7e29ba04876624e07a43eaf0be7e3a022f6de800a2d60bd60d3eefd2ea6e7c8",
+      "dataset": "fb-ssnpp-10M",
+      "mode": "faiss-emeans",
+      "seconds": 1493.6768081248738,
+      "test_mse": 109305.72659845056,
+      "actual_passes": 2,
+      "fit_footprint_gib": 10.96306723356247,
+      "fit_rss_gib": 11.014755249023438,
+      "label_sample_agreement": 1.0
+    },
+    {
+      "path": "benchmarks/e_means/results/kmeans_comparison/fb-ssnpp-10M-metal-emeans-s10-bbd9c5d8e796.json",
+      "sha256": "c813f938b6a5e1f6808379e5495b043bd409dba5b0bce561099a171421b6e315",
+      "dataset": "fb-ssnpp-10M",
+      "mode": "metal-emeans",
+      "seconds": 156.08886216720566,
+      "test_mse": 109326.02122923867,
+      "actual_passes": 2,
+      "fit_footprint_gib": 13.497750081121922,
+      "fit_rss_gib": 10.170211791992188,
+      "label_sample_agreement": 1.0
+    },
+    {
+      "path": "benchmarks/e_means/results/kmeans_comparison/fb-ssnpp-10M-metal-kmeans-s10-39d174e4bf4e.json",
+      "sha256": "1517e8c3f0b0a3d6c9babfb65dc85b5777db658d4a88de927bba7f98bb6e770b",
+      "dataset": "fb-ssnpp-10M",
+      "mode": "metal-kmeans",
+      "seconds": 169.05927608301863,
+      "test_mse": 110979.52534359875,
+      "actual_passes": 2,
+      "fit_footprint_gib": 13.453911446034908,
+      "fit_rss_gib": 10.012359619140625,
+      "label_sample_agreement": 0.9994
+    },
+    {
+      "path": "benchmarks/e_means/results/kmeans_comparison/fb-ssnpp-10M-sklearn-kmeans-s10-35e05e5ee663.json",
+      "sha256": "bbd648565865db72ec2178c52672bd61812341032600ec978460c3bd4ef5e579",
+      "dataset": "fb-ssnpp-10M",
+      "mode": "sklearn-kmeans",
+      "seconds": 566.7956234589219,
+      "test_mse": 110980.14467498257,
+      "actual_passes": 2,
+      "fit_footprint_gib": 30.198508724570274,
+      "fit_rss_gib": 30.2254638671875,
+      "label_sample_agreement": 0.9994
+    },
+    {
+      "path": "benchmarks/e_means/results/kmeans_comparison/sift1b-10M-div512-faiss-emeans-s10-940e5a886624.json",
+      "sha256": "1215c1843a58a7dd2614373eaae8e0676cceaed66fbb93af7c2986c70390fc37",
+      "dataset": "sift1b-10M-div512",
+      "mode": "faiss-emeans",
+      "seconds": 1816.696734458208,
+      "test_mse": 0.19282239084371636,
+      "actual_passes": 3,
+      "fit_footprint_gib": 5.508625954389572,
+      "fit_rss_gib": 5.5571136474609375,
+      "label_sample_agreement": 1.0
+    },
+    {
+      "path": "benchmarks/e_means/results/kmeans_comparison/sift1b-10M-div512-metal-emeans-s10-3c6fea1ba26a.json",
+      "sha256": "21d38c50996063d2bb783bd6049034d8087551456bea8cec9d72fd1c1e3c0486",
+      "dataset": "sift1b-10M-div512",
+      "mode": "metal-emeans",
+      "seconds": 137.31949945911765,
+      "test_mse": 0.1929292297538467,
+      "actual_passes": 3,
+      "fit_footprint_gib": 8.186467118561268,
+      "fit_rss_gib": 5.242584228515625,
+      "label_sample_agreement": 1.0
+    },
+    {
+      "path": "benchmarks/e_means/results/kmeans_comparison/sift1b-10M-div512-metal-kmeans-s10-083caec8f56a.json",
+      "sha256": "65c02bcdd7d0b24035a5931bf77d6d6856757c06cb1ee386e94b7d12752ea5cb",
+      "dataset": "sift1b-10M-div512",
+      "mode": "metal-kmeans",
+      "seconds": 137.24680474959314,
+      "test_mse": 0.19573591457535375,
+      "actual_passes": 3,
+      "fit_footprint_gib": 8.01988685131073,
+      "fit_rss_gib": 5.158599853515625,
+      "label_sample_agreement": 1.0
+    },
+    {
+      "path": "benchmarks/e_means/results/kmeans_comparison/sift1b-10M-div512-sklearn-kmeans-s10-3d9680920f67.json",
+      "sha256": "762d018015951cd57cd13769fdf97f97a9f1857eeede555b011ead0a617a85cc",
+      "dataset": "sift1b-10M-div512",
+      "mode": "sklearn-kmeans",
+      "seconds": 620.9277343326248,
+      "test_mse": 0.19574172466703693,
+      "actual_passes": 3,
+      "fit_footprint_gib": 5.943059206008911,
+      "fit_rss_gib": 5.9818572998046875,
+      "label_sample_agreement": 1.0
+    },
+    {
+      "path": "benchmarks/e_means/results/kmeans_comparison/spacev-10M-faiss-emeans-s10-4b6930a65866.json",
+      "sha256": "fa8d1689eba07695f4d863acfd02484be3e8a8e4424b004b189396133e496d95",
+      "dataset": "spacev-10M",
+      "mode": "faiss-emeans",
+      "seconds": 1317.2596747088246,
+      "test_mse": 6385.023368349446,
+      "actual_passes": 2,
+      "fit_footprint_gib": 4.512043207883835,
+      "fit_rss_gib": 4.56048583984375,
+      "label_sample_agreement": 1.0
+    },
+    {
+      "path": "benchmarks/e_means/results/kmeans_comparison/spacev-10M-metal-emeans-s10-e33735c80c04.json",
+      "sha256": "8ceac990901f5db2714e657c248bee8da9330a5452f6d9ce49678a6f786cdb32",
+      "dataset": "spacev-10M",
+      "mode": "metal-emeans",
+      "seconds": 91.53412162465975,
+      "test_mse": 6381.190349113009,
+      "actual_passes": 2,
+      "fit_footprint_gib": 6.916111022233963,
+      "fit_rss_gib": 4.1743011474609375,
+      "label_sample_agreement": 1.0
+    },
+    {
+      "path": "benchmarks/e_means/results/kmeans_comparison/spacev-10M-metal-kmeans-s10-ba793b268f60.json",
+      "sha256": "b30588b9be98c81c652c646b6976d4f53dc11352220256156427c08c25da439d",
+      "dataset": "spacev-10M",
+      "mode": "metal-kmeans",
+      "seconds": 83.79188095778227,
+      "test_mse": 6680.556575792508,
+      "actual_passes": 2,
+      "fit_footprint_gib": 7.288639187812805,
+      "fit_rss_gib": 4.0909423828125,
+      "label_sample_agreement": 1.0
+    },
+    {
+      "path": "benchmarks/e_means/results/kmeans_comparison/spacev-10M-sklearn-kmeans-s10-179c986130d0.json",
+      "sha256": "15294cc045989a7660f691d33431ab0f482fadbda1a3d709c1aef9ddd0eba0eb",
+      "dataset": "spacev-10M",
+      "mode": "sklearn-kmeans",
+      "seconds": 436.8859926247969,
+      "test_mse": 6680.547421069294,
+      "actual_passes": 2,
+      "fit_footprint_gib": 12.350458219647408,
+      "fit_rss_gib": 12.3902587890625,
+      "label_sample_agreement": 1.0
+    }
+  ],
+  "artifact_sha256": {
+    "benchmarks/e_means/kmeans_protocol.json": "743d976b3b632dce060d2f5981cba70d61176774e47a2b30cda4d319f7391d70",
+    "benchmarks/e_means/reference/kmeans-comparison-source.json": "7a99f00d848d53cdd32d8194a509757297b47c1f72f3b62ce8ae8cdca3664c8c",
+    "benchmarks/e_means/reference/kmeans-comparison-source.zip": "a0c98fea2653c920eea9290a44885cbdc546fdefbd12f10e0f129506be4e1ea4",
+    "benchmarks/e_means/results/kmeans_comparison/validation.json": "ea2c3fe3708f67dc19cc9720336a892683ac6755ed708ffaa71eff3f6c20852e",
+    "benchmarks/e_means/results/kmeans_comparison/summary.csv": "aff5042d4dc0e6192ff418cb6f62320df075413c8bde8ba363b8f1b74cd55cb5",
+    "benchmarks/e_means/results/kmeans_comparison/comparisons.csv": "3d23bf3f76c735938eb0f33d3fa679346134558b399f80a3a8f6565c508f4d9b",
+    "docs/k-means-10m-comparison-2026-11-15.md": "c43fb5c3ab6d34473f786ebdc6d1f78d18ac3ee85448c2213d91818049e85e41",
+    "benchmarks/e_means/kmeans_report.py": "bc0b8a4199265f638bb60a787096bbbadbcc606a4e6c6c154c86e7010ab7d3d8",
+    "benchmarks/e_means/kmeans_figures/comparison.png": "286f7b5eb6fdc4fde74bd03958bdf350117736594081f36412f2567477c12873",
+    "benchmarks/e_means/kmeans_figures/comparison.pdf": "7d6e217b4e189009442b2b3b910d72c0ac41bf4e00d45e3d990a0913f8f396f7"
+  },
+  "material_issues": [],
+  "artifact_refresh": {
+    "recorded_at_utc": "2026-11-15T18:01:25.228004+00:00",
+    "status": "PASS",
+    "changed_artifact_hashes": {},
+    "figure_artifacts": [
+      {
+        "path": "benchmarks/e_means/kmeans_figures/comparison.png",
+        "sha256": "286f7b5eb6fdc4fde74bd03958bdf350117736594081f36412f2567477c12873",
+        "bytes": 196530,
+        "dimensions": [
+          2700,
+          2250
+        ]
+      },
+      {
+        "path": "benchmarks/e_means/kmeans_figures/comparison.pdf",
+        "sha256": "7d6e217b4e189009442b2b3b910d72c0ac41bf4e00d45e3d990a0913f8f396f7",
+        "bytes": 29361
+      }
+    ],
+    "raw_records_unchanged": 20,
+    "note": "Read-only content/hash/PNG-header/PDF-header verification; visual figure review was performed by parent agent."
+  }
+}

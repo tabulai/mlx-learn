@@ -1,0 +1,79 @@
+"""Independent, bounded thread calibration of pinned upstream NumpyEmeans.
+
+Every trial runs in its own process; this script never edits the implementation.
+Subset trials choose thread settings, then full DEEP trials validate candidates.
+"""
+from __future__ import annotations
+import hashlib
+import importlib.metadata
+import importlib.util
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import time
+
+ROOT = Path(__file__).resolve().parents[4]
+REFERENCE = ROOT / 'tmp/e_means/faiss'
+OUTPUT = Path(__file__).resolve().parent
+CACHE = Path.home() / '.cache/mlxlearn/e_means'
+REVISION = 'ebab8f784c1d177129602269d5ad966c525fbdcb'
+
+def sha(path):
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+def trial(cfg):
+    import numpy as np
+    import faiss
+    revision = subprocess.check_output(['git','-C',str(REFERENCE),'rev-parse','HEAD'],text=True).strip()
+    assert revision == REVISION
+    sys.path.insert(0,str(REFERENCE/'benchs/e_means'))
+    import paper_data
+    paper_data.ROOT = str(CACHE/'data')
+    paper_data.CACHE = str(CACHE/'arrays')
+    pkg=REFERENCE/'contrib/e_means'
+    spec=importlib.util.spec_from_file_location('calibration_reference',pkg/'__init__.py',submodule_search_locations=[str(pkg)])
+    module=importlib.util.module_from_spec(spec);sys.modules[spec.name]=module;spec.loader.exec_module(module)
+    train,_=paper_data.load(cfg['dataset'])
+    x=paper_data.rows(train,cfg['dataset'],stop=cfg['rows'])
+    k=16384;seed=10
+    init=x[np.random.RandomState(seed).permutation(len(x))[:k]].copy()
+    faiss.omp_set_num_threads(cfg['threads'])
+    faiss.knn(x[:1024],init,1)
+    start=time.perf_counter()
+    model=module.NumpyEmeans(x.shape[1],k,nepochs=cfg['epochs'],batch_size=cfg['batch'],seed=seed,capture_assignments=False)
+    model.train(x,init_centroids=init)
+    duration=time.perf_counter()-start
+    result={
+      'status':'completed','kind':'thread_calibration','config':cfg,'seconds':duration,
+      'n':len(x),'d':x.shape[1],'k':k,'recipe':model.recipe,'faiss_compile_options':faiss.get_compile_options(),
+      'effective_omp_threads':faiss.omp_get_max_threads(),
+      'environment':{key:os.environ.get(key) for key in ['OMP_NUM_THREADS','VECLIB_MAXIMUM_THREADS','OMP_DYNAMIC','OMP_PROC_BIND','OMP_PLACES']},
+      'versions':{name:importlib.metadata.version(name) for name in ['numpy','scipy','faiss-cpu']},
+      'reference_revision':revision,
+      'source_sha256':{str(p.relative_to(ROOT)):sha(p) for p in [Path(__file__),pkg/'e_means.py',pkg/'base.py',REFERENCE/'benchs/e_means/paper_data.py']},
+      'faiss_binary_sha256':sha(Path(faiss.__file__).parent/'libfaiss.dylib'),
+      'initial_centroids_sha256':hashlib.sha256(init.tobytes()).hexdigest(),
+      'final_centroids_sha256':hashlib.sha256(model.centroids.tobytes()).hexdigest(),
+      'timing_scope':'one fit; excludes imports/data load/init sampling and 1024-query Faiss warmup',
+      'hardware':{'cpu':subprocess.check_output(['sysctl','-n','machdep.cpu.brand_string'],text=True).strip(),'physical_cores':16,'performance_cores':12,'efficiency_cores':4},
+    }
+    tag=f"{cfg['dataset']}-n{len(x)}-t{cfg['threads']}-blas{cfg['blas']}-T{cfg['epochs']}-B{cfg['batch']}"
+    (OUTPUT/(tag+'.json')).write_text(json.dumps(result,indent=2)+'\n')
+    print(json.dumps({'trial':tag,'seconds':round(duration,4)}),flush=True)
+
+def launch(dataset,rows,epochs,batch,threads,blas):
+    cfg=dict(dataset=dataset,rows=rows,epochs=epochs,batch=batch,threads=threads,blas=blas)
+    env=os.environ.copy();env['OMP_NUM_THREADS']=str(threads)
+    if blas=='default':env.pop('VECLIB_MAXIMUM_THREADS',None)
+    else:env['VECLIB_MAXIMUM_THREADS']=str(blas)
+    subprocess.run([sys.executable,__file__,'--trial',json.dumps(cfg)],env=env,cwd=ROOT,check=True,timeout=180)
+
+if __name__=='__main__':
+    if len(sys.argv)>1 and sys.argv[1]=='--trial':trial(json.loads(sys.argv[2]))
+    else:
+      for dataset,rows in [('deep1b-1M',200000),('dino10b-1M-div4096',100000)]:
+       for blas in [1,'default']:
+        for threads in ([4,8,12,16] if blas==1 else [8,12,16]):
+         launch(dataset,rows,1,65536,threads,blas)

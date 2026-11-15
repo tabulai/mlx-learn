@@ -1,0 +1,86 @@
+{
+  "status": "passed",
+  "kind": "faiss_comparison_validation",
+  "recorded_at_utc": "2026-11-14T16:22:28.733723+00:00",
+  "controller_tests": {
+    "command": ".venv/bin/python -m pytest tests/unit/test_e_means_compare.py -q",
+    "result": "10 passed in 0.35s",
+    "exit_code": 0,
+    "coverage": [
+      "successful handshake and publication",
+      "worker crash rejects stale temporary output",
+      "timeout kills child and stops sampler",
+      "incomplete sampling rejects partial peak",
+      "wrong source/environment/host/config rejects worker output",
+      "sampler start failure preserves error and kills blocked child",
+      "sampler stop failure cannot bypass child termination and pipe cleanup"
+    ]
+  },
+  "lint": {
+    "command": ".venv/bin/python -m ruff check benchmarks/e_means/compare.py tests/unit/test_e_means_compare.py",
+    "result": "All checks passed!",
+    "exit_code": 0
+  },
+  "source_sha256": {
+    "benchmarks/e_means/compare.py": "c770a9b3f4a58d67b48a5f4348a9959759626b6486a769d596682459b3335e7e",
+    "benchmarks/e_means/memory.py": "2140f828d3789ec615af6a27499a24ad79432781e4de083cb7ff183e595876e7",
+    "benchmarks/e_means/run.py": "ba5cde5b87e306ce902fb398bd04750bea0ab7506c9fd0567fa6d201729be399",
+    "tests/unit/test_e_means_compare.py": "fc9a31769562108c1f7b3bf2168c0ca6aff605f05c0fbeccf6c99a5c9893e5b2"
+  },
+  "calibration": {
+    "trials_completed": 17,
+    "selected_openmp_threads": 8,
+    "selected_veclib_maximum_threads": null,
+    "full_deep_1m_3epoch_seconds": {
+      "12": 33.30012766690925,
+      "8": 32.9712231666781,
+      "16": 34.4279094170779
+    },
+    "limitation": "One timing per configuration; this is bounded engineering calibration, not a statistical proof of a globally optimal thread setting.",
+    "summary_path": "/Users/tunguz/Programming/mlxlearn/benchmarks/e_means/results/faiss_comparison_calibration/summary.json",
+    "summary_sha256": "90c20f88808687e7dd68e7a0db1c785a07220918691111f6c979967365435097",
+    "exact_driver_path": "/Users/tunguz/Programming/mlxlearn/benchmarks/e_means/results/faiss_comparison_calibration/calibrate.py.txt",
+    "exact_driver_sha256": "92cc8e8de8e2014d32f4befc073a4790d8337e1ff6337a8734e0d6e16a19feff"
+  },
+  "reference_dispatch_audit": {
+    "finding": "Original pinned NumpyEmeans uses CPU Faiss assignment despite MAC_METAL compiled support. Installed extra_wrappers.knn calls knn_L2sqr in libfaiss.dylib; CPU dylib links Accelerate and OpenMP, without Metal. Metal support is exposed separately through opt-in GPU index wrappers.",
+    "hardware_cpu_cores": 16,
+    "performance_cores": 12,
+    "efficiency_cores": 4,
+    "faiss_compile_options": "OPTIMIZE DD ARM_NEON MAC_METAL ",
+    "commands": [
+      "sysctl -n hw.physicalcpu hw.logicalcpu hw.perflevel0.physicalcpu hw.perflevel1.physicalcpu",
+      "otool -L .venv/lib/python3.14/site-packages/faiss/libfaiss.dylib",
+      "nm -gU .venv/lib/python3.14/site-packages/faiss/libfaiss.dylib",
+      "git -C tmp/e_means/faiss show HEAD:faiss/utils/distances.cpp"
+    ],
+    "reference_revision": "ebab8f784c1d177129602269d5ad966c525fbdcb"
+  },
+  "measurement_caveats": [
+    "Comparison runtime is first fit in a fresh process, includes Metal kernel compilation, and is distinct from earlier warmed timings.",
+    "Matched Metal recipe=faiss, float32, last_epoch finalization, no final training-label pass.",
+    "Memory is sampled fit-window process footprint/RSS; MLX allocator counts are separate diagnostics and must not be added.",
+    "Calibration is bounded single-trial engineering evidence, not statistical proof of optimal thread settings."
+  ],
+  "note": "Calibration and controller checks preceded the production campaign. Final integrity, combined tests, compliance and chart validation followed completion; no benchmark runs overlapped.",
+  "controller_cleanup": "Sampler is assigned only after successful startup; nested finally blocks guarantee child termination and pipe closure even when sampler.stop raises. Both failure paths regression-tested.",
+  "final_checks": {
+    "recorded_at_utc": "2026-11-14T16:40:36.878878+00:00",
+    "combined_tests": {
+      "command": ".venv/bin/python -m pytest tests/unit/test_e_means.py tests/unit/test_e_means_benchmark.py tests/unit/test_e_means_compare.py benchmarks/e_means/test_memory.py benchmarks/e_means/test_report.py benchmarks/e_means/test_comparison_report.py -q",
+      "result": "150 passed in 0.87s",
+      "exit_code": 0
+    },
+    "report_tests_after_tick_label_fix": "61 passed in 0.03s; Ruff passed",
+    "compliance": "branding PASS (1504); private-imports PASS (51); headers PASS (1512); licenses PASS (4); layout PASS (9)",
+    "git_diff_check": "passed",
+    "integrity": "34 primary and 3 supplementary fits match final benchmark/runtime source hashes and package versions; all memory samplers complete without errors; 17 paired configurations with no exclusions; all report links resolve; 67 historical results still match unchanged runtime/run.py sources.",
+    "artifacts_sha256": {
+      "docs/e-means-faiss-comparison-2026-11-14.md": "97b7752dc2e1e046e2cf226465c924a12500061c196bcf0a77aefdd6c1121ced",
+      "benchmarks/e_means/results/faiss_comparison/comparison_summary.csv": "68d43e59edcdd2b7e0f5c801e706954a4666a80a4ef6a80bddc879f889ee638f",
+      "benchmarks/e_means/results/faiss_comparison/comparison_report_manifest.json": "d834658fe0a2dff6c2df639763fbb1f5d092533cef908a6530949d53c162ad97",
+      "benchmarks/e_means/faiss_comparison_figures/core1m-metal-faiss.png": "1425e39f2ac2d9f7c9ea14f02907dd90deaca55a2f00f7c4b8cafd346bda0b8d",
+      "benchmarks/e_means/faiss_comparison_figures/vibe-metal-faiss.png": "ab4dbf180162ce62bb88b2f47057e4aa70dcd4285caee4ca9091dc387cdb95f0"
+    }
+  }
+}
