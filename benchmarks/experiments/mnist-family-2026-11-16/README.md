@@ -14,16 +14,16 @@ All three machines ran commit `aa729e5`, which is v0.1.3 plus:
 - the binary32 GEMM routing for M5-generation GPUs;
 - the wide `svd_solver="full"` PCA fixes.
 
-The stack was identical everywhere: Python 3.14.2, NumPy 2.5.4, SciPy 1.18.1, scikit-learn 1.9.1 and MLX 0.32.4. The compiled extensions were rebuilt from that commit, and their code sections are identical to the binaries used. Each machine ran `bench_all.sh` once, all three at the same time, with no other benchmark on any of them.
+The stack was identical everywhere: Python 3.14.2, NumPy 2.5.4, SciPy 1.18.1, scikit-learn 1.9.1 and MLX 0.32.4. The compiled extensions were rebuilt from that commit, and their code sections are identical to the binaries used. Each machine ran `bench_all.sh` with no other benchmark on it. The M4 and M5 results come from runs started together at 14:54. The M1 results come from a second, full run at 16:09, once the machine was idle; the first M1 run is covered under "Background load on the M1" below.
 
 | Label | Chip | CPU cores (P+E) | GPU cores | Memory | macOS | GPU architecture | Wall time |
 |---|---|---|---|---|---|---|---|
-| M1 | M1 Ultra | 16+4 | 64 | 128 GB | 26.5.1 | `applegpu_g13d` | 46.6 min |
+| M1 | M1 Ultra | 16+4 | 64 | 128 GB | 26.5.1 | `applegpu_g13d` | 43.3 min |
 | M4 | M4 Max | 12+4 | 40 | 128 GB | 26.6.2 | `applegpu_g16s` | 31.0 min |
 | M5 | M5 Ultra | 12+24 | 80 | 512 GB | 27.2 | `applegpu_g17d` | 22.5 min |
 
 Background load, sampled every 30 s:
-- **M1:** two unrelated single-threaded CPU-bound processes ran at 100% each throughout. A media-analysis daemon used about two cores for about 11 minutes, and the window server about half a core.
+- **M1:** browser and window-server activity took 0.2-0.5 cores.
 - **M4:** browser and window-server activity took 0.3-0.5 cores.
 - **M5:** idle.
 
@@ -35,18 +35,18 @@ mlxlearn gets float32 input. scikit-learn gets float64 input, its faster setting
 
 | Benchmark | M1 Ultra | M4 Max | M5 Ultra |
 |---|---|---|---|
-| `LogisticRegression` fit, `max_iter=100` | 7.5× / 7.3× / 14.0× | 4.9× / 4.7× / 7.9× | 5.5× / 5.3× / 9.4× |
-| `LogisticRegression` fit, `max_iter=5000` | 19.0× / 18.7× / 13.9× | 12.5× / 7.1× / 8.1× | 14.4× / 13.3× / 9.5× |
-| `KNeighborsClassifier` predict (best of 7) | 16.1× / 14.8× / 16.1× | 11.6× / 12.2× / 11.8× | 14.5× / 13.2× / 14.4× |
-| `SVC` fit, 200 MB cache | 19.6× / 25.5× / 20.9× | 13.0× / 17.4× / 14.9× | 15.4× / 19.6× / 15.9× |
-| `SVC` fit, 2,000 MB cache | 27.9× / 41.2× / 28.7× | 21.2× / 29.8× / 22.5× | 18.1× / 26.0× / 18.4× |
-| `SVC` predict | 217× / 178× / 223× | 298× / 286× / 326× | 315× / 277× / 320× |
+| `LogisticRegression` fit, `max_iter=100` | 7.7× / 8.0× / 15.1× | 4.9× / 4.7× / 7.9× | 5.5× / 5.3× / 9.4× |
+| `LogisticRegression` fit, `max_iter=5000` | 20.3× / 20.7× / 15.4× | 12.5× / 7.1× / 8.1× | 14.4× / 13.3× / 9.5× |
+| `KNeighborsClassifier` predict (best of 7) | 15.7× / 14.3× / 15.6× | 11.6× / 12.2× / 11.8× | 14.5× / 13.2× / 14.4× |
+| `SVC` fit, 200 MB cache | 18.2× / 23.6× / 19.2× | 13.0× / 17.4× / 14.9× | 15.4× / 19.6× / 15.9× |
+| `SVC` fit, 2,000 MB cache | 26.3× / 37.1× / 25.9× | 21.2× / 29.8× / 22.5× | 18.1× / 26.0× / 18.4× |
+| `SVC` predict | 240× / 197× / 244× | 298× / 286× / 326× | 315× / 277× / 320× |
 | `PCA` fit, default solver, float32 | 1.7–1.9× | 1.8–2.0× | 1.7–1.8× |
-| `PCA` fit, default solver, float64 | 2.9–3.1× | 2.1–2.5× | 2.2–2.7× |
-| `PCA` fit, `randomized`, float32 | 8.1–12.2× | 4.0–9.6× | 5.6–9.5× |
-| `PCA` fit, `randomized`, float64 | 10.8–19.2× | 7.3–12.4× | 6.3–13.5× |
-| `PCA` 10,000-row test transform, float32 | 0.97–0.99× | 1.22–1.46× | 1.10–1.24× |
-| `PCA` 10,000-row test transform, float64 | 1.01–1.05× | 1.11–1.24× | 1.16–1.23× |
+| `PCA` fit, default solver, float64 | 2.9–3.2× | 2.1–2.5× | 2.2–2.7× |
+| `PCA` fit, `randomized`, float32 | 9.1–13.0× | 4.0–9.6× | 5.6–9.5× |
+| `PCA` fit, `randomized`, float64 | 11.3–19.2× | 7.3–12.4× | 6.3–13.5× |
+| `PCA` 10,000-row test transform, float32 | 1.06–1.32× | 1.22–1.46× | 1.10–1.24× |
+| `PCA` 10,000-row test transform, float64 | 0.69–1.05× | 1.11–1.24× | 1.16–1.23× |
 
 The PCA rows give the range over the three datasets and 32 or 128 components. The transform rows cover the default solver on MNIST and Fashion-MNIST.
 
@@ -54,13 +54,13 @@ The PCA rows give the range over the three datasets and 32 or 128 components. Th
 
 | | M1 Ultra | M4 Max | M5 Ultra |
 |---|---|---|---|
-| mlxlearn `LogisticRegression` fit, `max_iter=5000` | 0.33 / 0.90 / 0.18 s | 0.23 / 1.13 / 0.14 s | 0.20 / 0.57 / 0.11 s |
+| mlxlearn `LogisticRegression` fit, `max_iter=5000` | 0.33 / 0.88 / 0.17 s | 0.23 / 1.13 / 0.14 s | 0.20 / 0.57 / 0.11 s |
 | mlxlearn `KNeighborsClassifier` predict (best) | 101 / 109 / 103 ms | 105 / 109 / 106 ms | 52 / 57 / 53 ms |
-| mlxlearn `SVC` fit, 200 MB | 9.6 / 10.3 / 8.6 s | 8.8 / 9.4 / 7.7 s | 5.0 / 5.3 / 4.4 s |
-| mlxlearn `SVC` fit, 2,000 MB | 6.8 / 6.5 / 6.3 s | 5.4 / 5.2 / 5.1 s | 4.2 / 4.0 / 3.9 s |
-| mlxlearn `SVC` predict | 0.17 / 0.34 / 0.15 s | 0.09 / 0.15 / 0.07 s | 0.07 / 0.13 / 0.06 s |
-| scikit-learn `KNeighborsClassifier` predict (float64, best) | 1.62 / 1.62 / 1.65 s | 1.22 / 1.33 / 1.25 s | 0.75 / 0.75 / 0.76 s |
-| scikit-learn `SVC` fit, 200 MB | 189 / 263 / 180 s | 114 / 163 / 115 s | 77 / 103 / 70 s |
+| mlxlearn `SVC` fit, 200 MB | 9.1 / 9.8 / 8.2 s | 8.8 / 9.4 / 7.7 s | 5.0 / 5.3 / 4.4 s |
+| mlxlearn `SVC` fit, 2,000 MB | 6.4 / 6.2 / 6.1 s | 5.4 / 5.2 / 5.1 s | 4.2 / 4.0 / 3.9 s |
+| mlxlearn `SVC` predict | 0.15 / 0.30 / 0.13 s | 0.09 / 0.15 / 0.07 s | 0.07 / 0.13 / 0.06 s |
+| scikit-learn `KNeighborsClassifier` predict (float64, best) | 1.58 / 1.55 / 1.60 s | 1.22 / 1.33 / 1.25 s | 0.75 / 0.75 / 0.76 s |
+| scikit-learn `SVC` fit, 200 MB | 165 / 230 / 157 s | 114 / 163 / 115 s | 77 / 103 / 70 s |
 
 `python compare.py` prints these tables and the per-variant details. The details include iterations, objectives, the median and best of every timing, all 24 PCA configurations with principal angles, and the M5 comparison with the pre-binary32 PCA code.
 
@@ -84,10 +84,15 @@ The PCA rows give the range over the three datasets and 32 or 128 components. Th
 
 ## Observations
 
-- **The M5 Ultra is fastest in absolute terms.** Against the M4 Max it is 2× for kNN predict, 1.3–1.8× for SVC fit and 1.2–2× for logistic regression. scikit-learn also runs fastest on its 36 CPU cores, so the M5's speedups over scikit-learn sit between the other two machines'.
-- **The M1 Ultra's speedups overstate its GPU advantage.** scikit-learn's CPU work there competed with the background load listed above, and mlxlearn's GPU-bound work barely did. mlxlearn's kNN times on the M1 match the M4's. Its SVC fits take 1.1–1.3× as long as the M4's, and its float32 default-solver PCA fits about 2×. The M1's PCA transforms are even with scikit-learn.
+- **The M5 Ultra is fastest in absolute terms.** Against the M4 Max it is 2× for kNN predict, 1.3–1.8× for SVC fit and 1.2–2× for logistic regression. scikit-learn also runs fastest on its 36 CPU cores, so the M5's speedups over scikit-learn mostly sit between the other two machines'.
+- **The M1 Ultra shows the largest speedups.** Its GPU keeps pace with the M4 Max on several benchmarks: mlxlearn's kNN times match, and its SVC fits take 1.03–1.19× as long. Its float32 default-solver PCA fits take about 1.9× as long. Meanwhile scikit-learn runs 1.2–2.3× slower on its CPU than on the M4 Max's. The M1's PCA transforms are close to even with scikit-learn's.
+- **Background load barely moved the M1's ratios.** The first M1 run, alongside the other two machines, shared the CPU with two unrelated single-threaded processes at 100% each. A media-analysis daemon also used about two cores for about 11 minutes.
+  - On the idle machine, scikit-learn's single-threaded SVC fits took 13% less time and its kNN predictions 2–4% less.
+  - Its logistic regression fits took 7–9% *more* time. Each set of five fits spread only 1–2%; the cause was not investigated.
+  - mlxlearn's times moved by 0–12%, and the M1's speedups by −10% to +11%.
+  - The first run's logs are in `results/m1/probes/loaded_run/`, and its raw JSON files are in commit `47e66c1`.
 - **The binary32 GEMM fix costs some PCA fit time on the M5.** `pca.py` also times the PCA code at `1859e09`, which used MLX's default TF32 matrix products on that GPU. Against it, the current default-solver fits take 1.26–1.30× as long on MNIST. In exchange, the largest principal angle drops from 0.2–0.55° to 0.0005–0.006°. PCA on the M5 still fits 1.7–2.7× faster than scikit-learn. On the M4 the two versions have the same best fit times and give identical principal angles.
-- **Some PCA medians are bimodal.** On the M4, the float32 `randomized` 32-component fits alternate between about 19 ms and about 33 ms. The slow mode comes from running right after scikit-learn, whose OpenMP workers keep spinning. Best times match the 2026-11-10 run: 19.3 vs 18.7 ms on MNIST. Kannada-MNIST's 5,000-row test transform takes about 1 ms and lands at 0.66–1.35× on every machine.
+- **Some PCA medians are bimodal.** On the M4, the float32 `randomized` 32-component fits alternate between about 19 ms and about 33 ms. The slow mode comes from running right after scikit-learn, whose OpenMP workers keep spinning. Best times match the 2026-11-10 run: 19.3 vs 18.7 ms on MNIST. Kannada-MNIST's 5,000-row test transform takes about 1 ms and lands at 0.68–1.35× across the machines.
 - **The M4 rerun agrees with the 2026-11-02 M4 results** for logistic regression, kNN and PCA within noise.
   - mlxlearn's SVC fits at the 200 MB cache are faster than recorded then: 8.8 / 9.4 / 7.7 s against 12.5 / 13.6 / 10.2 s.
   - Since `c928419`, the only change to code on that path is the binary32 routing, which does not apply on the M4. scikit-learn also ran 2–7% faster.
@@ -103,7 +108,7 @@ The PCA rows give the range over the three datasets and 32 or 128 components. Th
 - the audit outputs (`knn_exact.log`, `svc_compare.log`);
 - `env.txt`.
 
-`gzip -d` restores the original bytes. The auditing scripts in `../mnist-family-2026-11-02` read these files directly.
+`results/m1/probes/loaded_run/` holds the logs of the first, loaded M1 run. `results/m4/probes/` holds the first M4 `max_iter=5000` MNIST file. `gzip -d` restores the original bytes. The auditing scripts in `../mnist-family-2026-11-02` read these files directly.
 
 ## Reproduce
 

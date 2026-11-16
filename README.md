@@ -530,19 +530,19 @@ settings as the tables above.
 
 | Benchmark | M1 Ultra (64-core GPU) | M4 Max (40-core GPU) | M5 Ultra (80-core GPU) |
 |---|---|---|---|
-| `LogisticRegression` fit, `max_iter=5000` | 19.0× / 18.7× / 13.9× | 12.5× / 7.1× / 8.1× | 14.4× / 13.3× / 9.5× |
-| `KNeighborsClassifier` predict | 16.1× / 14.8× / 16.1× | 11.6× / 12.2× / 11.8× | 14.5× / 13.2× / 14.4× |
-| `SVC` fit, default 200 MB cache | 19.6× / 25.5× / 20.9× | 13.0× / 17.4× / 14.9× | 15.4× / 19.6× / 15.9× |
-| `SVC` predict | 217× / 178× / 223× | 298× / 286× / 326× | 315× / 277× / 320× |
-| `PCA` fit, default solver, float32 / float64 | 1.7–1.9× / 2.9–3.1× | 1.8–2.0× / 2.1–2.5× | 1.7–1.8× / 2.2–2.7× |
+| `LogisticRegression` fit, `max_iter=5000` | 20.3× / 20.7× / 15.4× | 12.5× / 7.1× / 8.1× | 14.4× / 13.3× / 9.5× |
+| `KNeighborsClassifier` predict | 15.7× / 14.3× / 15.6× | 11.6× / 12.2× / 11.8× | 14.5× / 13.2× / 14.4× |
+| `SVC` fit, default 200 MB cache | 18.2× / 23.6× / 19.2× | 13.0× / 17.4× / 14.9× | 15.4× / 19.6× / 15.9× |
+| `SVC` predict | 240× / 197× / 244× | 298× / 286× / 326× | 315× / 277× / 320× |
+| `PCA` fit, default solver, float32 / float64 | 1.7–1.9× / 2.9–3.2× | 1.8–2.0× / 2.1–2.5× | 1.7–1.8× / 2.2–2.7× |
 
 - **Correctness:** every KNN neighbor set from every machine is exact. SVC predictions agree with
   scikit-learn on 99.98–100% of rows, and every converged logistic regression matches
   scikit-learn's test accuracy within 0.15 pp.
 - **Absolute speed:** the M5 Ultra is fastest. It predicts KNN in 52–57 ms against 101–109 ms on
-  the other two machines, and fits SVC in 4.4–5.3 s against 7.7–10.3 s at the default cache.
-- **M1 caveat:** the M1 Ultra's large ratios partly reflect background CPU load that slowed
-  scikit-learn.
+  the other two machines, and fits SVC in 4.4–5.3 s against 7.7–9.8 s at the default cache.
+- **M1 Ultra:** it shows the largest ratios. Its GPU keeps pace with the M4 Max for KNN and
+  SVC, while scikit-learn runs 1.2–2.3× slower on its CPU.
 - **M5 PCA trade-off:** on the M5, PCA now keeps float32 matrix products in binary32 instead of
   MLX's default TF32. Fits take about 1.3× as long as with TF32, and components are about 100×
   closer to the float64 reference.
