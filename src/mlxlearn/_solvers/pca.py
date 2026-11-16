@@ -32,7 +32,13 @@ def ensure_f32_2d(array: np.ndarray) -> np.ndarray:
 
 
 def to_mlx_f32(array: np.ndarray) -> mx.array:
-    return mx.array(np.asarray(array, dtype=np.float32, order="C"))
+    host = np.asarray(array, dtype=np.float32, order="C")
+    # NumPy ignores the stride of a length-1 axis when it checks contiguity, so a
+    # single reversed column (one eigenvector of column-major eigh output, read in
+    # descending order) comes back as a view with a negative stride. MLX rejects it.
+    if any(stride < 0 for stride in host.strides):
+        host = host.copy()
+    return mx.array(host)
 
 
 def borrow_mlx_f32(c_f32_array: np.ndarray) -> mx.array:

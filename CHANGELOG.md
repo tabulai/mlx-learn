@@ -46,6 +46,13 @@ All notable changes to this project are documented here. The format follows
   longer: +0.3 ms at 128x512, +0.7 ms at 300x900, 186 -> 214 ms at 2000x8192
   on M4 Max (172 -> 198 ms on M5 Ultra). A 1000x4096 fit that runs the tail
   branch took 1-2% longer.
+- A crash in the same wide GPU `svd_solver="full"` path when exactly one
+  component clears the head threshold, as with one dominant direction over
+  small noise: `ValueError: Cannot convert DLPack arrays with negative strides`.
+  MLX's CPU `eigh` returns column-major eigenvectors, and a single column of
+  them read in descending order is a negative-stride view that NumPy still
+  calls contiguous, so it reached `mx.array` uncopied. The PCA solver's float32
+  upload now copies any view with a negative stride.
 
 ## [0.1.3] — 2026-11-15
 
