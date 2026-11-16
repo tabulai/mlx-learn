@@ -29,6 +29,23 @@ All notable changes to this project are documented here. The format follows
   M1-M4 the original MLX expressions run unchanged: outputs are bit-identical
   and speed is within noise. The BF16 e-means baseline keeps MLX's GEMM, since
   TF32 represents BF16 operands exactly.
+- Orthonormal PCA components from the wide GPU `svd_solver="full"` path
+  (`n_samples < n_features`). It builds components as `U.T @ X_c / s` from the
+  float32 dual-Gram eigenvectors, which are orthogonal to only about
+  `eps * s_0**2 / (s_i * s_j)`: 2e-4 was measured inside the well-conditioned
+  head. On `test_pca_wide_matrix_parity`'s 128x512 fixture, 35 of seeds 0-39
+  exceeded `max|C @ C.T - I| = 1e-5` on an M4 Max and 38 on an M5 Ultra; the
+  test seed passed on M4 by luck at 9.7e-6. The head rows now go through one
+  row-ordered Cholesky QR: a float32 GPU Gram matrix, a float64 host
+  factorization, and a GPU correction applied as `V + (inv(L) - I) @ V`. The
+  single-precision tail SVD rows get the same pass. All 40 seeds now stay at or
+  below 1.6e-7 on both machines. So do spectra that reach the tail branch (down
+  to 1e-4 * s_0), which measured up to 2.3e-4 before. Components also move
+  slightly closer to scikit-learn's. This changes results on every GPU
+  generation, M1-M4 included. Wide `full` fits without a tail take 11-22%
+  longer: +0.3 ms at 128x512, +0.7 ms at 300x900, 186 -> 214 ms at 2000x8192
+  on M4 Max (172 -> 198 ms on M5 Ultra). A 1000x4096 fit that runs the tail
+  branch took 1-2% longer.
 
 ## [0.1.3] — 2026-11-15
 
