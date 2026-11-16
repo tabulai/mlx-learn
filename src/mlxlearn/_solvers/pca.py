@@ -442,6 +442,43 @@ def _solve_cpu_full_or_eigh(
     )
 
 
+def _orthonormalize_rows(V_mx: mx.array) -> mx.array:
+    """Make the rows of a nearly orthonormal float32 block orthonormal, on the GPU.
+
+    One Cholesky QR in row order: with ``V @ V.T = L @ L.T``, the rows of
+    ``inv(L) @ V`` are orthonormal, and row ``i`` mixes in only rows ``0 .. i``, so
+    this is a Gram-Schmidt sweep from the leading row down. When the rows are
+    singular vectors in descending order, that is also the more accurate
+    direction to correct: the error of a pair sits mostly in the vector with the
+    smaller singular value.
+
+    The ``k x k`` Gram matrix comes from one float32 GEMM, whose rounding is small
+    on the small off-diagonal entries; its diagonal is replaced by row sums of
+    squares, which a reduction rounds less than a length-``n_features`` GEMM
+    accumulation. The factorization and the triangular inverse run on the host
+    in float64. The update is applied as ``V + (inv(L) - I) @ V``: the correction
+    matrix is small, so the GEMM rounds only the correction, not the rows.
+
+    The block must have full row rank. If the factorization still fails, which
+    takes non-finite or degenerate rows, the rows are only normalized.
+    """
+    sq_mx = mx.sum(V_mx * V_mx, axis=1)
+    G_mx = matmul(V_mx, V_mx, transpose_b=True)
+    mx.eval(sq_mx, G_mx)
+    # LAPACK reads one triangle of the symmetric matrix. The transpose is a
+    # Fortran-ordered view of the same buffer, so it reaches LAPACK uncopied.
+    A = to_numpy(G_mx).astype(np.float64).T
+    np.fill_diagonal(A, to_numpy(sq_mx))
+    R, info = scipy.linalg.lapack.dpotrf(A, lower=0, clean=1, overwrite_a=1)
+    if info == 0:
+        R_inv, info = scipy.linalg.lapack.dtrtri(R, lower=0, overwrite_c=1)
+    if info != 0:
+        return V_mx * mx.rsqrt(mx.maximum(sq_mx[:, None], 1e-30))
+    # A = R.T @ R with R = L.T, so inv(L) = inv(R).T.
+    R_inv[np.diag_indices_from(R_inv)] -= 1.0
+    return addmm(V_mx, to_mlx_f32(R_inv.T), V_mx)
+
+
 def _solve_gpu_full_or_eigh(
     X_mx: mx.array,
     mean_mx: mx.array,
@@ -569,9 +606,9 @@ def _solve_gpu_full_or_eigh(
             U_head_mx = to_mlx_f32(U_desc[:, :idx])
             inv_s_mx = to_mlx_f32((1.0 / S[:idx]).astype(np.float32))
             Vt_head_mx = matmul(U_head_mx, X_c_mx, transpose_a=True) * inv_s_mx[:, None]
-            Vt_head_mx = Vt_head_mx * mx.rsqrt(
-                mx.maximum(mx.sum(Vt_head_mx * Vt_head_mx, axis=1, keepdims=True), 1e-30)
-            )
+            # Rows built from float32 dual-Gram eigenvectors are only orthogonal to
+            # about eps * s_0**2 / (s_i * s_j), up to ~2e-4 inside the head; restore it.
+            Vt_head_mx = _orthonormalize_rows(Vt_head_mx)
             mx.eval(Vt_head_mx)
             Vt[:idx] = to_numpy(Vt_head_mx)
 
@@ -587,6 +624,8 @@ def _solve_gpu_full_or_eigh(
             X_rem_np = to_numpy(X_rem_mx)
             if float(np.linalg.norm(X_rem_np)) > 1e-7 * float(S[0]):
                 _, S_tail, Vt_tail = scipy.linalg.svd(X_rem_np, full_matrices=False)
+                # A single-precision SVD leaves its rows orthogonal to only ~1e-6.
+                Vt_tail = to_numpy(_orthonormalize_rows(to_mlx_f32(Vt_tail)))
                 n_tail = S_tail.shape[0]
                 S[idx : idx + n_tail] = S_tail.astype(np.float64)
                 Vt[idx : idx + n_tail] = Vt_tail.astype(np.float32, copy=False)

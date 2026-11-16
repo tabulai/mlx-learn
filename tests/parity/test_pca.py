@@ -137,6 +137,68 @@ def test_pca_wide_matrix_parity():
         )
 
 
+@pytest.mark.parametrize("seed", [11, 20, 29, 34])
+def test_pca_wide_full_components_orthonormal(seed):
+    # Before row re-orthonormalization these seeds reached 2.0e-5 .. 2.4e-5: the head
+    # rows came from float32 dual-Gram eigenvectors, orthogonal only to about
+    # eps * s_0**2 / (s_i * s_j).
+    X = _make_well_conditioned(128, 512, seed=seed)
+    with tuning_context(force_backend="mlx"):
+        model = PCA(svd_solver="full").fit(X)
+    assert model.execution_backend_ == "mlx"
+    C = model.components_
+    np.testing.assert_allclose(C @ C.T, np.eye(C.shape[0]), rtol=0, atol=1e-6)
+
+
+def test_pca_wide_full_tail_components_orthonormal():
+    # A spectrum down to 1e-4 * s_0 sends the trailing rows through the deflated tail
+    # SVD, which runs in single precision and left them orthogonal to only ~1e-6.
+    rng = np.random.default_rng(0)
+    U, _ = np.linalg.qr(rng.standard_normal((300, 300)))
+    V, _ = np.linalg.qr(rng.standard_normal((900, 300)))
+    X = (U * np.geomspace(1.0, 1e-4, 300)) @ V.T
+    with tuning_context(force_backend="mlx"):
+        model = PCA(svd_solver="full").fit(X)
+    assert model.execution_backend_ == "mlx"
+    C = model.components_
+    np.testing.assert_allclose(C @ C.T, np.eye(C.shape[0]), rtol=0, atol=1e-6)
+    reference = SkPCA(svd_solver="full").fit(X)
+    np.testing.assert_allclose(
+        model.singular_values_[:-1], reference.singular_values_[:-1], rtol=1e-4
+    )
+
+
+def test_orthonormalize_rows_sweeps_in_row_order():
+    import mlx.core as mx
+
+    from mlxlearn._solvers.pca import _orthonormalize_rows
+
+    rng = np.random.default_rng(3)
+    Q, _ = np.linalg.qr(rng.standard_normal((1024, 64)))
+    V = (Q.T + 3e-5 * rng.standard_normal((64, 1024))).astype(np.float32)
+    out = np.asarray(_orthonormalize_rows(mx.array(V)), dtype=np.float64)
+
+    np.testing.assert_allclose(out @ out.T, np.eye(64), rtol=0, atol=1e-6)
+    # Gram-Schmidt order: the leading row is only normalized, and every row stays
+    # in the span of the rows before it.
+    V64 = V.astype(np.float64)
+    np.testing.assert_allclose(out[0], V64[0] / np.linalg.norm(V64[0]), rtol=0, atol=1e-7)
+    coefficients = out @ np.linalg.pinv(V64)
+    np.testing.assert_allclose(np.triu(coefficients, 1), 0.0, rtol=0, atol=1e-5)
+
+
+def test_orthonormalize_rows_normalizes_rank_deficient_rows():
+    import mlx.core as mx
+
+    from mlxlearn._solvers.pca import _orthonormalize_rows
+
+    row = np.random.default_rng(4).standard_normal(256)
+    V = np.stack([3.0 * row, -2.0 * row]).astype(np.float32)
+    out = np.asarray(_orthonormalize_rows(mx.array(V)), dtype=np.float64)
+    expected = row / np.linalg.norm(row)
+    np.testing.assert_allclose(out, np.stack([expected, -expected]), rtol=0, atol=1e-6)
+
+
 def test_pca_shifted_data_numerical_stability():
     """Large constant offset (1e4) must not degrade float32 mean or variance accuracy."""
     X = _make_well_conditioned(2048, 32, seed=23, shift=1e4)
