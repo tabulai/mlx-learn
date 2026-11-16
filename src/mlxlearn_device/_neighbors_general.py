@@ -44,6 +44,47 @@ def cpu_neighbors(train, queries, k, *, rows, cols, exclude_self=False):
     return mx.concatenate(out_values), mx.concatenate(out_indices)
 
 
+#: MLX's Metal argsort returns wrong orders for float32 rows of 2**21 or more
+#: columns (MLX 0.29 through at least 0.32.4). Tiles that need a full sort are
+#: never wider than this; the per-tile certificates and exact merge below
+#: already handle any number of reference tiles.
+_SORT_WIDTH_LIMIT = 2**20
+
+
+def _use_partial_select(rows, width, take):
+    """Choose ``select_topk`` over a full row sort for one Gram tile.
+
+    Up to 16 candidates always use partial selection. Beyond that, the regions
+    below were faster than ``argsort`` for both random and descending column
+    order (each lane's worst case) on M4 Max: at least 1.07x, and 3-11x for
+    64-row tiles of a million columns. A full sort stays faster for fewer than
+    8 query rows, for narrow tiles, and beyond 41 candidates in adversarial
+    order.
+    """
+    if take <= 16:
+        return True
+    if take > 41 or rows < 8:
+        return False
+    if width >= 2**18:
+        return True
+    if take <= 32 and width >= 2**14:
+        return True
+    return rows >= 256 and rows * width >= 2**22
+
+
+def _gram_block_rows(rows, n_query):
+    """Avoid block heights just above 64 rows when a query spans several blocks.
+
+    MLX's Gram matrix product pads such blocks to a second 64-row tile:
+    67-row blocks measured 1.3-1.8x slower than 64-row blocks of the same
+    query on M4 Max, at 96-1024 features. Heights from 91 rows upward keep
+    their size. Shorter blocks only reduce the memory each one needs.
+    """
+    if rows < n_query and 64 < rows <= 90:
+        return 64
+    return rows
+
+
 @mx.compile
 def _gram_lower(query, train, center, train_sq, error_factor, floor):
     centered = query - center
@@ -69,14 +110,18 @@ def gpu_neighbors(index, queries, k, *, rows, cols, exclude_self=False):
     # Unsafe ranges get a zero lower bound and therefore cannot certify.
     error_factor = (2 * features + 16) * 2.0**-23
     floor = features * 1e-30
+    rows = _gram_block_rows(rows, queries.shape[0])
     out_values, out_indices = [], []
     for start in range(0, queries.shape[0], rows):
         query = queries[start:start + rows]
         best_values = best_indices = None
         certified = mx.ones((query.shape[0],), mx.bool_)
         own = mx.arange(start, start + query.shape[0])[:, None] if exclude_self else None
-        for offset in range(0, n, cols):
-            stop = min(offset + cols, n)
+        block_cols = min(cols, n)
+        if not _use_partial_select(query.shape[0], block_cols, min(block_cols, carry + 1)):
+            block_cols = min(block_cols, _SORT_WIDTH_LIMIT)
+        for offset in range(0, n, block_cols):
+            stop = min(offset + block_cols, n)
             lower = _gram_lower(query, index._train[offset:stop], index._center,
                                 index._train_sq[offset:stop], error_factor, floor)
             ids = mx.broadcast_to(mx.arange(offset, stop, dtype=mx.int32), lower.shape)
@@ -84,9 +129,12 @@ def gpu_neighbors(index, queries, k, *, rows, cols, exclude_self=False):
                 lower = mx.where(ids == own, float("inf"), lower)
             width = stop - offset
             take = min(width, carry + 1)
-            if take <= 16:
+            if _use_partial_select(query.shape[0], width, take):
                 bounds, candidates = select_topk(lower, take, offset=offset)
             else:
+                # A block that chose partial selection sorts only tiles narrower
+                # than 2**18 columns; any other block is limited above.
+                assert width <= _SORT_WIDTH_LIMIT
                 order = mx.argsort(lower, axis=1)[:, :take]
                 bounds = mx.take_along_axis(lower, order, axis=1)
                 candidates = mx.take_along_axis(ids, order, axis=1)

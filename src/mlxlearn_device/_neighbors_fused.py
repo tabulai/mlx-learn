@@ -144,8 +144,13 @@ _VALUE_SCAN = """
     const int begin = int((size_t(part) * size_t(width)) / size_t(parts));
     const int end = int((size_t(part + 1) * size_t(width)) / size_t(parts));
     const int sentinel = 2147483647;
-    float distances[K];
-    int indices[K];
+    // Lists of 17..32 entries would stay in registers, where the dynamically
+    // indexed insertion below compiles to long select chains (K=32 measured
+    // up to 7x slower than K=33 on M4 Max). Padding them past 32 entries
+    // keeps them in thread memory; only the first K entries are used.
+    constexpr int CAPACITY = (K > 16 && K <= 32) ? 33 : K;
+    float distances[CAPACITY];
+    int indices[CAPACITY];
     for (int slot = 0; slot < K; ++slot) {
         distances[slot] = INFINITY;
         indices[slot] = sentinel;
