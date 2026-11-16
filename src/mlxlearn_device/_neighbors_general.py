@@ -1,5 +1,8 @@
 """Bounded direct CPU search and certified GPU Gram screening."""
 
+import re
+from functools import lru_cache
+
 import mlx.core as mx
 
 
@@ -51,18 +54,44 @@ def cpu_neighbors(train, queries, k, *, rows, cols, exclude_self=False):
 _SORT_WIDTH_LIMIT = 2**20
 
 
+#: Apple GPU generations whose larger partial-selection regions are calibrated.
+#: 16 is the M4 family (measured on M4 Max). On an M1 Ultra (generation 13),
+#: partial selection lost to argsort for 24+ candidates in descending column
+#: order at every tested tile width, so other generations keep the full sort.
+_CALIBRATED_GPU_FAMILIES = frozenset({16})
+
+
+@lru_cache(maxsize=1)
+def _gpu_family():
+    """Return the Apple GPU generation, e.g. 16 for ``applegpu_g16s``, or None."""
+    try:
+        info = mx.device_info() if hasattr(mx, "device_info") else mx.metal.device_info()
+    except Exception:  # pragma: no cover - no Metal device information
+        return None
+    match = re.match(r"applegpu_g(\d+)", str(info.get("architecture", "")))
+    return int(match.group(1)) if match else None
+
+
 def _use_partial_select(rows, width, take):
     """Choose ``select_topk`` over a full row sort for one Gram tile.
 
-    Up to 16 candidates always use partial selection. Beyond that, the regions
-    below were faster than ``argsort`` for both random and descending column
-    order (each lane's worst case) on M4 Max: at least 1.07x, and 3-11x for
-    64-row tiles of a million columns. A full sort stays faster for fewer than
-    8 query rows, for narrow tiles, and beyond 41 candidates in adversarial
-    order.
+    Up to 16 candidates always use partial selection. Larger candidate sets
+    use it only on calibrated GPU generations, inside the regions of
+    ``_calibrated_partial_select``.
     """
     if take <= 16:
         return True
+    return _gpu_family() in _CALIBRATED_GPU_FAMILIES and _calibrated_partial_select(rows, width, take)
+
+
+def _calibrated_partial_select(rows, width, take):
+    """Tile regions where ``select_topk`` beat ``argsort`` on M4 Max, for 17..41 candidates.
+
+    They were faster for both random and descending column order (each lane's
+    worst case): at least 1.07x, and 3-11x for 64-row tiles of a million
+    columns. A full sort stays faster for fewer than 8 query rows, for narrow
+    tiles, and beyond 41 candidates in adversarial order.
+    """
     if take > 41 or rows < 8:
         return False
     if width >= 2**18:
@@ -72,15 +101,23 @@ def _use_partial_select(rows, width, take):
     return rows >= 256 and rows * width >= 2**22
 
 
+#: Apple GPU generations where 64-row Gram blocks measured faster than the
+#: planner's 65-90 row heights: M1 (13) and M4 (16). On an M5 Ultra (17) they
+#: were slower (0.81-0.95x at k=5 over 0.75-1M rows), so it keeps its heights.
+_ROW_ALIGNED_GPU_FAMILIES = frozenset({13, 16})
+
+
 def _gram_block_rows(rows, n_query):
     """Avoid block heights just above 64 rows when a query spans several blocks.
 
-    MLX's Gram matrix product pads such blocks to a second 64-row tile:
-    67-row blocks measured 1.3-1.8x slower than 64-row blocks of the same
-    query on M4 Max, at 96-1024 features. Heights from 91 rows upward keep
-    their size. Shorter blocks only reduce the memory each one needs.
+    On the generations above, MLX's Gram matrix product pads such blocks to a
+    second 64-row tile: 67-row blocks measured 1.3-1.8x slower than 64-row
+    blocks of the same query on M4 Max, at 96-1024 features; on M1 Ultra,
+    64-row blocks made k=5 queries over a million rows 1.1-1.6x faster.
+    Heights from 91 rows upward keep their size. Shorter blocks only reduce
+    the memory each needs.
     """
-    if rows < n_query and 64 < rows <= 90:
+    if rows < n_query and 64 < rows <= 90 and _gpu_family() in _ROW_ALIGNED_GPU_FAMILIES:
         return 64
     return rows
 

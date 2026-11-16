@@ -31,7 +31,6 @@ def _exact(train, queries, k):
 
 
 @pytest.mark.parametrize("rows,width,take,expected", [
-    (1, 10, 16, True), (1, 2**21, 16, True),            # small candidate sets: unchanged
     (7, 2**20, 17, False), (8, 2**18, 41, True),         # wide tiles need 8+ rows
     (64, 2**20, 42, False),                              # adversarial order loses past 41
     (8, 2**14, 32, True), (8, 2**14, 33, False),         # medium tiles up to 32 candidates
@@ -39,16 +38,41 @@ def _exact(train, queries, k):
     (256, 2**14, 41, True), (1024, 4096, 41, True),      # tall tiles
     (1024, 1024, 17, False), (255, 2**16, 41, False),
 ])
-def test_partial_select_regions(rows, width, take, expected):
-    assert general._use_partial_select(rows, width, take) is expected
+def test_calibrated_partial_select_regions(rows, width, take, expected):
+    assert general._calibrated_partial_select(rows, width, take) is expected
+
+
+@pytest.mark.parametrize("family,expected", [(16, True), (13, False), (17, False), (None, False)])
+def test_larger_partial_selection_requires_a_calibrated_gpu(family, expected, monkeypatch):
+    monkeypatch.setattr(general, "_gpu_family", lambda: family)
+    assert general._use_partial_select(64, 2**20, 19) is expected
+    # Up to 16 candidates use partial selection on every device, as before.
+    assert general._use_partial_select(1, 2**21, 16) is True
+
+
+@pytest.mark.parametrize("architecture,family", [
+    ("applegpu_g16s", 16), ("applegpu_g13d", 13), ("", None), ("unknown", None),
+])
+def test_gpu_family_parses_mlx_architecture(architecture, family, monkeypatch):
+    monkeypatch.setattr(mx, "device_info", lambda: {"architecture": architecture}, raising=False)
+    assert general._gpu_family.__wrapped__() == family
 
 
 @pytest.mark.parametrize("rows,n_query,expected", [
     (67, 2048, 64), (89, 2048, 64), (90, 2048, 64), (91, 2048, 91), (64, 2048, 64),
     (50, 2048, 50), (128, 2048, 128), (67, 67, 67), (89, 40, 89),
 ])
-def test_gram_block_rows(rows, n_query, expected):
+@pytest.mark.parametrize("family", [13, 16])
+def test_gram_block_rows(rows, n_query, expected, family, monkeypatch):
+    monkeypatch.setattr(general, "_gpu_family", lambda: family)
     assert general._gram_block_rows(rows, n_query) == expected
+
+
+@pytest.mark.parametrize("family", [17, None])
+def test_gram_block_rows_keep_planner_heights_elsewhere(family, monkeypatch):
+    monkeypatch.setattr(general, "_gpu_family", lambda: family)
+    assert general._gram_block_rows(67, 2048) == 67
+    assert general._gram_block_rows(89, 2048) == 89
 
 
 @pytest.mark.parametrize("k", [17, 20, 24, 31, 32])
@@ -94,6 +118,8 @@ def test_general_partial_selection_is_exact(n_train, n_query, k, monkeypatch):
         calls.append(take)
         return original(values, take, **kwargs)
 
+    # Exercise the calibrated route on any GPU: exactness does not depend on it.
+    monkeypatch.setattr(general, "_gpu_family", lambda: 16)
     monkeypatch.setattr(fused, "select_topk", counting)
     # The public memory plan keeps each query block in one reference tile here.
     distances, indices = distance.build_index(train, backend="mlx").query(queries, k)
@@ -108,14 +134,16 @@ def test_general_partial_selection_is_exact(n_train, n_query, k, monkeypatch):
     np.testing.assert_allclose(np.asarray(direct_d), expected_d, rtol=1e-6)
 
 
-@pytest.mark.parametrize("n_query,k,sorted_tiles", [
-    (3, 17, True),      # fewer than 8 rows: full sorts on limited tiles
-    (16, 40, True),     # 49 candidates: full sorts on limited tiles
-    (16, 20, False),    # partial selection over the whole reference range
+@pytest.mark.parametrize("n_query,k,family,sorted_tiles", [
+    (3, 17, 16, True),      # fewer than 8 rows: full sorts on limited tiles
+    (16, 40, 16, True),     # 49 candidates: full sorts on limited tiles
+    (16, 20, 16, False),    # calibrated GPU: partial selection over all references
+    (16, 20, 13, True),     # other GPUs: full sorts on limited tiles
 ])
-def test_public_query_beyond_mlx_sort_width_is_exact(n_query, k, sorted_tiles, monkeypatch):
+def test_public_query_beyond_mlx_sort_width_is_exact(n_query, k, family, sorted_tiles, monkeypatch):
     # MLX's Metal argsort is wrong on float32 rows of 2**21+ columns, and the
     # public memory plan uses one reference tile this wide for small queries.
+    monkeypatch.setattr(general, "_gpu_family", lambda: family)
     n_train = 2**21 + 3
     rng = np.random.default_rng(n_query + k)
     train = rng.normal(size=(n_train, 4)).astype(np.float32)
