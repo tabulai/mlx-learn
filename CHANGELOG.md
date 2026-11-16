@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Exact nearest neighbors on M5-generation GPUs. On macOS 26.2+, MLX runs
+  float32 matrix products on the M5 GPU neural accelerators with TF32 operands
+  by default. The general GPU path's Gram screen assumes binary32 rounding, so
+  its lower bounds could exceed exact distances, by up to 7.9e8 on monotone
+  data, and certify wrong neighbor indices. GPUs that may take that route
+  (generation 17+, or an unrecognised architecture) now compute the screen with
+  a dedicated binary32 kernel that matches MLX's own fp32 GEMM speed. Earlier
+  GPUs keep `mx.matmul`, with unchanged results and speed.
+
 ## [0.1.3] — 2026-11-15
 
 ### Added
