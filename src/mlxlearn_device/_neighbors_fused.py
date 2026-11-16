@@ -813,24 +813,25 @@ for (int reference = 0; reference < n; ++reference) {
 """
 
 
-@lru_cache(maxsize=2)
-def _certified_kernel(large_k):
-    if large_k:
-        source = _EXHAUSTIVE_LARGE_K.replace(
-            "const int n = shape[0], k = shape[2];",
-            """const int n = shape[0], k = shape[2];
-if (certified[query]) {
-    for (int slot = 0; slot < k; ++slot) {
-        out_distances[size_t(query) * k + slot] = candidate_distances[size_t(query) * k + slot];
-        out_indices[size_t(query) * k + slot] = candidate_indices[size_t(query) * k + slot];
-    }
-    return;
-}""",
-        )
-    else:
-        source = _SCAN.replace(
-            "const int part = int(task % uint(parts));",
-            """if (certified[query]) {
+#: For k <= 8 the single-dispatch kernel below scans each uncertified row with
+#: one SIMD group. On M4 Max one failing row cost about 1 ms once
+#: n_train * features reached 2**20, 4 ms at 65536 x 64 and 142 ms at
+#: 131072 x 1024. The partitioned fallback costs a fixed 10-30 us per block
+#: more when every row is certified (two more dispatches): 1-6% of a query
+#: at that size, against 4-12% for the smallest general-path queries.
+_PARTITIONED_SMALL_K_WORK = 2**20
+
+
+def _use_partitioned_fallback(n_train, features, k):
+    """Choose the partitioned fallback; k > 8 had one GPU thread per row."""
+    return k > 8 or n_train * features >= _PARTITIONED_SMALL_K_WORK
+
+
+@lru_cache(maxsize=1)
+def _certified_kernel():
+    source = _SCAN.replace(
+        "const int part = int(task % uint(parts));",
+        """if (certified[query]) {
         if (lane < uint(K)) {
             out_distances[size_t(query) * K + lane] = candidate_distances[size_t(query) * K + lane];
             out_indices[size_t(query) * K + lane] = candidate_indices[size_t(query) * K + lane];
@@ -838,9 +839,9 @@ if (certified[query]) {
         return;
     }
     const int part = int(task % uint(parts));""",
-        )
+    )
     return mx.fast.metal_kernel(
-        name=f"mlxlearn_certified_general_finish_{int(large_k)}",
+        name="mlxlearn_certified_general_finish_0",
         input_names=["train", "queries", "candidate_distances", "candidate_indices", "certified", "shape"],
         output_names=["out_distances", "out_indices"], source=source,
         header=_HEADER + PRECISION_HEADER,
@@ -849,16 +850,23 @@ if (certified[query]) {
 
 def certified_neighbors(train, queries, k, values, indices, certificate, *,
                         exclude_self=False, query_offset=0):
-    """Keep certified rows and scan every original reference for the rest."""
+    """Keep certified rows and search every original reference for the rest.
+
+    The result equals the exact (distance, index) order for every row; only
+    the uncertified rows are recomputed, from the original coordinates.
+    """
     rows, features = queries.shape
-    large = k > 8
-    shape = ([train.shape[0], rows, k, query_offset] if large
-             else [train.shape[0], rows, features, 1, query_offset])
-    threads = rows if large else rows * 32
-    return tuple(_certified_kernel(large)(
-        inputs=[train, queries, values, indices, certificate, mx.array(shape, mx.int32)],
-        template=([("K", int(k))] if not large else [])
-                 + [("D", features), ("EXCLUDE_SELF", bool(exclude_self))],
-        grid=(((threads + 127) // 128) * 128, 1, 1), threadgroup=(128, 1, 1),
+    if _use_partitioned_fallback(train.shape[0], features, k):
+        from ._neighbors_fallback import partitioned_neighbors
+
+        return partitioned_neighbors(
+            train, queries, k, values, indices, certificate,
+            exclude_self=exclude_self, query_offset=query_offset,
+        )
+    return tuple(_certified_kernel()(
+        inputs=[train, queries, values, indices, certificate,
+                mx.array([train.shape[0], rows, features, 1, query_offset], mx.int32)],
+        template=[("K", int(k)), ("D", features), ("EXCLUDE_SELF", bool(exclude_self))],
+        grid=(((rows * 32 + 127) // 128) * 128, 1, 1), threadgroup=(128, 1, 1),
         output_shapes=[(rows, k)] * 2, output_dtypes=[mx.float32, mx.int32], stream=mx.gpu,
     ))
