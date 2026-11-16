@@ -168,6 +168,36 @@ def test_pca_wide_full_tail_components_orthonormal():
     )
 
 
+def test_pca_wide_full_single_head_component():
+    # One dominant direction leaves a one-column head of the column-major eigh
+    # output. Read in descending order, that column was a negative-stride view that
+    # NumPy still calls contiguous, and MLX refused to import it.
+    rng = np.random.default_rng(0)
+    X = 10.0 * np.outer(rng.standard_normal(8), rng.standard_normal(4096))
+    X += 0.01 * rng.standard_normal((8, 4096))
+    reference = SkPCA(svd_solver="full").fit(X)
+    with tuning_context(force_backend="mlx"):
+        model = PCA(svd_solver="full").fit(X)
+    assert model.execution_backend_ == "mlx"
+    C = model.components_
+    np.testing.assert_allclose(C @ C.T, np.eye(C.shape[0]), rtol=0, atol=1e-6)
+    np.testing.assert_allclose(C[0], reference.components_[0], rtol=0, atol=1e-6)
+    np.testing.assert_allclose(model.singular_values_[0], reference.singular_values_[0], rtol=1e-6)
+
+
+def test_to_mlx_f32_copies_negative_stride_views():
+    import mlx.core as mx
+
+    from mlxlearn._solvers.pca import to_mlx_f32
+
+    _, vectors = mx.linalg.eigh(mx.eye(4) + mx.ones((4, 4)), stream=mx.cpu)
+    descending = np.asarray(vectors)[:, ::-1]
+    column = descending[:, :1]
+    np.testing.assert_array_equal(np.asarray(to_mlx_f32(column)), column)
+    reversed_row = np.arange(6, dtype=np.float32)[::-1][None, :]
+    np.testing.assert_array_equal(np.asarray(to_mlx_f32(reversed_row)), reversed_row)
+
+
 def test_orthonormalize_rows_sweeps_in_row_order():
     import mlx.core as mx
 
