@@ -70,7 +70,7 @@ def gram_lower(query, train, center, train_sq, error_factor, floor, *, exact_pro
     ``matmul`` with TF32 operands on GPUs with neural accelerators, which
     violates that bound, so those GPUs take a dedicated binary32 product.
     """
-    from ._neighbors_gram import float32_gram, matmul_may_round_float32
+    from ._binary32 import float32_matmul, matmul_may_round_float32
 
     if exact_products is None:
         exact_products = matmul_may_round_float32()
@@ -78,14 +78,14 @@ def gram_lower(query, train, center, train_sq, error_factor, floor, *, exact_pro
         return _gram_lower(query, train, center, train_sq, error_factor, floor)
     centered = query - center
     return _gram_lower_from_products(
-        centered, float32_gram(centered, train), train_sq, error_factor, floor,
+        centered, float32_matmul(centered, train, transpose_b=True), train_sq, error_factor, floor,
     )
 
 
 def gpu_neighbors(index, queries, k, *, rows, cols, exclude_self=False):
     """Use Gram values only when an omitted-candidate bound proves safety."""
+    from ._binary32 import matmul_may_round_float32
     from ._neighbors_fused import certified_neighbors, precise_select_candidates, select_topk
-    from ._neighbors_gram import matmul_may_round_float32
 
     index._prepare_gram()
     exact_products = matmul_may_round_float32()

@@ -3,6 +3,8 @@
 Assignment uses MLX's tuned Metal GEMM, followed by a fused SIMD argmin, or
 an experimental streaming SIMD-group matrix kernel that never materializes
 the full distance matrix. All accumulation and centroid state are float32.
+Float32 GEMMs keep binary32 products on M5-generation GPUs, where MLX would
+use TF32 operands (see ``mlxlearn_device._binary32``).
 """
 
 from __future__ import annotations
@@ -10,6 +12,8 @@ from __future__ import annotations
 from functools import lru_cache
 
 import mlx.core as mx
+
+from mlxlearn_device._binary32 import matmul
 
 from .e_means_bf16 import assign_bf16, prepare_centers
 
@@ -272,7 +276,8 @@ def assign(x, centers, *, batch_size=None, spherical=False, method="auto", preci
         norms = mx.sum(represented_centers * represented_centers, axis=1)
     # BF16 GEMM outputs would round scores to BF16. Widen the represented
     # operands for the baseline so both implementations accumulate/output FP32.
-    ct = represented_centers.T if precision == "bfloat16" else centers.astype(dtype).T
+    gemm_centers = represented_centers if precision == "bfloat16" else centers.astype(dtype)
+    ct = gemm_centers.T
     labels_out, distances_out = [], []
     for start in range(0, n, block):
         xb = x[start:start + block]
@@ -296,8 +301,12 @@ def assign(x, centers, *, batch_size=None, spherical=False, method="auto", preci
         else:
             operands = xb.astype(dtype)
             if precision == "bfloat16":
-                operands = operands.astype(mx.float32)
-            scores = operands @ ct
+                # BF16 values are exact in TF32, so MLX's accelerator GEMM on
+                # M5-class GPUs still forms these products exactly.
+                scores = operands.astype(mx.float32) @ ct
+            else:
+                # Float32 scores need binary32 products on every GPU.
+                scores = matmul(operands, gemm_centers, transpose_b=True)
             labels = _kernel("argmin")(
                 inputs=[scores, norms], template=[("N", rows), ("K", k), ("SPHERICAL", spherical)],
                 grid=(rows * 32, 1, 1), threadgroup=(256, 1, 1),

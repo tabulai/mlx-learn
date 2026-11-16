@@ -332,6 +332,8 @@ def kernel_matrix(
     """
     import mlx.core as mx
 
+    from mlxlearn_device._binary32 import matmul
+
     A32 = _prepare(A)
     B32 = A32 if B is None else _prepare(B)
     n_a, n_b = A32.shape[0], B32.shape[0]
@@ -344,7 +346,6 @@ def kernel_matrix(
 
     with use_device(_device(backend)):
         right = _device_array(mx, spec, B32, center)
-        right_t = right.T
         b_sq = mx.sum(right * right, axis=1) if needs_norms else None
         for start in range(0, n_a, rows):
             end = min(start + rows, n_a)
@@ -354,7 +355,8 @@ def kernel_matrix(
             a_sq = None
             if needs_norms:
                 a_sq = b_sq[start:end] if B is None else mx.sum(block * block, axis=1)
-            tile = _transform(mx, spec, block @ right_t, a_sq, b_sq, backend=backend)
+            tile = _transform(mx, spec, matmul(block, right, transpose_b=True), a_sq, b_sq,
+                              backend=backend)
             mx.eval(tile)
             out[start:end] = np.asarray(tile)
     return out
@@ -396,13 +398,16 @@ def kernel_combine(
     This preserves the decision-value precision contract without NumPy numerical
     work. Installations without the optional extension use the portable NumPy
     reduction. GPU evaluation fuses each nonlinear kernel's transform into one
-    pass after MLX's tuned matrix multiply.
+    pass after MLX's tuned matrix multiply (a binary32 kernel on M5-generation
+    GPUs, where MLX would use TF32 operands).
 
     Different ``block_rows`` remain numerically equivalent within float32
     kernel precision; matrix multiplication and transcendental routines can
     select different accumulation/vectorization orders for different shapes.
     """
     import mlx.core as mx
+
+    from mlxlearn_device._binary32 import matmul
 
     A32 = _prepare(A)
     B32 = _prepare(B)
@@ -422,13 +427,13 @@ def kernel_combine(
 
     with use_device(_device(backend)):
         right = _device_array(mx, spec, B32, center)
-        right_t = right.T
         b_sq = mx.sum(right * right, axis=1) if needs_norms else None
         for start in range(0, n_a, rows):
             end = min(start + rows, n_a)
             block = _device_array(mx, spec, A32[start:end], center)
             a_sq = mx.sum(block * block, axis=1) if needs_norms else None
-            tile = _transform(mx, spec, block @ right_t, a_sq, b_sq, backend=backend)
+            tile = _transform(mx, spec, matmul(block, right, transpose_b=True), a_sq, b_sq,
+                              backend=backend)
             mx.eval(tile)
             native = svc_cpu.contract(np.asarray(tile), W, bias)
             if native is not None:
@@ -522,6 +527,8 @@ class KernelRows:
 
         import mlx.core as mx
 
+        from mlxlearn_device._binary32 import matmul
+
         ids = [operator.index(index) for index in indices]
         if any(index < 0 or index >= self.n_samples for index in ids):
             raise IndexError("kernel row index out of bounds")
@@ -542,7 +549,8 @@ class KernelRows:
                     if b_sq is None:
                         b_sq = mx.sum(data * data, axis=1)
                     a_sq = b_sq[selected]
-                out = _transform(mx, self.spec, left @ data.T, a_sq, b_sq, backend=self.backend)
+                out = _transform(mx, self.spec, matmul(left, data, transpose_b=True), a_sq, b_sq,
+                                 backend=self.backend)
             mx.eval(out)
             return np.asarray(out, dtype=NUMPY_FLOAT)
 

@@ -16,6 +16,19 @@ All notable changes to this project are documented here. The format follows
   (generation 17+, or an unrecognised architecture) now compute the screen with
   a dedicated binary32 kernel that matches MLX's own fp32 GEMM speed. Earlier
   GPUs keep `mx.matmul`, with unchanged results and speed.
+- Float32 matrix products everywhere else on M5-generation GPUs. The same TF32
+  route costs thousands of binary32 ulps of `|a| @ |b|`, against about five on
+  M4. It broke 65 tests on an M5 Ultra across PCA (every GPU solver, transforms
+  and scores), KMeans/EMeans float32 assignment and transforms, multinomial
+  logistic regression, SVC kernel tiles and the logistic Hessian sketch. Those
+  products now go through one shared binary32 kernel
+  (`mlxlearn_device._binary32`) that handles transposed operands without
+  copies, fuses `addmm` epilogues and splits long reductions. On M5 it ran
+  0.64-1.11x MLX's own fp32 GEMM time across 19 measured shapes. End to end,
+  every measured estimator matched or beat MLX with `MLX_ENABLE_TF32=0`. On
+  M1-M4 the original MLX expressions run unchanged: outputs are bit-identical
+  and speed is within noise. The BF16 e-means baseline keeps MLX's GEMM, since
+  TF32 represents BF16 operands exactly.
 
 ## [0.1.3] — 2026-11-15
 
