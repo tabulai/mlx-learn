@@ -108,7 +108,9 @@ equivalent EMA arithmetic have not been isolated by an ablation.
 ## Metal implementation and precision
 
 For float32, `assignment="auto"` uses MLX's tuned Metal matrix multiplication in bounded
-row tiles, then a custom SIMD argmin. `assignment="fused"` selects the custom
+row tiles, then a custom SIMD argmin. On M5-generation GPUs, MLX would round float32
+operands to TF32 there, so those products use mlx-learn's binary32 simdgroup kernel
+instead (`mlxlearn_device._binary32`). `assignment="fused"` selects the custom
 SIMD-group matrix implementation, which keeps a partial winner per 64-center
 block and merges those winners instead of storing the full distance matrix.
 These are exhaustive searches across all centers; float32 arithmetic can still

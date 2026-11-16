@@ -3,7 +3,8 @@
 On M5 (GPU generation 17) MLX runs float32 ``matmul`` with TF32 operands by
 default. Gram lower bounds then exceeded exact distances by up to ~8e8 on the
 monotone fixture, and the general path certified wrong neighbors. Forcing the
-binary32 product on earlier GPUs keeps that route covered everywhere.
+binary32 product on earlier GPUs keeps that route covered everywhere. The
+kernel itself is tested in ``test_binary32.py``.
 """
 
 import mlx.core as mx
@@ -11,55 +12,9 @@ import numpy as np
 import pytest
 
 from mlxlearn._kernels.distance import build_index
+from mlxlearn_device import _binary32 as binary32
 from mlxlearn_device import _neighbors as neighbors
 from mlxlearn_device import _neighbors_general as general
-from mlxlearn_device import _neighbors_gram as gram
-
-
-@pytest.mark.parametrize("architecture,may_round", [
-    ("applegpu_g13s", False), ("applegpu_g13g", False), ("applegpu_g14d", False),
-    ("applegpu_g15s", False), ("applegpu_g16s", False),
-    ("applegpu_g17d", True), ("applegpu_g17s", True), ("applegpu_g18p", True),
-    ("applegpu_g21x", True), ("", True), ("applegpu", True), ("unknown_gpu", True),
-])
-def test_only_pre_accelerator_architectures_trust_float32_matmul(architecture, may_round):
-    assert gram.architecture_may_round_float32(architecture) is may_round
-
-
-def _envelope_violation(a, b, products):
-    """Largest error beyond K binary32 epsilons of ``|a| @ |b|.T`` (<= 0 passes)."""
-    a64, b64 = a.astype(np.float64), b.astype(np.float64)
-    scale = np.abs(a64) @ np.abs(b64).T
-    error = np.abs(np.asarray(products, dtype=np.float64) - a64 @ b64.T)
-    return float(np.max(error - a.shape[1] * 2.0**-23 * scale - 2.0**-126))
-
-
-@pytest.mark.gpu
-@pytest.mark.skipif(not mx.metal.is_available(), reason="requires Metal")
-@pytest.mark.parametrize("shape", [
-    (1, 1, 1), (1, 2, 3), (3, 7, 5), (5, 8192, 32), (63, 65, 17), (64, 64, 16),
-    (65, 1000, 129), (70, 70, 36), (8, 9, 4096), (257, 300, 1024),
-])
-def test_float32_gram_stays_inside_binary32_envelope(shape):
-    rows, cols, features = shape
-    rng = np.random.default_rng(sum(shape))
-    a = (rng.normal(size=(rows, features)) * 100).astype(np.float32)
-    b = rng.normal(size=(cols, features)).astype(np.float32)
-    products = gram.float32_gram(mx.array(a), mx.array(b))
-    assert products.shape == (rows, cols) and products.dtype == mx.float32
-    assert _envelope_violation(a, b, np.array(products)) <= 0
-
-
-@pytest.mark.gpu
-@pytest.mark.skipif(not mx.metal.is_available(), reason="requires Metal")
-def test_float32_gram_launches_wide_training_tiles_in_chunks(monkeypatch):
-    rng = np.random.default_rng(4)
-    a = rng.normal(size=(9, 12)).astype(np.float32)
-    b = rng.normal(size=(1000, 12)).astype(np.float32)
-    whole = np.array(gram.float32_gram(mx.array(a), mx.array(b)))
-    monkeypatch.setattr(gram, "_MAX_LAUNCH_COLUMNS", 192)
-    chunked = np.array(gram.float32_gram(mx.array(a), mx.array(b)))
-    np.testing.assert_array_equal(chunked, whole)
 
 
 def _monotone():
@@ -124,14 +79,14 @@ def test_general_path_takes_binary32_products_where_matmul_may_round(monkeypatch
     make, tile = FIXTURES[fixture]
     train, queries = make()
     calls = []
-    original = gram.float32_gram
+    original = binary32.float32_matmul
 
-    def counted(a, b):
+    def counted(a, b, **kwargs):
         calls.append(None)  # count only: retaining arrays would inflate peak memory
-        return original(a, b)
+        return original(a, b, **kwargs)
 
-    monkeypatch.setattr(gram, "matmul_may_round_float32", lambda: True)
-    monkeypatch.setattr(gram, "float32_gram", counted)
+    monkeypatch.setattr(binary32, "matmul_may_round_float32", lambda: True)
+    monkeypatch.setattr(binary32, "float32_matmul", counted)
     _, indices = build_index(train, backend="mlx").query(
         queries, 5, query_block_size=len(queries), train_block_size=tile,
     )

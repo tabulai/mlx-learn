@@ -20,6 +20,8 @@ from sklearn.base import BaseEstimator, ClusterMixin, TransformerMixin
 from sklearn.utils import check_random_state
 from sklearn.utils.validation import check_is_fitted
 
+from mlxlearn_device._binary32 import matmul
+
 from .._kernels.e_means import assign, batch_stats, ema_update, gather_bf16
 from ._recipe import resolve_recipe, scheduled_alpha
 
@@ -524,9 +526,9 @@ class EMeans(ClusterMixin, TransformerMixin, BaseEstimator):
             for start in range(0, len(data), size):
                 batch = data[start:start + size]
                 if self.spherical:
-                    distances = 2 - 2 * (batch @ centers.T)
+                    distances = 2 - 2 * matmul(batch, centers, transpose_b=True)
                 else:
-                    distances = mx.sum(batch * batch, axis=1)[:, None] + mx.sum(centers * centers, axis=1)[None, :] - 2 * (batch @ centers.T)
+                    distances = mx.sum(batch * batch, axis=1)[:, None] + mx.sum(centers * centers, axis=1)[None, :] - 2 * matmul(batch, centers, transpose_b=True)
                 chunks.append(np.array(mx.sqrt(mx.maximum(distances, 0))))
             return np.concatenate(chunks)
 
