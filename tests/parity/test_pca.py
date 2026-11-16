@@ -185,6 +185,42 @@ def test_pca_wide_full_single_head_component():
     np.testing.assert_allclose(model.singular_values_[0], reference.singular_values_[0], rtol=1e-6)
 
 
+def _wide_below_old_rank_tolerance(kind: str) -> np.ndarray:
+    rng = np.random.default_rng(0)
+    if kind == "geometric":
+        n_samples, n_features = 64, 2048
+        G = rng.standard_normal((n_samples, n_samples - 1))
+        U, _ = np.linalg.qr(G - G.mean(axis=0))
+        V, _ = np.linalg.qr(rng.standard_normal((n_features, n_samples - 1)))
+        return (U * np.geomspace(1.0, 1e-4, n_samples - 1)) @ V.T
+    X = 10.0 * np.outer(rng.standard_normal(8), rng.standard_normal(4096))
+    return X + 0.005 * rng.standard_normal((8, 4096))
+
+
+@pytest.mark.parametrize("kind", ["geometric", "rank_one_plus_noise"])
+def test_pca_wide_full_keeps_tail_components_below_old_rank_tolerance(kind):
+    # The wide path replaced every component whose singular value fell below
+    # s_0 * max(n, d) * 1e-7 with basis vectors orthogonalized against the rest, while
+    # still reporting the tail SVD's singular values for them. Those rows were
+    # unrelated to scikit-learn's (sin = 1.0) and their whitened scores had standard
+    # deviations of 0.02-0.07 instead of 1. The tail SVD's own rows are kept now.
+    X = _wide_below_old_rank_tolerance(kind)
+    reference = SkPCA(svd_solver="full").fit(X)
+    s = reference.singular_values_
+    assert np.sum(s[:-1] < s[0] * max(X.shape) * 1e-7) >= 5
+    with tuning_context(force_backend="mlx"):
+        model = PCA(svd_solver="full").fit(X)
+        Z = PCA(svd_solver="full", whiten=True).fit_transform(X)
+    assert model.execution_backend_ == "mlx"
+    C = model.components_
+    np.testing.assert_allclose(C @ C.T, np.eye(C.shape[0]), rtol=0, atol=1e-6)
+    # The last row belongs to the structurally zero singular value of centered data.
+    cos = np.abs(np.sum(C * reference.components_, axis=1))[:-1]
+    np.testing.assert_array_less(np.sqrt(np.clip(1.0 - cos**2, 0.0, None)), 1e-3)
+    np.testing.assert_allclose(model.singular_values_[:-1], s[:-1], rtol=1e-4)
+    np.testing.assert_allclose(Z.std(axis=0, ddof=1)[:-1], 1.0, rtol=0, atol=1e-4)
+
+
 def test_to_mlx_f32_copies_negative_stride_views():
     import mlx.core as mx
 

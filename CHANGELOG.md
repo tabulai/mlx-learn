@@ -53,6 +53,30 @@ All notable changes to this project are documented here. The format follows
   them read in descending order is a negative-stride view that NumPy still
   calls contiguous, so it reached `mx.array` uncopied. The PCA solver's float32
   upload now copies any view with a negative stride.
+- Trailing components of the same wide GPU `svd_solver="full"` path. After the
+  deflated tail SVD it replaced every component whose singular value fell below
+  `s_0 * max(n_samples, n_features) * 1e-7` (4e-4 * s_0 at 4096 features,
+  2e-3 at 20000) with a basis vector orthogonalized against the others, while
+  `singular_values_` and `explained_variance_` still reported the tail SVD's
+  values for it. Those components were unrelated to scikit-learn's (|cos| at
+  most 0.05). Their whitened scores had standard deviations of 0.0005-0.76
+  instead of 1 on spectra down to 1e-4 * s_0, and 270 on steeper ones.
+  `fit_transform` was off by 1.6e-4 to 2e-3 relative. From about 316,000
+  features on, the cut reached into the head rows: it replaced 5 of 7
+  components of an 8 x 1,000,000 fit and left `fit_transform` off by 0.1.
+  The tail SVD's own rows are kept now. Over 26 measured shapes and spectra,
+  on both M4 Max and M5 Ultra, rows down to 1e-4 * s_0 land 4e-5 to 2.5e-3 from
+  float64, with subspace angles of 4e-6 to 7e-4. That is as close as the rows
+  above the old cut-off, as close as the tall GPU path at the same
+  singular-value ratios, and closer than the host float32 SVD (up to 0.83).
+  Neither of those paths ever cut rows. Only rows below a few `eps * s_0` stay
+  arbitrary, as in any SVD of rank-deficient data. `fit_transform` now matches
+  scikit-learn to 6e-5. The deflation leaves the smallest tail rows up to 1.3e-4
+  off the head, so the tail is projected off the head once on the GPU before
+  its Cholesky QR. All components stay orthonormal to 1.6e-7. Fits that cut
+  rows got faster, because the replacement was a Python loop: on M4 Max,
+  21 -> 15 ms at 128x8192, 263 -> 119 ms at 1000x4096 and 2235 -> 568 ms at
+  2000x8192. Tail-branch fits that cut nothing take the same time.
 
 ## [0.1.3] — 2026-11-15
 

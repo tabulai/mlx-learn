@@ -630,12 +630,31 @@ def _solve_gpu_full_or_eigh(
             X_rem_np = to_numpy(X_rem_mx)
             if float(np.linalg.norm(X_rem_np)) > 1e-7 * float(S[0]):
                 _, S_tail, Vt_tail = scipy.linalg.svd(X_rem_np, full_matrices=False)
+                Vt_tail_mx = to_mlx_f32(Vt_tail)
+                if idx > 0:
+                    # Rounding left in the deflated block puts the rows with the
+                    # smallest singular values off the head by up to ~1e-4; project
+                    # that out once. Only the small correction goes through the GEMM.
+                    Vt_tail_mx = addmm(
+                        Vt_tail_mx,
+                        matmul(Vt_tail_mx, Vt_head_mx_ref, transpose_b=True),
+                        Vt_head_mx_ref,
+                        alpha=-1.0,
+                    )
                 # A single-precision SVD leaves its rows orthogonal to only ~1e-6.
-                Vt_tail = to_numpy(_orthonormalize_rows(to_mlx_f32(Vt_tail)))
+                Vt_tail = to_numpy(_orthonormalize_rows(Vt_tail_mx))
                 n_tail = S_tail.shape[0]
                 S[idx : idx + n_tail] = S_tail.astype(np.float64)
                 Vt[idx : idx + n_tail] = Vt_tail.astype(np.float32, copy=False)
-                valid_rows = int(np.sum(S > float(S[0]) * max(n_samples, n_features) * 1e-7))
+                # Every tail row is kept, however small its singular value. Its float32
+                # error behaves like a perturbation of at most about 10 * eps * s_0,
+                # which tilts row i by at most that over min(gap_i, s_i): rows down to
+                # 1e-4 * s_0 measured 1.5e-4 to 2.5e-3 from float64, as close as the
+                # rows above them. Only rows below a few eps * s_0 are arbitrary, as in
+                # any SVD of rank-deficient data. Swapping rows below a rank tolerance
+                # for basis vectors left them unrelated to the singular values still
+                # reported for them.
+                valid_rows = idx + n_tail
             else:
                 S[idx:] = 0.0
                 valid_rows = idx
