@@ -54,11 +54,41 @@ def _gram_lower(query, train, center, train_sq, error_factor, floor):
     return mx.where(safe, mx.maximum(gram - error_factor * norms - floor, 0.0), 0.0)
 
 
+@mx.compile
+def _gram_lower_from_products(centered, products, train_sq, error_factor, floor):
+    norms = mx.sum(centered * centered, axis=1)[:, None] + train_sq[None, :]
+    gram = norms - 2.0 * products
+    safe = (mx.isfinite(norms) & (norms <= 2.0**108) & mx.isfinite(gram)
+            & (error_factor < 0.125))
+    return mx.where(safe, mx.maximum(gram - error_factor * norms - floor, 0.0), 0.0)
+
+
+def gram_lower(query, train, center, train_sq, error_factor, floor, *, exact_products=None):
+    """Certified lower bounds on squared distances from a binary32 Gram tile.
+
+    ``error_factor`` bounds binary32 GEMM rounding. MLX may compute float32
+    ``matmul`` with TF32 operands on GPUs with neural accelerators, which
+    violates that bound, so those GPUs take a dedicated binary32 product.
+    """
+    from ._neighbors_gram import float32_gram, matmul_may_round_float32
+
+    if exact_products is None:
+        exact_products = matmul_may_round_float32()
+    if not exact_products:
+        return _gram_lower(query, train, center, train_sq, error_factor, floor)
+    centered = query - center
+    return _gram_lower_from_products(
+        centered, float32_gram(centered, train), train_sq, error_factor, floor,
+    )
+
+
 def gpu_neighbors(index, queries, k, *, rows, cols, exclude_self=False):
     """Use Gram values only when an omitted-candidate bound proves safety."""
     from ._neighbors_fused import certified_neighbors, precise_select_candidates, select_topk
+    from ._neighbors_gram import matmul_may_round_float32
 
     index._prepare_gram()
+    exact_products = matmul_may_round_float32()
     train = index.X
     n, features = train.shape
     small_shortlist = 33 <= features <= 256 and k <= 8
@@ -77,8 +107,9 @@ def gpu_neighbors(index, queries, k, *, rows, cols, exclude_self=False):
         own = mx.arange(start, start + query.shape[0])[:, None] if exclude_self else None
         for offset in range(0, n, cols):
             stop = min(offset + cols, n)
-            lower = _gram_lower(query, index._train[offset:stop], index._center,
-                                index._train_sq[offset:stop], error_factor, floor)
+            lower = gram_lower(query, index._train[offset:stop], index._center,
+                               index._train_sq[offset:stop], error_factor, floor,
+                               exact_products=exact_products)
             ids = mx.broadcast_to(mx.arange(offset, stop, dtype=mx.int32), lower.shape)
             if exclude_self:
                 lower = mx.where(ids == own, float("inf"), lower)
