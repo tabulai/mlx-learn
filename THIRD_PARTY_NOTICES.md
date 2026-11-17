@@ -12,11 +12,70 @@ a source file carries an upstream copyright header that is not accounted for her
 
 ## 1. Copied or derived source
 
-**None as of 0.1.0a2.**
+### MLX Steel fragment layout and vector loads
 
-No source file in `src/mlxlearn/` was copied from another project. Every module was newly
-written for this repository; see [`ACKNOWLEDGMENTS.md`](ACKNOWLEDGMENTS.md) and
-[`phase0/attestation.md`](phase0/attestation.md).
+`src/mlxlearn/_kernels/e_means_bf16.py` derives SIMD matrix fragment coordinate
+mapping and contiguous vector-load techniques from MLX 0.32.4,
+`mlx/backend/metal/kernels/steel/gemm/mma.h` and `loader.h`. The retained upstream
+header is `Copyright © 2024 Apple Inc.`. The implementation was modified on
+2026-11-14 for native BF16 fragments, fused centroid selection, ragged loads,
+bounded row batching, and Python dispatch. The experimental predecessor is
+`benchmarks/e_means/experimental_kernels.py`.
+
+The following immutable benchmark records embed snapshots of that experimental
+source, including its retained `Copyright © 2024 Apple Inc.` notice and source
+SHA-256. Those embedded source copies are covered by this same attribution and
+MIT license:
+
+- `benchmarks/e_means/results/optimization/bf16-dispatch-sweep.json`
+- `benchmarks/e_means/results/optimization/bf16-tile-sweep3.json`
+- `benchmarks/e_means/results/optimization/bf16-tile-sweep4.json`
+
+The next investigation retains the same attributed source in its verified
+baseline archive/extraction and generated-kernel experiment records:
+
+- `benchmarks/e_means/reference/metal-v2-source.zip`
+- `benchmarks/e_means/results/gap_investigation/source/metal_v2_e_means_bf16.py`
+- `benchmarks/e_means/results/gap_investigation/roofline.json`
+- `benchmarks/e_means/results/gap_investigation/schedule.json`
+- `benchmarks/e_means/results/gap_investigation/tiles.json`
+- `benchmarks/e_means/results/gap_investigation/lowdim.json`
+- `benchmarks/e_means/results/gap_investigation/coalescing.json`
+
+`benchmarks/e_means/experiments/gap_assignment.py` and
+`benchmarks/e_means/experiments/gap_coalescing.py` generate modified variants
+of the attributed Metal source. Their modification notices identify the
+2026-11-14 scheduling, tiling, and partial-result layout experiments. Raw JSON
+records remain immutable, including the source snapshots and hashes captured
+when each experiment ran; the frozen baseline loader verifies the extracted
+source against the archive before reuse.
+
+These source files are covered by the MIT license reproduced below. Historical
+attestations for version 0.1.0a2 predate this addition.
+
+```
+MIT License
+
+Copyright © 2024 Apple Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+IN THE SOFTWARE.
+```
 
 If a future change introduces derived code, it must be added to this section with:
 
@@ -163,6 +222,15 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ---
 
 ## 5. Algorithmic references
+
+The e-means implementation follows Bessa et al., *e-means: outperforming
+k-means (in one-tenth the epochs)*, arXiv:2611.09501v1 (2026), and the MIT-licensed
+Faiss reference at revision `ebab8f784c1d177129602269d5ad966c525fbdcb`,
+copyright Meta Platforms, Inc. and affiliates. The estimator and Metal kernels
+were written for mlxlearn. Benchmarks load the upstream code from a separate
+checkout which retains its license, use upstream dataset split fingerprints,
+and credit the original datasets. Faiss is an optional benchmark dependency.
+See [the benchmark guide](benchmarks/e_means/README.md).
 
 The October 31, 2026 SVC optimization study inspected scikit-learn-intelex
 commit `f50ab692e6296b573efaaa3d05304a8eb3fbcf8d` and oneDAL tag `2026.2.0`.

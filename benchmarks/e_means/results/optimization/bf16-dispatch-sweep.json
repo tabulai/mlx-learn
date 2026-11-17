@@ -1,0 +1,1737 @@
+{
+  "protocol": "prepared resident BF16 operands; FP32 score/accum; warmup + 3 synchronized repetitions; native fused vs represented operands promoted FP32 MLX GEMM + argmin; norms prepared outside timer",
+  "experimental_source_sha256": "215d25095027f395da26474ff617acf55369eb1e30589de469c3e58579d5687b",
+  "experimental_source": "\"\"\"Experimental BF16 Metal assignment and statistics kernels, not runtime code.\n\nBF16 operands are represented explicitly; centroid norms and MMA accumulators\nare FP32. No half-precision conversion or implicit centering occurs. Statistics\nconsume the supplied values (pass BF16 rows for upstream's resident-BF16 path).\n\nThe register-coordinate mapping follows Apple's installed MLX Steel\nBaseMMAFrag<float,8,8>::get_coord (MIT): an 8x8 SIMD fragment owns two\nadjacent columns per lane. Other kernel code is specific to this experiment.\nThe derived mapping and vector-load strategy originate in MLX 0.32.4's\nmlx/backend/metal/kernels/steel/gemm/{mma,loader}.h, Copyright \u00a9 2024 Apple Inc.\nThe Apple MIT notice is reproduced in THIRD_PARTY_NOTICES.md, section 1.\n\"\"\"\n\nfrom __future__ import annotations\n\nfrom dataclasses import dataclass\nfrom functools import lru_cache\n\nimport mlx.core as mx\n\n\n@dataclass(frozen=True)\nclass BF16Config:\n    rows: int = 32\n    cols: int = 128\n    depth: int = 32\n    warps_m: int = 2\n    warps_n: int = 2\n    native_bf16: bool = True\n    register_argmin: bool = True\n    padding: int = 8\n    manual_fragments: bool = True\n    vector_load: bool = True\n    swizzle_rows: int = 4\n    math_mode: str = \"safe\"\n\n    def validate(self):\n        if min(self.rows, self.cols, self.depth, self.warps_m, self.warps_n) < 1:\n            raise ValueError(\"positive tile sizes and warp counts are required\")\n        if self.rows % (8 * self.warps_m) or self.cols % (8 * self.warps_n):\n            raise ValueError(\"matrix tiles must divide evenly over 8x8 SIMD fragments\")\n        if self.depth % 8 or min(self.rows, self.cols, self.depth, self.warps_m, self.warps_n) < 1:\n            raise ValueError(\"positive tiles and a depth divisible by eight are required\")\n        threads = 32 * self.warps_m * self.warps_n\n        if threads > 1024:\n            raise ValueError(\"too many threads\")\n        element_bytes = 2 if self.native_bf16 else 4\n        shared = (self.rows + self.cols) * (self.depth + self.padding) * element_bytes\n        shared += self.rows * self.warps_n * 8 if self.register_argmin else self.rows * self.cols * 4\n        if shared > 32768:\n            raise ValueError(f\"tile needs {shared} bytes of threadgroup memory\")\n        return threads\n\n\n_PREFIX = r\"\"\"\n    constexpr uint TM = BM / (8 * WM);\n    constexpr uint TN = BN / (8 * WN);\n    constexpr uint LD = BK + PAD;\n    constexpr uint THREADS = 32 * WM * WN;\n    threadgroup T xs[BM * LD];\n    // Store centroids in their natural [centroid,feature] layout so that\n    // adjacent loading lanes read adjacent global addresses.\n    threadgroup T cs[BN * LD];\n    uint tid = thread_index_in_threadgroup;\n    uint sg = simdgroup_index_in_threadgroup;\n    uint lane = thread_index_in_simdgroup;\n    uint r0, c0;\n    if constexpr (SWIZZLE > 0) {\n        r0 = (threadgroup_position_in_grid.y * SWIZZLE + threadgroup_position_in_grid.x % SWIZZLE) * BM;\n        c0 = (threadgroup_position_in_grid.x / SWIZZLE) * BN;\n    } else {\n        r0 = threadgroup_position_in_grid.x * BM;\n        c0 = threadgroup_position_in_grid.y * BN;\n    }\n    if (r0 >= N || c0 >= K) return;\n    uint wm = sg / WN, wn = sg % WN;\n    const uint qid_load = lane / 4;\n    const uint fm_load = (qid_load & 4) + ((lane / 2) % 4);\n    const uint fn_load = (qid_load & 2) * 2 + (lane % 2) * 2;\n    metal::simdgroup_float8x8 acc[TM][TN];\n    #pragma clang loop unroll(full)\n    for (uint m = 0; m < TM; ++m)\n        #pragma clang loop unroll(full)\n        for (uint n = 0; n < TN; ++n)\n            acc[m][n] = metal::simdgroup_float8x8(0);\n    #pragma clang loop unroll(disable)\n    for (uint f0 = 0; f0 < D; f0 += BK) {\n        if constexpr (VECTOR_LOAD) {\n            constexpr uint AV = BM * BK / THREADS;\n            constexpr uint BV = BN * BK / THREADS;\n            constexpr uint AC = BK / AV, BC = BK / BV;\n            constexpr uint AR = THREADS / AC, BR = THREADS / BC;\n            struct alignas(2) AVector { uint8_t values[2 * AV]; };\n            struct alignas(2) BVector { uint8_t values[2 * BV]; };\n            #pragma clang loop unroll(full)\n            for (uint i = 0; i < BM; i += AR) {\n                uint r = i + tid / AC, f = (tid % AC) * AV;\n                if (NATIVE && r0 + r < N && f0 + f + AV <= D) {\n                    *reinterpret_cast<threadgroup AVector*>(xs + r * LD + f) =\n                        *reinterpret_cast<const device AVector*>(x + (r0 + r) * D + f0 + f);\n                } else {\n                    #pragma clang loop unroll(full)\n                    for (uint j = 0; j < AV; ++j)\n                        xs[r * LD + f + j] = r0 + r < N && f0 + f + j < D ? T(x[(r0 + r) * D + f0 + f + j]) : T(0);\n                }\n            }\n            #pragma clang loop unroll(full)\n            for (uint i = 0; i < BN; i += BR) {\n                uint c = i + tid / BC, f = (tid % BC) * BV;\n                if (NATIVE && c0 + c < K && f0 + f + BV <= D) {\n                    *reinterpret_cast<threadgroup BVector*>(cs + c * LD + f) =\n                        *reinterpret_cast<const device BVector*>(centers + (c0 + c) * D + f0 + f);\n                } else {\n                    #pragma clang loop unroll(full)\n                    for (uint j = 0; j < BV; ++j)\n                        cs[c * LD + f + j] = c0 + c < K && f0 + f + j < D ? T(centers[(c0 + c) * D + f0 + f + j]) : T(0);\n                }\n            }\n        } else {\n            for (uint i = tid; i < BM * BK; i += THREADS) {\n                uint r = i / BK, f = i % BK;\n                xs[r * LD + f] = r0 + r < N && f0 + f < D ? T(x[(r0 + r) * D + f0 + f]) : T(0);\n            }\n            for (uint i = tid; i < BN * BK; i += THREADS) {\n                uint c = i / BK, f = i % BK;\n                cs[c * LD + f] = c0 + c < K && f0 + f < D ? T(centers[(c0 + c) * D + f0 + f]) : T(0);\n            }\n        }\n        threadgroup_barrier(mem_flags::mem_threadgroup);\n        #pragma clang loop unroll(full)\n        for (uint f = 0; f < BK; f += 8) {\n            metal::simdgroup_matrix<T,8,8> aa[TM], bb[TN];\n            #pragma clang loop unroll(full)\n            for (uint m = 0; m < TM; ++m) {\n                if constexpr (MANUAL) {\n                    uint offset = ((m * WM + wm) * 8 + fm_load) * LD + f + fn_load;\n                    reinterpret_cast<thread metal::vec<T,2>&>(aa[m].thread_elements()) = metal::vec<T,2>(xs[offset],xs[offset+1]);\n                } else {\n                    metal::simdgroup_load(aa[m], xs + (m * WM + wm) * 8 * LD + f, LD);\n                }\n            }\n            #pragma clang loop unroll(full)\n            for (uint n = 0; n < TN; ++n) {\n                if constexpr (MANUAL) {\n                    uint offset = ((n * WN + wn) * 8 + fn_load) * LD + f + fm_load;\n                    reinterpret_cast<thread metal::vec<T,2>&>(bb[n].thread_elements()) = metal::vec<T,2>(cs[offset],cs[offset+LD]);\n                } else {\n                    metal::simdgroup_load(bb[n], cs + (n * WN + wn) * 8 * LD + f, LD, ulong2(0,0), true);\n                }\n            }\n            #pragma clang loop unroll(full)\n            for (uint m = 0; m < TM; ++m)\n                #pragma clang loop unroll(full)\n                for (uint n = 0; n < TN; ++n)\n                    metal::simdgroup_multiply_accumulate(acc[m][n], aa[m], bb[n], acc[m][n]);\n        }\n        threadgroup_barrier(mem_flags::mem_threadgroup);\n    }\n\"\"\"\n\n_REGISTER_EPILOGUE = r\"\"\"\n    threadgroup float row_scores[WN * BM];\n    threadgroup uint row_indices[WN * BM];\n    const uint qid = lane / 4;\n    const uint fm = (qid & 4) + ((lane / 2) % 4);\n    const uint fn = (qid & 2) * 2 + (lane % 2) * 2;\n    #pragma clang loop unroll(full)\n    for (uint m = 0; m < TM; ++m) {\n        float best = INFINITY;\n        uint index = c0;\n        #pragma clang loop unroll(full)\n        for (uint n = 0; n < TN; ++n) {\n            const uint col = c0 + (n * WN + wn) * 8 + fn;\n            const auto values = reinterpret_cast<thread float2&>(acc[m][n].thread_elements());\n            #pragma clang loop unroll(full)\n            for (uint q = 0; q < 2; ++q) {\n                float value = col + q < K ? norms[col + q] - 2.0f * values[q] : INFINITY;\n                if (value < best || (value == best && col + q < index)) {\n                    best = value; index = col + q;\n                }\n            }\n        }\n        // The four lanes with the same row differ only in lane bits 0 and 3.\n        float other = metal::simd_shuffle_xor(best, 1);\n        uint other_index = metal::simd_shuffle_xor(index, 1);\n        if (other < best || (other == best && other_index < index)) {\n            best = other; index = other_index;\n        }\n        other = metal::simd_shuffle_xor(best, 8);\n        other_index = metal::simd_shuffle_xor(index, 8);\n        if (other < best || (other == best && other_index < index)) {\n            best = other; index = other_index;\n        }\n        if (fn == 0) {\n            uint row = (m * WM + wm) * 8 + fm;\n            row_scores[wn * BM + row] = best;\n            row_indices[wn * BM + row] = index;\n        }\n    }\n    threadgroup_barrier(mem_flags::mem_threadgroup);\n    for (uint row = tid; row < BM; row += THREADS) {\n        if (r0 + row >= N) continue;\n        float best = INFINITY;\n        uint index = c0;\n        #pragma clang loop unroll(full)\n        for (uint j = 0; j < WN; ++j) {\n            float value = row_scores[j * BM + row];\n            uint candidate = row_indices[j * BM + row];\n            if (value < best || (value == best && candidate < index)) {\n                best = value; index = candidate;\n            }\n        }\n        partial_scores[(r0 + row) * PARTS + c0 / BN] = best;\n        partial_indices[(r0 + row) * PARTS + c0 / BN] = index;\n    }\n\"\"\"\n\n_SPILL_EPILOGUE = r\"\"\"\n    threadgroup float dots[BM * BN];\n    #pragma clang loop unroll(full)\n    for (uint m = 0; m < TM; ++m)\n        #pragma clang loop unroll(full)\n        for (uint n = 0; n < TN; ++n)\n            metal::simdgroup_store(acc[m][n], dots + (m * WM + wm) * 8 * BN + (n * WN + wn) * 8, BN);\n    threadgroup_barrier(mem_flags::mem_threadgroup);\n    for (uint row = sg; row < BM; row += WM * WN) {\n        if (r0 + row >= N) continue;\n        float best = INFINITY;\n        uint index = c0;\n        for (uint col = lane; col < BN; col += 32) {\n            float value = c0 + col < K ? norms[c0 + col] - 2.0f * dots[row * BN + col] : INFINITY;\n            if (value < best || (value == best && c0 + col < index)) {\n                best = value; index = c0 + col;\n            }\n        }\n        float value = metal::simd_min(best);\n        uint winner = metal::simd_min(best == value ? index : 0xffffffff);\n        if (lane == 0) {\n            partial_scores[(r0 + row) * PARTS + c0 / BN] = value;\n            partial_indices[(r0 + row) * PARTS + c0 / BN] = winner;\n        }\n    }\n\"\"\"\n\n\n@lru_cache(None)\ndef _assignment_kernel(config):\n    config.validate()\n    return mx.fast.metal_kernel(\n        name=\"emeans_exp_bf16_tiled\", input_names=[\"x\", \"centers\", \"norms\"],\n        output_names=[\"partial_scores\", \"partial_indices\"],\n        source=_PREFIX + (_REGISTER_EPILOGUE if config.register_argmin else _SPILL_EPILOGUE),\n        header=\"#include <metal_simdgroup_matrix>\\n\",\n        compile_options={\"math_mode\": config.math_mode},\n    )\n\n\n@lru_cache(None)\ndef _aux_kernel(name):\n    if name == \"norms\":\n        return mx.fast.metal_kernel(\n            name=\"emeans_exp_bf16_norms\", input_names=[\"centers\"], output_names=[\"norms\"],\n            source=r\"\"\"\n            uint row = thread_position_in_grid.x / 32;\n            uint lane = thread_index_in_simdgroup;\n            if (row >= K) return;\n            float sum = 0;\n            for (uint f = lane; f < D; f += 32) {\n                float v = float(centers[row * D + f]);\n                sum += v * v;\n            }\n            sum = metal::simd_sum(sum);\n            if (lane == 0) norms[row] = sum;\n            \"\"\",\n        )\n    if name == \"merge\":\n        return mx.fast.metal_kernel(\n            name=\"emeans_exp_bf16_merge\", input_names=[\"scores\", \"indices\"],\n            output_names=[\"labels\", \"best_scores\"], source=r\"\"\"\n            uint row = thread_position_in_grid.x / 32;\n            uint lane = thread_index_in_simdgroup;\n            if (row >= N) return;\n            float best = INFINITY;\n            uint index = 0;\n            for (uint part = lane; part < PARTS; part += 32) {\n                float score = scores[row * PARTS + part];\n                uint candidate = indices[row * PARTS + part];\n                if (score < best || (score == best && candidate < index)) {\n                    best = score; index = candidate;\n                }\n            }\n            float value = metal::simd_min(best);\n            uint winner = metal::simd_min(best == value ? index : 0xffffffff);\n            if (lane == 0) {labels[row] = winner; best_scores[row] = value;}\n            \"\"\",\n        )\n    if name == \"atomic_stats\":\n        return mx.fast.metal_kernel(\n            name=\"emeans_exp_atomic_stats\", input_names=[\"x\", \"labels\"],\n            output_names=[\"sums\", \"counts\"], atomic_outputs=True, source=r\"\"\"\n            uint task = thread_position_in_grid.x;\n            constexpr uint FEATURES = (D + VEC - 1) / VEC;\n            uint row = task / FEATURES, first = (task % FEATURES) * VEC;\n            if (row >= N) return;\n            uint cluster = labels[row];\n            #pragma clang loop unroll(full)\n            for (uint j = 0; j < VEC; ++j) {\n                if (first + j < D)\n                    atomic_fetch_add_explicit(&sums[cluster * D + first + j], float(x[row * D + first + j]), memory_order_relaxed);\n            }\n            if (first == 0) atomic_fetch_add_explicit(&counts[cluster], 1.0f, memory_order_relaxed);\n            \"\"\",\n        )\n    if name == \"linked_bins\":\n        return mx.fast.metal_kernel(\n            name=\"emeans_exp_linked_bins\", input_names=[\"labels\"],\n            output_names=[\"heads\", \"next\"], atomic_outputs=True, source=r\"\"\"\n            uint row = thread_position_in_grid.x;\n            if (row >= N) return;\n            uint previous = atomic_exchange_explicit(&heads[labels[row]], row + 1, memory_order_relaxed);\n            atomic_store_explicit(&next[row], previous, memory_order_relaxed);\n            \"\"\",\n        )\n    if name == \"linked_reduce\":\n        return mx.fast.metal_kernel(\n            name=\"emeans_exp_linked_reduce\", input_names=[\"x\", \"heads\", \"next\"],\n            output_names=[\"sums\", \"counts\"], source=r\"\"\"\n            uint i = thread_position_in_grid.x;\n            if (i >= K * D) return;\n            uint cluster = i / D, feature = i % D;\n            uint cursor = heads[cluster], count = 0;\n            float sum = 0;\n            while (cursor != 0) {\n                uint row = cursor - 1;\n                sum += float(x[row * D + feature]);\n                cursor = next[row];\n                ++count;\n            }\n            sums[i] = sum;\n            if (feature == 0) counts[cluster] = float(count);\n            \"\"\",\n        )\n    raise ValueError(name)\n\n\ndef prepare_centers(centers):\n    \"\"\"Return BF16 mirror and FP32 norms of that same represented mirror.\"\"\"\n    represented = centers.astype(mx.bfloat16)\n    k, d = centers.shape\n    norms = _aux_kernel(\"norms\")(\n        inputs=[represented], template=[(\"K\", k), (\"D\", d)],\n        grid=(k * 32, 1, 1), threadgroup=(256, 1, 1),\n        output_shapes=[(k,)], output_dtypes=[mx.float32], stream=mx.gpu,\n    )[0]\n    return represented, norms\n\n\ndef assign_bf16(x, centers, *, config=None, norms=None):\n    \"\"\"Return labels and FP32 ``norm(center_BF16)^2 - 2*dot_BF16`` scores.\n\n    Scores deliberately omit the row-constant input norm, matching the\n    reference assignment objective. Inputs are BF16 rounded without centering.\n    Passing a prepared BF16 center table and norms amortizes their preparation.\n    \"\"\"\n    config = config or BF16Config()\n    threads = config.validate()\n    n, d = x.shape\n    k = centers.shape[0]\n    if k < 1 or centers.shape[1] != d or n < 1 or d < 1:\n        raise ValueError(\"nonempty compatible matrices are required\")\n    if norms is None:\n        centers, norms = prepare_centers(centers)\n    elif centers.dtype != mx.bfloat16:\n        raise ValueError(\"supplied norms require explicitly BF16 represented centers\")\n    represented_x = x.astype(mx.bfloat16)\n    parts = (k + config.cols - 1) // config.cols\n    row_tiles = (n + config.rows - 1) // config.rows\n    grid = ((parts * config.swizzle_rows * threads,\n             (row_tiles + config.swizzle_rows - 1) // config.swizzle_rows, 1)\n            if config.swizzle_rows else (row_tiles * threads, parts, 1))\n    scores, indices = _assignment_kernel(config)(\n        inputs=[represented_x, centers, norms],\n        template=[(\"T\", mx.bfloat16 if config.native_bf16 else mx.float32),\n                  (\"N\", n), (\"K\", k), (\"D\", d), (\"BM\", config.rows),\n                  (\"BN\", config.cols), (\"BK\", config.depth), (\"WM\", config.warps_m),\n                  (\"WN\", config.warps_n), (\"PAD\", config.padding), (\"PARTS\", parts),\n                  (\"MANUAL\", config.manual_fragments), (\"VECTOR_LOAD\", config.vector_load),\n                  (\"NATIVE\", config.native_bf16), (\"SWIZZLE\", config.swizzle_rows)],\n        grid=grid,\n        threadgroup=(threads, 1, 1), output_shapes=[(n, parts), (n, parts)],\n        output_dtypes=[mx.float32, mx.uint32], stream=mx.gpu,\n    )\n    return tuple(_aux_kernel(\"merge\")(\n        inputs=[scores, indices], template=[(\"N\", n), (\"PARTS\", parts)],\n        grid=(n * 32, 1, 1), threadgroup=(256, 1, 1),\n        output_shapes=[(n,), (n,)], output_dtypes=[mx.uint32, mx.float32], stream=mx.gpu,\n    ))\n\n\ndef stats_atomic(x, labels, k, *, vector_width=4):\n    \"\"\"FP32 atomic statistics with several contiguous features per thread.\"\"\"\n    n, d = x.shape\n    features = (d + vector_width - 1) // vector_width\n    return tuple(_aux_kernel(\"atomic_stats\")(\n        inputs=[x, labels], template=[(\"N\", n), (\"D\", d), (\"VEC\", vector_width)],\n        grid=(n * features, 1, 1), threadgroup=(256, 1, 1),\n        output_shapes=[(k, d), (k,)], output_dtypes=[mx.float32, mx.float32],\n        init_value=0, stream=mx.gpu,\n    ))\n\n\ndef stats_linked(x, labels, k):\n    \"\"\"Build atomic integer lists, then reduce each center without float atomics.\"\"\"\n    n, d = x.shape\n    heads, next_rows = _aux_kernel(\"linked_bins\")(\n        inputs=[labels], template=[(\"N\", n)], grid=(n, 1, 1), threadgroup=(256, 1, 1),\n        output_shapes=[(k,), (n,)], output_dtypes=[mx.uint32, mx.uint32],\n        init_value=0, stream=mx.gpu,\n    )\n    return tuple(_aux_kernel(\"linked_reduce\")(\n        inputs=[x, heads, next_rows], template=[(\"K\", k), (\"D\", d)],\n        grid=(k * d, 1, 1), threadgroup=(256, 1, 1),\n        output_shapes=[(k, d), (k,)], output_dtypes=[mx.float32, mx.float32], stream=mx.gpu,\n    ))\n",
+  "hardware": {
+    "device_name": "Apple M4 Max",
+    "max_recommended_working_set_size": 115448725504,
+    "memory_size": 137438953472,
+    "architecture": "applegpu_g16s",
+    "max_buffer_length": 86586540032,
+    "resource_limit": 499000
+  },
+  "results": [
+    {
+      "n": 8192,
+      "k": 8192,
+      "d": 96,
+      "methods": [
+        {
+          "method": "gemm",
+          "config": null,
+          "seconds": [
+            0.006689749658107758,
+            0.006924958433955908,
+            0.007341749966144562
+          ],
+          "median_seconds": 0.006924958433955908
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 32,
+            "cols": 64,
+            "depth": 16,
+            "warps_m": 2,
+            "warps_n": 2,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.002139749936759472,
+            0.002041958272457123,
+            0.002353999763727188
+          ],
+          "median_seconds": 0.002139749936759472
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 64,
+            "cols": 64,
+            "depth": 32,
+            "warps_m": 2,
+            "warps_n": 2,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.002894165925681591,
+            0.0026336251758038998,
+            0.002358000259846449
+          ],
+          "median_seconds": 0.0026336251758038998
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 64,
+            "cols": 128,
+            "depth": 32,
+            "warps_m": 2,
+            "warps_n": 4,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.004366665612906218,
+            0.005673292092978954,
+            0.005135042127221823
+          ],
+          "median_seconds": 0.005135042127221823
+        }
+      ]
+    },
+    {
+      "n": 8192,
+      "k": 16384,
+      "d": 96,
+      "methods": [
+        {
+          "method": "gemm",
+          "config": null,
+          "seconds": [
+            0.00405499991029501,
+            0.0037869997322559357,
+            0.0034790411591529846
+          ],
+          "median_seconds": 0.0037869997322559357
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 32,
+            "cols": 64,
+            "depth": 16,
+            "warps_m": 2,
+            "warps_n": 2,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.008967666886746883,
+            0.004092624876648188,
+            0.0038475417532026768
+          ],
+          "median_seconds": 0.004092624876648188
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 64,
+            "cols": 64,
+            "depth": 32,
+            "warps_m": 2,
+            "warps_n": 2,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.003425834234803915,
+            0.003982999827712774,
+            0.003932250197976828
+          ],
+          "median_seconds": 0.003932250197976828
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 64,
+            "cols": 128,
+            "depth": 32,
+            "warps_m": 2,
+            "warps_n": 4,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.003858583979308605,
+            0.004726999904960394,
+            0.004493874963372946
+          ],
+          "median_seconds": 0.004493874963372946
+        }
+      ]
+    },
+    {
+      "n": 8192,
+      "k": 8192,
+      "d": 100,
+      "methods": [
+        {
+          "method": "gemm",
+          "config": null,
+          "seconds": [
+            0.003285499755293131,
+            0.0032642907463014126,
+            0.0032525411807000637
+          ],
+          "median_seconds": 0.0032642907463014126
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 32,
+            "cols": 64,
+            "depth": 16,
+            "warps_m": 2,
+            "warps_n": 2,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.0029803747311234474,
+            0.002951875329017639,
+            0.0037290421314537525
+          ],
+          "median_seconds": 0.0029803747311234474
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 64,
+            "cols": 64,
+            "depth": 32,
+            "warps_m": 2,
+            "warps_n": 2,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.0073166657239198685,
+            0.006707916967570782,
+            0.005680415779352188
+          ],
+          "median_seconds": 0.006707916967570782
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 64,
+            "cols": 128,
+            "depth": 32,
+            "warps_m": 2,
+            "warps_n": 4,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.007575458846986294,
+            0.007263124920427799,
+            0.0035121249966323376
+          ],
+          "median_seconds": 0.007263124920427799
+        }
+      ]
+    },
+    {
+      "n": 8192,
+      "k": 16384,
+      "d": 100,
+      "methods": [
+        {
+          "method": "gemm",
+          "config": null,
+          "seconds": [
+            0.004016625229269266,
+            0.0038975831121206284,
+            0.00576979061588645
+          ],
+          "median_seconds": 0.004016625229269266
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 32,
+            "cols": 64,
+            "depth": 16,
+            "warps_m": 2,
+            "warps_n": 2,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.0047137499786913395,
+            0.004837416112422943,
+            0.004863624926656485
+          ],
+          "median_seconds": 0.004837416112422943
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 64,
+            "cols": 64,
+            "depth": 32,
+            "warps_m": 2,
+            "warps_n": 2,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.006064499728381634,
+            0.005661374889314175,
+            0.003551166970282793
+          ],
+          "median_seconds": 0.005661374889314175
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 64,
+            "cols": 128,
+            "depth": 32,
+            "warps_m": 2,
+            "warps_n": 4,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.0078923343680799,
+            0.005830209236592054,
+            0.0044065844267606735
+          ],
+          "median_seconds": 0.005830209236592054
+        }
+      ]
+    },
+    {
+      "n": 8192,
+      "k": 8192,
+      "d": 128,
+      "methods": [
+        {
+          "method": "gemm",
+          "config": null,
+          "seconds": [
+            0.0021655000746250153,
+            0.0021596672013401985,
+            0.002223624847829342
+          ],
+          "median_seconds": 0.0021655000746250153
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 32,
+            "cols": 64,
+            "depth": 16,
+            "warps_m": 2,
+            "warps_n": 2,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.003094832878559828,
+            0.0029455418698489666,
+            0.003816707991063595
+          ],
+          "median_seconds": 0.003094832878559828
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 64,
+            "cols": 64,
+            "depth": 32,
+            "warps_m": 2,
+            "warps_n": 2,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.0036354591138660908,
+            0.005766584072262049,
+            0.006200124975293875
+          ],
+          "median_seconds": 0.005766584072262049
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 64,
+            "cols": 128,
+            "depth": 32,
+            "warps_m": 2,
+            "warps_n": 4,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.007112790830433369,
+            0.0066964998841285706,
+            0.0026716673746705055
+          ],
+          "median_seconds": 0.0066964998841285706
+        }
+      ]
+    },
+    {
+      "n": 8192,
+      "k": 16384,
+      "d": 128,
+      "methods": [
+        {
+          "method": "gemm",
+          "config": null,
+          "seconds": [
+            0.0056818751618266106,
+            0.0064518749713897705,
+            0.005590708926320076
+          ],
+          "median_seconds": 0.0056818751618266106
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 32,
+            "cols": 64,
+            "depth": 16,
+            "warps_m": 2,
+            "warps_n": 2,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.004585583694279194,
+            0.005008708219975233,
+            0.005152207799255848
+          ],
+          "median_seconds": 0.005008708219975233
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 64,
+            "cols": 64,
+            "depth": 32,
+            "warps_m": 2,
+            "warps_n": 2,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.005465582944452763,
+            0.005673582665622234,
+            0.005118334200233221
+          ],
+          "median_seconds": 0.005465582944452763
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 64,
+            "cols": 128,
+            "depth": 32,
+            "warps_m": 2,
+            "warps_n": 4,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.005580250173807144,
+            0.004802750423550606,
+            0.002904584165662527
+          ],
+          "median_seconds": 0.004802750423550606
+        }
+      ]
+    },
+    {
+      "n": 8192,
+      "k": 8192,
+      "d": 200,
+      "methods": [
+        {
+          "method": "gemm",
+          "config": null,
+          "seconds": [
+            0.006626167334616184,
+            0.005165124777704477,
+            0.005656583234667778
+          ],
+          "median_seconds": 0.005656583234667778
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 32,
+            "cols": 64,
+            "depth": 16,
+            "warps_m": 2,
+            "warps_n": 2,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.004508291836827993,
+            0.004932790994644165,
+            0.004873541183769703
+          ],
+          "median_seconds": 0.004873541183769703
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 64,
+            "cols": 64,
+            "depth": 32,
+            "warps_m": 2,
+            "warps_n": 2,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.005030165892094374,
+            0.006206499878317118,
+            0.00609100004658103
+          ],
+          "median_seconds": 0.00609100004658103
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 64,
+            "cols": 128,
+            "depth": 32,
+            "warps_m": 2,
+            "warps_n": 4,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.010162583086639643,
+            0.006232874933630228,
+            0.0037416252307593822
+          ],
+          "median_seconds": 0.006232874933630228
+        }
+      ]
+    },
+    {
+      "n": 8192,
+      "k": 16384,
+      "d": 200,
+      "methods": [
+        {
+          "method": "gemm",
+          "config": null,
+          "seconds": [
+            0.01161629194393754,
+            0.006031957920640707,
+            0.005994250066578388
+          ],
+          "median_seconds": 0.006031957920640707
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 32,
+            "cols": 64,
+            "depth": 16,
+            "warps_m": 2,
+            "warps_n": 2,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.01175987534224987,
+            0.0056923748925328255,
+            0.004958915989845991
+          ],
+          "median_seconds": 0.0056923748925328255
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 64,
+            "cols": 64,
+            "depth": 32,
+            "warps_m": 2,
+            "warps_n": 2,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.006626834161579609,
+            0.00503220921382308,
+            0.004810709040611982
+          ],
+          "median_seconds": 0.00503220921382308
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 64,
+            "cols": 128,
+            "depth": 32,
+            "warps_m": 2,
+            "warps_n": 4,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.012646667193621397,
+            0.011213166173547506,
+            0.009239125065505505
+          ],
+          "median_seconds": 0.011213166173547506
+        }
+      ]
+    },
+    {
+      "n": 8192,
+      "k": 8192,
+      "d": 256,
+      "methods": [
+        {
+          "method": "gemm",
+          "config": null,
+          "seconds": [
+            0.006461667362600565,
+            0.00642020907253027,
+            0.005835332907736301
+          ],
+          "median_seconds": 0.00642020907253027
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 32,
+            "cols": 64,
+            "depth": 16,
+            "warps_m": 2,
+            "warps_n": 2,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.004713333211839199,
+            0.004920665640383959,
+            0.00497354194521904
+          ],
+          "median_seconds": 0.004920665640383959
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 64,
+            "cols": 64,
+            "depth": 32,
+            "warps_m": 2,
+            "warps_n": 2,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.004573250189423561,
+            0.004652624949812889,
+            0.004404374863952398
+          ],
+          "median_seconds": 0.004573250189423561
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 64,
+            "cols": 128,
+            "depth": 32,
+            "warps_m": 2,
+            "warps_n": 4,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.004136624746024609,
+            0.004041749984025955,
+            0.004792000167071819
+          ],
+          "median_seconds": 0.004136624746024609
+        }
+      ]
+    },
+    {
+      "n": 8192,
+      "k": 16384,
+      "d": 256,
+      "methods": [
+        {
+          "method": "gemm",
+          "config": null,
+          "seconds": [
+            0.009308665990829468,
+            0.009648707695305347,
+            0.006997165735810995
+          ],
+          "median_seconds": 0.009308665990829468
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 32,
+            "cols": 64,
+            "depth": 16,
+            "warps_m": 2,
+            "warps_n": 2,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.007596708834171295,
+            0.006461999844759703,
+            0.005780249834060669
+          ],
+          "median_seconds": 0.006461999844759703
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 64,
+            "cols": 64,
+            "depth": 32,
+            "warps_m": 2,
+            "warps_n": 2,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.0064416672103106976,
+            0.006435874849557877,
+            0.00591620896011591
+          ],
+          "median_seconds": 0.006435874849557877
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 64,
+            "cols": 128,
+            "depth": 32,
+            "warps_m": 2,
+            "warps_n": 4,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.006280291825532913,
+            0.006354875396937132,
+            0.00587474973872304
+          ],
+          "median_seconds": 0.006280291825532913
+        }
+      ]
+    },
+    {
+      "n": 8192,
+      "k": 8192,
+      "d": 512,
+      "methods": [
+        {
+          "method": "gemm",
+          "config": null,
+          "seconds": [
+            0.00652649998664856,
+            0.0066385418176651,
+            0.006165000144392252
+          ],
+          "median_seconds": 0.00652649998664856
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 32,
+            "cols": 64,
+            "depth": 16,
+            "warps_m": 2,
+            "warps_n": 2,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.005834208335727453,
+            0.00562104070559144,
+            0.005471207667142153
+          ],
+          "median_seconds": 0.00562104070559144
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 64,
+            "cols": 64,
+            "depth": 32,
+            "warps_m": 2,
+            "warps_n": 2,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.005180874839425087,
+            0.005177999846637249,
+            0.00514412485063076
+          ],
+          "median_seconds": 0.005177999846637249
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 64,
+            "cols": 128,
+            "depth": 32,
+            "warps_m": 2,
+            "warps_n": 4,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.005431541707366705,
+            0.0056901657953858376,
+            0.005987375043332577
+          ],
+          "median_seconds": 0.0056901657953858376
+        }
+      ]
+    },
+    {
+      "n": 8192,
+      "k": 16384,
+      "d": 512,
+      "methods": [
+        {
+          "method": "gemm",
+          "config": null,
+          "seconds": [
+            0.012879250105470419,
+            0.01203220896422863,
+            0.012042792048305273
+          ],
+          "median_seconds": 0.012042792048305273
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 32,
+            "cols": 64,
+            "depth": 16,
+            "warps_m": 2,
+            "warps_n": 2,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.011146750301122665,
+            0.010911792051047087,
+            0.011145750060677528
+          ],
+          "median_seconds": 0.011145750060677528
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 64,
+            "cols": 64,
+            "depth": 32,
+            "warps_m": 2,
+            "warps_n": 2,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.010267208330333233,
+            0.01036708289757371,
+            0.010225791949778795
+          ],
+          "median_seconds": 0.010267208330333233
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 64,
+            "cols": 128,
+            "depth": 32,
+            "warps_m": 2,
+            "warps_n": 4,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.011426083277910948,
+            0.011295042000710964,
+            0.010996249970048666
+          ],
+          "median_seconds": 0.011295042000710964
+        }
+      ]
+    },
+    {
+      "n": 8192,
+      "k": 8192,
+      "d": 768,
+      "methods": [
+        {
+          "method": "gemm",
+          "config": null,
+          "seconds": [
+            0.00865474995225668,
+            0.008954084012657404,
+            0.00865595880895853
+          ],
+          "median_seconds": 0.00865595880895853
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 32,
+            "cols": 64,
+            "depth": 16,
+            "warps_m": 2,
+            "warps_n": 2,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.008208958897739649,
+            0.008051832672208548,
+            0.008108708076179028
+          ],
+          "median_seconds": 0.008108708076179028
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 64,
+            "cols": 64,
+            "depth": 32,
+            "warps_m": 2,
+            "warps_n": 2,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.007563999854028225,
+            0.007496667094528675,
+            0.007574417162686586
+          ],
+          "median_seconds": 0.007563999854028225
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 64,
+            "cols": 128,
+            "depth": 32,
+            "warps_m": 2,
+            "warps_n": 4,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.008583832997828722,
+            0.007983208168298006,
+            0.00798379210755229
+          ],
+          "median_seconds": 0.00798379210755229
+        }
+      ]
+    },
+    {
+      "n": 8192,
+      "k": 16384,
+      "d": 768,
+      "methods": [
+        {
+          "method": "gemm",
+          "config": null,
+          "seconds": [
+            0.01722495863214135,
+            0.017161541152745485,
+            0.01715150009840727
+          ],
+          "median_seconds": 0.017161541152745485
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 32,
+            "cols": 64,
+            "depth": 16,
+            "warps_m": 2,
+            "warps_n": 2,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.016345916781574488,
+            0.016382332891225815,
+            0.016451625153422356
+          ],
+          "median_seconds": 0.016382332891225815
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 64,
+            "cols": 64,
+            "depth": 32,
+            "warps_m": 2,
+            "warps_n": 2,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.014864957891404629,
+            0.01507266703993082,
+            0.014919082634150982
+          ],
+          "median_seconds": 0.014919082634150982
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 64,
+            "cols": 128,
+            "depth": 32,
+            "warps_m": 2,
+            "warps_n": 4,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.016517290845513344,
+            0.01647874992340803,
+            0.01633345801383257
+          ],
+          "median_seconds": 0.01647874992340803
+        }
+      ]
+    },
+    {
+      "n": 8192,
+      "k": 8192,
+      "d": 1024,
+      "methods": [
+        {
+          "method": "gemm",
+          "config": null,
+          "seconds": [
+            0.011633000336587429,
+            0.01123095816001296,
+            0.0114459996111691
+          ],
+          "median_seconds": 0.0114459996111691
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 32,
+            "cols": 64,
+            "depth": 16,
+            "warps_m": 2,
+            "warps_n": 2,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.010801875032484531,
+            0.010632041841745377,
+            0.011054124683141708
+          ],
+          "median_seconds": 0.010801875032484531
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 64,
+            "cols": 64,
+            "depth": 32,
+            "warps_m": 2,
+            "warps_n": 2,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.009791333228349686,
+            0.009941082913428545,
+            0.009926625061780214
+          ],
+          "median_seconds": 0.009926625061780214
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 64,
+            "cols": 128,
+            "depth": 32,
+            "warps_m": 2,
+            "warps_n": 4,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.010743916966021061,
+            0.010534416884183884,
+            0.010532291140407324
+          ],
+          "median_seconds": 0.010534416884183884
+        }
+      ]
+    },
+    {
+      "n": 8192,
+      "k": 16384,
+      "d": 1024,
+      "methods": [
+        {
+          "method": "gemm",
+          "config": null,
+          "seconds": [
+            0.02214920800179243,
+            0.02221429208293557,
+            0.022090333979576826
+          ],
+          "median_seconds": 0.02214920800179243
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 32,
+            "cols": 64,
+            "depth": 16,
+            "warps_m": 2,
+            "warps_n": 2,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.02210654178634286,
+            0.02194258291274309,
+            0.02190600009635091
+          ],
+          "median_seconds": 0.02194258291274309
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 64,
+            "cols": 64,
+            "depth": 32,
+            "warps_m": 2,
+            "warps_n": 2,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.019492000341415405,
+            0.019509832840412855,
+            0.019547707866877317
+          ],
+          "median_seconds": 0.019509832840412855
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 64,
+            "cols": 128,
+            "depth": 32,
+            "warps_m": 2,
+            "warps_n": 4,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.02165762521326542,
+            0.02172850025817752,
+            0.021911625284701586
+          ],
+          "median_seconds": 0.02172850025817752
+        }
+      ]
+    },
+    {
+      "n": 8192,
+      "k": 8192,
+      "d": 2048,
+      "methods": [
+        {
+          "method": "gemm",
+          "config": null,
+          "seconds": [
+            0.02197824977338314,
+            0.021613041870296,
+            0.021569666918367147
+          ],
+          "median_seconds": 0.021613041870296
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 32,
+            "cols": 64,
+            "depth": 16,
+            "warps_m": 2,
+            "warps_n": 2,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.02159529086202383,
+            0.021440749987959862,
+            0.021711708046495914
+          ],
+          "median_seconds": 0.02159529086202383
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 64,
+            "cols": 64,
+            "depth": 32,
+            "warps_m": 2,
+            "warps_n": 2,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.019182125106453896,
+            0.019314915873110294,
+            0.019240499939769506
+          ],
+          "median_seconds": 0.019240499939769506
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 64,
+            "cols": 128,
+            "depth": 32,
+            "warps_m": 2,
+            "warps_n": 4,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.02112870803102851,
+            0.021061583887785673,
+            0.021106916945427656
+          ],
+          "median_seconds": 0.021106916945427656
+        }
+      ]
+    },
+    {
+      "n": 8192,
+      "k": 16384,
+      "d": 2048,
+      "methods": [
+        {
+          "method": "gemm",
+          "config": null,
+          "seconds": [
+            0.04279391607269645,
+            0.04286316595971584,
+            0.042458207812160254
+          ],
+          "median_seconds": 0.04279391607269645
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 32,
+            "cols": 64,
+            "depth": 16,
+            "warps_m": 2,
+            "warps_n": 2,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.04446070780977607,
+            0.043950625229626894,
+            0.043829542119055986
+          ],
+          "median_seconds": 0.043950625229626894
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 64,
+            "cols": 64,
+            "depth": 32,
+            "warps_m": 2,
+            "warps_n": 2,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.03878170857205987,
+            0.03857879200950265,
+            0.03826454188674688
+          ],
+          "median_seconds": 0.03857879200950265
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 64,
+            "cols": 128,
+            "depth": 32,
+            "warps_m": 2,
+            "warps_n": 4,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.044329042080789804,
+            0.04402212519198656,
+            0.044218082912266254
+          ],
+          "median_seconds": 0.044218082912266254
+        }
+      ]
+    },
+    {
+      "n": 8192,
+      "k": 8192,
+      "d": 3072,
+      "methods": [
+        {
+          "method": "gemm",
+          "config": null,
+          "seconds": [
+            0.031580416951328516,
+            0.031475582625716925,
+            0.03147987509146333
+          ],
+          "median_seconds": 0.03147987509146333
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 32,
+            "cols": 64,
+            "depth": 16,
+            "warps_m": 2,
+            "warps_n": 2,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.0325647909194231,
+            0.03252812521532178,
+            0.032525124959647655
+          ],
+          "median_seconds": 0.03252812521532178
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 64,
+            "cols": 64,
+            "depth": 32,
+            "warps_m": 2,
+            "warps_n": 2,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.029196499846875668,
+            0.02909604087471962,
+            0.029945834074169397
+          ],
+          "median_seconds": 0.029196499846875668
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 64,
+            "cols": 128,
+            "depth": 32,
+            "warps_m": 2,
+            "warps_n": 4,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.03439470939338207,
+            0.03407041681930423,
+            0.03405516594648361
+          ],
+          "median_seconds": 0.03407041681930423
+        }
+      ]
+    },
+    {
+      "n": 8192,
+      "k": 16384,
+      "d": 3072,
+      "methods": [
+        {
+          "method": "gemm",
+          "config": null,
+          "seconds": [
+            0.06360549991950393,
+            0.06385612487792969,
+            0.06375983310863376
+          ],
+          "median_seconds": 0.06375983310863376
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 32,
+            "cols": 64,
+            "depth": 16,
+            "warps_m": 2,
+            "warps_n": 2,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.06692958297207952,
+            0.06665229238569736,
+            0.06682162499055266
+          ],
+          "median_seconds": 0.06682162499055266
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 64,
+            "cols": 64,
+            "depth": 32,
+            "warps_m": 2,
+            "warps_n": 2,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.05860212491825223,
+            0.05903495801612735,
+            0.058657875284552574
+          ],
+          "median_seconds": 0.058657875284552574
+        },
+        {
+          "method": "native",
+          "config": {
+            "rows": 64,
+            "cols": 128,
+            "depth": 32,
+            "warps_m": 2,
+            "warps_n": 4,
+            "native_bf16": true,
+            "register_argmin": true,
+            "padding": 8,
+            "manual_fragments": true,
+            "vector_load": true,
+            "swizzle_rows": 0,
+            "math_mode": "safe"
+          },
+          "seconds": [
+            0.06893633399158716,
+            0.06916470918804407,
+            0.06902579171583056
+          ],
+          "median_seconds": 0.06902579171583056
+        }
+      ]
+    }
+  ],
+  "validation_program": "import sys,time,json,hashlib,dataclasses,platform\nfrom pathlib import Path\nimport numpy as np\nimport mlx.core as mx\nsys.path.insert(0,str(Path.cwd()))\nfrom benchmarks.e_means.experimental_kernels import BF16Config,assign_bf16,prepare_centers\nfrom mlxlearn._kernels.e_means import _kernel\nsource=Path('benchmarks/e_means/experimental_kernels.py').read_text()\nconfigs=[BF16Config(rows=32,cols=64,depth=16,warps_m=2,warps_n=2,swizzle_rows=0),BF16Config(rows=64,cols=64,depth=32,warps_m=2,warps_n=2,swizzle_rows=0),BF16Config(rows=64,cols=128,depth=32,warps_m=2,warps_n=4,swizzle_rows=0)]\nresult={'protocol':'prepared resident BF16 operands; FP32 score/accum; warmup + 3 synchronized repetitions; native fused vs represented operands promoted FP32 MLX GEMM + argmin; norms prepared outside timer','experimental_source_sha256':hashlib.sha256(source.encode()).hexdigest(),'experimental_source':source,'hardware':mx.metal.device_info(),'results':[]}\nrng=np.random.default_rng(87)\nfor d in [96,100,128,200,256,512,768,1024,2048,3072]:\n for k in [8192,16384]:\n  n=8192\n  x=mx.array(rng.standard_normal((n,d),dtype=np.float32)).astype(mx.bfloat16)\n  c,norms=prepare_centers(mx.array(rng.standard_normal((k,d),dtype=np.float32)))\n  xf=x.astype(mx.float32);cf=c.astype(mx.float32);mx.eval(x,c,norms,xf,cf)\n  def gemm():\n   score=xf@cf.T\n   return _kernel('argmin')(inputs=[score,norms],template=[('N',n),('K',k),('SPHERICAL',False)],grid=(n*32,1,1),threadgroup=(256,1,1),output_shapes=[(n,)],output_dtypes=[mx.uint32],stream=mx.gpu)\n  row={'n':n,'k':k,'d':d,'methods':[]}\n  for name,fun,config in [('gemm',gemm,None)]+[('native',lambda config=config:assign_bf16(x,c,norms=norms,config=config),config) for config in configs]:\n   out=fun();mx.eval(out);times=[]\n   for _ in range(3):\n    t=time.perf_counter();out=fun();mx.eval(out);times.append(time.perf_counter()-t)\n   row['methods'].append({'method':name,'config':dataclasses.asdict(config) if config else None,'seconds':times,'median_seconds':float(np.median(times))})\n  result['results'].append(row)\n  print(d,k,[round(m['median_seconds']*1000,3) for m in row['methods']],flush=True)\nPath('benchmarks/e_means/results/optimization/bf16-dispatch-sweep.json').write_text(json.dumps(result,indent=2)+'\\n')\n",
+  "command": "PYTHONPATH=src .venv/bin/python /tmp/e_means_dispatch_sweep.py"
+}

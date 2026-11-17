@@ -1,6 +1,7 @@
 """Fused Metal epilogues and row queries for exact C-SVC kernels.
 
-Large Gram blocks retain MLX's tuned matrix multiplication. One elementwise
+Large Gram blocks retain MLX's tuned matrix multiplication, or a binary32
+kernel where MLX would use TF32 operands (``mlxlearn_device._binary32``). One elementwise
 kernel then combines the RBF norms, clamp and exponential, or evaluates the
 polynomial/sigmoid transform. A cache miss instead computes the requested row
 and its transform in a single launch. Its RBF distance uses direct differences,

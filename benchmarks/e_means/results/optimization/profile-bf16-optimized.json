@@ -1,0 +1,201 @@
+{
+  "kind": "stage_profile",
+  "status": "completed",
+  "source_sha256": {
+    "benchmarks/e_means/run.py": "ba5cde5b87e306ce902fb398bd04750bea0ab7506c9fd0567fa6d201729be399",
+    "benchmarks/e_means/vibe_manifest.json": "175cdf9c60208be8204eed0c60d7361ea4ccd26caf1a057519062a499213d63d",
+    "src/mlxlearn/cluster/__init__.py": "d392c1bfb85290a278128af698108dd59c1ae6f2d225ffe9eeb4f8944812fb79",
+    "src/mlxlearn/cluster/_e_means.py": "fb1db4e9e6edc54df09248c397aab2f20140102b8536b146b718b29171d2c9db",
+    "src/mlxlearn/cluster/_recipe.py": "a384fb14e9fd904b2d07b77f63a5e7c85da5160e73b4e842dd0c44de5ca1c468",
+    "src/mlxlearn/_kernels/e_means.py": "12766f6ba973e29fab849d533bb4f8a98e7ff4d85bc17f735252e41c25a42b81",
+    "src/mlxlearn/_kernels/e_means_bf16.py": "cbe903b6972ab2fcca06b940005a5d3ae4e700f9595460036f14880625f3e4ea"
+  },
+  "profile_sha256": "7dfc4237c79c0649be82a6b67a654152433a06af423e0cc993a4503beee923be",
+  "hardware": {
+    "machine": "arm64",
+    "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "cpu": "Apple M4 Max",
+    "ram_bytes": 137438953472
+  },
+  "versions": {
+    "python": "3.14.2",
+    "numpy": "2.5.4",
+    "scipy": "1.18.1",
+    "mlx": "0.32.4",
+    "scikit-learn": "1.9.1",
+    "faiss-cpu": "1.16.0",
+    "h5py": "3.16.0"
+  },
+  "protocol": "GPU-resident float32 input, Faiss throughput recipe, last_epoch, seed10, online labels; normal one full warmup and one timed fit; isolated instrumented stages serialize execution; diagnostic, not the full adaptive-call benchmark",
+  "precision": "bfloat16",
+  "assignment": "auto",
+  "epochs": 2.0,
+  "records": [
+    {
+      "dataset": "deep1b-1M",
+      "n": 1000000,
+      "d": 96,
+      "k": 16384,
+      "normal_warmed_resident_fit_seconds": 0.585022334009409,
+      "instrumented_fit_seconds": 0.6488930420018733,
+      "stage_totals": {
+        "assign": {
+          "seconds": 0.5688352063298225,
+          "calls": 62
+        },
+        "batch_stats": {
+          "seconds": 0.01765795797109604,
+          "calls": 62
+        },
+        "ema_update": {
+          "seconds": 0.017789422534406185,
+          "calls": 62
+        },
+        "revive": {
+          "seconds": 0.012050169985741377,
+          "calls": 12
+        }
+      },
+      "other_seconds": 0.032560285180807114,
+      "recipe": {
+        "name": "faiss",
+        "batch_law": "throughput",
+        "batch_law_requested": "throughput",
+        "batch_law_reason": "requested",
+        "batch_size": 32768,
+        "alpha0": 0.20182780779805568,
+        "nepochs": 2.0,
+        "epoch_rows": [
+          1000000,
+          1000000
+        ],
+        "epoch_steps": [
+          31,
+          31
+        ],
+        "total_steps": 62,
+        "alpha_min_factor": 0.1,
+        "init_usage": 1.52587890625e-05,
+        "split_epsilon": 0.0001,
+        "unused_threshold": 0.1,
+        "check_unused_every": 5,
+        "tail_policy": "keep",
+        "fractional_policy": "full_closing_pass_when_T_ge_1",
+        "seed": 10,
+        "backend": "metal",
+        "precision": "bfloat16",
+        "assignment": "auto",
+        "finalization": "last_epoch",
+        "spherical": false,
+        "slow_alpha": null,
+        "assignment_centering": "none",
+        "statistics_representation": "bfloat16"
+      },
+      "steps": 62,
+      "data": {
+        "paper_split_exact": true,
+        "fingerprints": {
+          "kind": "shipped_queries",
+          "n_val": 5000,
+          "n_test": 5000,
+          "val_sha256": "ca94deceddb13e16d6cfb81365e2e18c319bf704b1d0ea9a28e5067bba03c458",
+          "test_sha256": "05d685ccf5e413a0559348b3586ec82a72da637d50b7d2b9a521e70c6cd29b6f",
+          "n_train": 1000000,
+          "dim": 96,
+          "train_rows_sha256": "7b74aeede93a64c6a2e598f021fbaa42061a7e09e9f3f75f1c1254fbb4419368",
+          "n_eval_rows_in_train": 4
+        },
+        "split": "official upstream paper_data.py + paper_splits fingerprints",
+        "train_rows_used": 1000000,
+        "test_rows_used": 5000,
+        "dimension": 96,
+        "requested_row_limit": null,
+        "train_sample_sha256": "7b74aeede93a64c6a2e598f021fbaa42061a7e09e9f3f75f1c1254fbb4419368",
+        "test_sha256": "05d685ccf5e413a0559348b3586ec82a72da637d50b7d2b9a521e70c6cd29b6f"
+      }
+    },
+    {
+      "dataset": "dino10b-1M-div4096",
+      "n": 1000000,
+      "d": 1024,
+      "k": 16384,
+      "normal_warmed_resident_fit_seconds": 5.64135624980554,
+      "instrumented_fit_seconds": 6.082234124653041,
+      "stage_totals": {
+        "assign": {
+          "seconds": 5.813027752097696,
+          "calls": 62
+        },
+        "batch_stats": {
+          "seconds": 0.084090830758214,
+          "calls": 62
+        },
+        "ema_update": {
+          "seconds": 0.08256995864212513,
+          "calls": 62
+        },
+        "revive": {
+          "seconds": 0.054933082312345505,
+          "calls": 12
+        }
+      },
+      "other_seconds": 0.047612500842660666,
+      "recipe": {
+        "name": "faiss",
+        "batch_law": "throughput",
+        "batch_law_requested": "throughput",
+        "batch_law_reason": "requested",
+        "batch_size": 32768,
+        "alpha0": 0.20182780779805568,
+        "nepochs": 2.0,
+        "epoch_rows": [
+          1000000,
+          1000000
+        ],
+        "epoch_steps": [
+          31,
+          31
+        ],
+        "total_steps": 62,
+        "alpha_min_factor": 0.1,
+        "init_usage": 1.52587890625e-05,
+        "split_epsilon": 0.0001,
+        "unused_threshold": 0.1,
+        "check_unused_every": 5,
+        "tail_policy": "keep",
+        "fractional_policy": "full_closing_pass_when_T_ge_1",
+        "seed": 10,
+        "backend": "metal",
+        "precision": "bfloat16",
+        "assignment": "auto",
+        "finalization": "last_epoch",
+        "spherical": false,
+        "slow_alpha": null,
+        "assignment_centering": "none",
+        "statistics_representation": "bfloat16"
+      },
+      "steps": 62,
+      "data": {
+        "paper_split_exact": true,
+        "fingerprints": {
+          "kind": "shipped_queries",
+          "n_val": 50000,
+          "n_test": 50000,
+          "val_sha256": "6245215f29eb5830639169300a74215660bb0959d7aed0df67ef312e310e351f",
+          "test_sha256": "cc83c532b4b780b77959998f67239d5eca42bbc8d55bb00270d7143222c0fcfd",
+          "n_train": 1000000,
+          "dim": 1024,
+          "train_rows_sha256": "124629fc9bcaccbd82c71d41a5579271c3d7d428047ba669ee4792b989c040a9",
+          "n_eval_rows_in_train": 0
+        },
+        "split": "official upstream paper_data.py + paper_splits fingerprints",
+        "train_rows_used": 1000000,
+        "test_rows_used": 50000,
+        "dimension": 1024,
+        "requested_row_limit": null,
+        "train_sample_sha256": "124629fc9bcaccbd82c71d41a5579271c3d7d428047ba669ee4792b989c040a9",
+        "test_sha256": "cc83c532b4b780b77959998f67239d5eca42bbc8d55bb00270d7143222c0fcfd"
+      }
+    }
+  ]
+}

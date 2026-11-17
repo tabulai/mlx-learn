@@ -50,7 +50,7 @@ now covers them against whichever version is installed rather than pinning the p
 resolver that quietly picks an older wheel fails loudly rather than producing subtly
 different numerics.
 
-Development is on MLX 0.31.2.
+The latest release benchmarks use MLX 0.32.4.
 
 ## NumPy
 
@@ -66,6 +66,7 @@ Development is on MLX 0.31.2.
 | `linear_model.LogisticRegression` | 0.1.0 | L-BFGS, L2 / unpenalized | `l1`/`elasticnet`, non-`lbfgs` solvers, `dual=True`, sparse, `warm_start` |
 | `linear_model.LinearRegression` | 0.1.0 | dense OLS, multi-output, `sample_weight` | `positive=True`, sparse |
 | `svm.SVC` | 0.1.0 | exact SMO, linear/poly/rbf/sigmoid | `kernel="precomputed"`, callable kernels, `probability=True`, sparse |
+| `decomposition.PCA` | 0.1.2 | dense covariance and randomized PCA, CPU/GPU projection | sparse input, values outside float32 range |
 
 `radius_neighbors` and `radius_neighbors_graph` delegate lazily to scikit-learn and run
 unaccelerated on the CPU in float32. Correct, but not fast — stated here rather than left
@@ -93,7 +94,7 @@ graph helper inputs continue to work for those variants.
 | | |
 |---|---|
 | `SVR`, `NuSVR`, `NuSVC` | Deferred. They will ship when they implement their true objectives. The ancestor patched `SVR` with a ridge surrogate, so `sklearn.svm.SVR` solved a different optimization problem than its name promises. |
-| `Ridge`, `PCA`, `Lasso`, `ElasticNet`, `KMeans`, `DBSCAN`, `TSNE` | Planned for 0.2.x, after `0.1.0a1` feedback. |
+| `Ridge`, `Lasso`, `ElasticNet`, `KMeans`, `DBSCAN`, `TSNE` | Planned for 0.2.x, after `0.1.0a1` feedback. |
 | Tree ensembles (`RandomForest*`, `ExtraTrees*`) | Out of scope. |
 | `EmpiricalCovariance`, `DummyRegressor`, `LocalOutlierFactor` | Out of scope — the ancestor registered these as pass-throughs that added no acceleration. |
 

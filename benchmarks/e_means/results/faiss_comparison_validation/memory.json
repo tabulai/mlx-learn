@@ -1,0 +1,238 @@
+{
+  "schema_version": 1,
+  "status": "passed",
+  "source_sha256": {
+    "benchmarks/e_means/memory.py": "2140f828d3789ec615af6a27499a24ad79432781e4de083cb7ff183e595876e7",
+    "benchmarks/e_means/test_memory.py": "50a16525895105bd080c37ec40ecf2a7603c92580e8e99d700507e26cfc3dd77"
+  },
+  "environment": {
+    "python": "3.14.2 (main, Dec  9 2025, 19:29:30) [Clang 21.1.4 ]",
+    "executable": "/Users/tunguz/Programming/mlxlearn/.venv/bin/python",
+    "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O"
+  },
+  "working_directory": "/Users/tunguz/Programming/mlxlearn",
+  "abi_validation": {
+    "command": "cc -x c -o tmp/e_means/check_rusage_layout - <<'C'\n#include <sys/resource.h>\n#include <stddef.h>\n#include <stdio.h>\nint main(void) {\n    printf(\"{\\\"v0_size\\\":%zu,\\\"v4_size\\\":%zu,\\\"rss_offset\\\":%zu,\\\"footprint_offset\\\":%zu,\\\"lifetime_offset\\\":%zu}\\n\",\n        sizeof(struct rusage_info_v0), sizeof(struct rusage_info_v4),\n        offsetof(struct rusage_info_v4, ri_resident_size),\n        offsetof(struct rusage_info_v4, ri_phys_footprint),\n        offsetof(struct rusage_info_v4, ri_lifetime_max_phys_footprint));\n}\nC\ntmp/e_means/check_rusage_layout",
+    "exit_code": 0,
+    "sdk_path": "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk",
+    "observed_c_layout": {
+      "v0_size": 96,
+      "v4_size": 296,
+      "rss_offset": 64,
+      "footprint_offset": 72,
+      "lifetime_offset": 240
+    },
+    "observed_ctypes_layout": {
+      "v0_size": 96,
+      "v4_size": 296,
+      "rss_offset": 64,
+      "footprint_offset": 72,
+      "lifetime_offset": 240
+    }
+  },
+  "allocation_validation": {
+    "command": ".venv/bin/python - <<'PY'\nimport json, subprocess, sys, time\nfrom pathlib import Path\nfrom benchmarks.e_means.memory import MemorySampler\nchild_code='''import mmap\n\ndef allocate(n):\n    buf=mmap.mmap(-1,n,flags=mmap.MAP_PRIVATE)\n    for i in range(0,n,4096):buf[i]=1\n    return buf\nwarm=allocate(128<<20)\nwarm.close()\nprint(\"FIT_READY\",flush=True)\nassert input()==\"GO\"\nbuf=allocate(32<<20)\nprint(\"ALLOCATED\",flush=True)\nassert input()==\"RELEASE\"\nbuf.close()\nprint(\"FIT_DONE\",flush=True)\nassert input()==\"STOP_ACK\"\n'''\np=subprocess.Popen([sys.executable,'-c',child_code],stdin=subprocess.PIPE,stdout=subprocess.PIPE,text=True)\ntry:\n    assert p.stdout.readline().strip()=='FIT_READY'\n    sampler=MemorySampler(p.pid,interval_seconds=.01,keep_samples=True).start()\n    p.stdin.write('GO\\n');p.stdin.flush()\n    assert p.stdout.readline().strip()=='ALLOCATED'\n    time.sleep(.08)\n    p.stdin.write('RELEASE\\n');p.stdin.flush()\n    assert p.stdout.readline().strip()=='FIT_DONE'\n    result=sampler.stop()\n    assert result['complete'],result\n    assert result['physical_footprint_peak_increase_bytes'] >= int((32<<20)*.9),result\n    assert result['lifetime_peak_physical_footprint_bytes'] > result['peak_physical_footprint_bytes']+(64<<20),result\n    assert result['peak_physical_footprint_bytes'] > result['end']['physical_footprint_bytes']+(16<<20),result\n    assert result['peak_rss_bytes'] > result['end']['rss_bytes']+(16<<20),result\n    Path('tmp/e_means/memory-validation.json').write_text(json.dumps({'test':'128MiB warmup unmapped,32MiB fit transient unmapped beforeFITDONE','result':result},indent=2)+'\\n')\n    print(json.dumps({k:v for k,v in result.items() if k not in {'samples','baseline','end','notes'}}))\n    print('baseline_footprint',result['baseline']['physical_footprint_bytes'],'end_footprint',result['end']['physical_footprint_bytes'])\n    p.stdin.write('STOP_ACK\\n');p.stdin.flush()\n    assert p.wait(timeout=5)==0\nfinally:\n    if p.poll() is None:p.kill();p.wait()\nPY",
+    "exit_code": 0,
+    "test": "128MiB warmup unmapped,32MiB fit transient unmapped beforeFITDONE",
+    "result": {
+      "supported": true,
+      "source": "proc_pid_rusage",
+      "pid": 54275,
+      "sample_interval_seconds": 0.01,
+      "sample_count": 10,
+      "duration_seconds": 0.085081916,
+      "maximum_sample_gap_seconds": 0.01128225,
+      "baseline": {
+        "supported": true,
+        "source": "proc_pid_rusage",
+        "pid": 54275,
+        "rusage_flavor": 4,
+        "monotonic_ns": 2222212140422333,
+        "collection_duration_ns": 20666,
+        "rss_bytes": 16760832,
+        "physical_footprint_bytes": 7045576,
+        "lifetime_peak_physical_footprint_bytes": 141328960,
+        "process_start_abstime": 53333090937799,
+        "process_exit_abstime": 0
+      },
+      "end": {
+        "supported": true,
+        "source": "proc_pid_rusage",
+        "pid": 54275,
+        "rusage_flavor": 4,
+        "monotonic_ns": 2222212225504249,
+        "collection_duration_ns": 9667,
+        "rss_bytes": 16760832,
+        "physical_footprint_bytes": 7045576,
+        "lifetime_peak_physical_footprint_bytes": 141328960,
+        "process_start_abstime": 53333090937799,
+        "process_exit_abstime": 0
+      },
+      "peak_rss_bytes": 50315264,
+      "peak_physical_footprint_bytes": 40632824,
+      "rss_peak_increase_bytes": 33554432,
+      "physical_footprint_peak_increase_bytes": 33587248,
+      "lifetime_peak_physical_footprint_bytes": 141328960,
+      "sampling_errors": [],
+      "complete": true,
+      "notes": [
+        "Phase peaks are maxima of current-memory samples, not lifetime maxima.",
+        "Sampling can miss transients shorter than the observed sampling gaps.",
+        "Phase totals include memory allocated before FIT_READY; increments subtract that baseline.",
+        "RSS and physical footprint are different process metrics and must not be added.",
+        "Process footprint is not an exclusive GPU-memory measurement.",
+        "Lifetime peak is diagnostic only and includes preparation/warm-up."
+      ],
+      "samples": [
+        {
+          "supported": true,
+          "source": "proc_pid_rusage",
+          "pid": 54275,
+          "rusage_flavor": 4,
+          "monotonic_ns": 2222212140422333,
+          "collection_duration_ns": 20666,
+          "rss_bytes": 16760832,
+          "physical_footprint_bytes": 7045576,
+          "lifetime_peak_physical_footprint_bytes": 141328960,
+          "process_start_abstime": 53333090937799,
+          "process_exit_abstime": 0
+        },
+        {
+          "supported": true,
+          "source": "proc_pid_rusage",
+          "pid": 54275,
+          "rusage_flavor": 4,
+          "monotonic_ns": 2222212151704583,
+          "collection_duration_ns": 15500,
+          "rss_bytes": 50315264,
+          "physical_footprint_bytes": 40632824,
+          "lifetime_peak_physical_footprint_bytes": 141328960,
+          "process_start_abstime": 53333090937799,
+          "process_exit_abstime": 0
+        },
+        {
+          "supported": true,
+          "source": "proc_pid_rusage",
+          "pid": 54275,
+          "rusage_flavor": 4,
+          "monotonic_ns": 2222212162746603,
+          "collection_duration_ns": 10875,
+          "rss_bytes": 50315264,
+          "physical_footprint_bytes": 40632824,
+          "lifetime_peak_physical_footprint_bytes": 141328960,
+          "process_start_abstime": 53333090937799,
+          "process_exit_abstime": 0
+        },
+        {
+          "supported": true,
+          "source": "proc_pid_rusage",
+          "pid": 54275,
+          "rusage_flavor": 4,
+          "monotonic_ns": 2222212172480145,
+          "collection_duration_ns": 9791,
+          "rss_bytes": 50315264,
+          "physical_footprint_bytes": 40632824,
+          "lifetime_peak_physical_footprint_bytes": 141328960,
+          "process_start_abstime": 53333090937799,
+          "process_exit_abstime": 0
+        },
+        {
+          "supported": true,
+          "source": "proc_pid_rusage",
+          "pid": 54275,
+          "rusage_flavor": 4,
+          "monotonic_ns": 2222212182565062,
+          "collection_duration_ns": 17292,
+          "rss_bytes": 50315264,
+          "physical_footprint_bytes": 40632824,
+          "lifetime_peak_physical_footprint_bytes": 141328960,
+          "process_start_abstime": 53333090937799,
+          "process_exit_abstime": 0
+        },
+        {
+          "supported": true,
+          "source": "proc_pid_rusage",
+          "pid": 54275,
+          "rusage_flavor": 4,
+          "monotonic_ns": 2222212191463895,
+          "collection_duration_ns": 6875,
+          "rss_bytes": 50315264,
+          "physical_footprint_bytes": 40632824,
+          "lifetime_peak_physical_footprint_bytes": 141328960,
+          "process_start_abstime": 53333090937799,
+          "process_exit_abstime": 0
+        },
+        {
+          "supported": true,
+          "source": "proc_pid_rusage",
+          "pid": 54275,
+          "rusage_flavor": 4,
+          "monotonic_ns": 2222212201951520,
+          "collection_duration_ns": 16541,
+          "rss_bytes": 50315264,
+          "physical_footprint_bytes": 40632824,
+          "lifetime_peak_physical_footprint_bytes": 141328960,
+          "process_start_abstime": 53333090937799,
+          "process_exit_abstime": 0
+        },
+        {
+          "supported": true,
+          "source": "proc_pid_rusage",
+          "pid": 54275,
+          "rusage_flavor": 4,
+          "monotonic_ns": 2222212212230458,
+          "collection_duration_ns": 13334,
+          "rss_bytes": 50315264,
+          "physical_footprint_bytes": 40632824,
+          "lifetime_peak_physical_footprint_bytes": 141328960,
+          "process_start_abstime": 53333090937799,
+          "process_exit_abstime": 0
+        },
+        {
+          "supported": true,
+          "source": "proc_pid_rusage",
+          "pid": 54275,
+          "rusage_flavor": 4,
+          "monotonic_ns": 2222212222624124,
+          "collection_duration_ns": 13583,
+          "rss_bytes": 50315264,
+          "physical_footprint_bytes": 40632824,
+          "lifetime_peak_physical_footprint_bytes": 141328960,
+          "process_start_abstime": 53333090937799,
+          "process_exit_abstime": 0
+        },
+        {
+          "supported": true,
+          "source": "proc_pid_rusage",
+          "pid": 54275,
+          "rusage_flavor": 4,
+          "monotonic_ns": 2222212225504249,
+          "collection_duration_ns": 9667,
+          "rss_bytes": 16760832,
+          "physical_footprint_bytes": 7045576,
+          "lifetime_peak_physical_footprint_bytes": 141328960,
+          "process_start_abstime": 53333090937799,
+          "process_exit_abstime": 0
+        }
+      ]
+    }
+  },
+  "scope": "Actual isolated CPU process, no GPU or datasets; raw observations copied unchanged from tmp/e_means/memory-validation.json.",
+  "unit_validation": {
+    "command": ".venv/bin/python -m pytest -q benchmarks/e_means/test_memory.py",
+    "exit_code": 0,
+    "passed": 5,
+    "coverage": [
+      "fit-window peaks separate from lifetime warmup peak",
+      "PID reuse rejected without peak contamination",
+      "process exit never synthesized as zero memory",
+      "V4 to V0 fallback exposes missing lifetime peak as null",
+      "permission error does not trigger flavor fallback"
+    ]
+  },
+  "lint_validation": {
+    "command": ".venv/bin/ruff check benchmarks/e_means/memory.py benchmarks/e_means/test_memory.py",
+    "exit_code": 0,
+    "stdout": "All checks passed!\n"
+  }
+}

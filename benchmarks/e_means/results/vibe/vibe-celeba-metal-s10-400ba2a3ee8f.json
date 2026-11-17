@@ -1,0 +1,157 @@
+{
+  "status": "completed",
+  "config": {
+    "dataset": "vibe-celeba",
+    "seed": 10,
+    "method": "metal",
+    "epochs": 3.0,
+    "lloyd_iters": 25,
+    "k": null,
+    "rows": null,
+    "threads": 8,
+    "precision": "float32",
+    "recipe": "paper",
+    "finalization": "last_epoch",
+    "assignment": "auto",
+    "batch_size": null,
+    "batch_law": "auto",
+    "repeats": 1,
+    "warmup": false,
+    "train_score_rows": 10000,
+    "cache": "/Users/tunguz/.cache/mlxlearn/e_means",
+    "faiss_source": "/Users/tunguz/Programming/mlxlearn/tmp/e_means/faiss",
+    "expected_source_sha256": {
+      "benchmarks/e_means/run.py": "ba5cde5b87e306ce902fb398bd04750bea0ab7506c9fd0567fa6d201729be399",
+      "benchmarks/e_means/vibe_manifest.json": "175cdf9c60208be8204eed0c60d7361ea4ccd26caf1a057519062a499213d63d",
+      "src/mlxlearn/cluster/__init__.py": "d392c1bfb85290a278128af698108dd59c1ae6f2d225ffe9eeb4f8944812fb79",
+      "src/mlxlearn/cluster/_e_means.py": "4b614a8349711a7afcb3310aa65ad2e2515e990cca4f02b59dffa1a6dd303964",
+      "src/mlxlearn/cluster/_recipe.py": "a384fb14e9fd904b2d07b77f63a5e7c85da5160e73b4e842dd0c44de5ca1c468",
+      "src/mlxlearn/_kernels/e_means.py": "3df3c15a2086ef9f2807ae7a35e3d3ee6588d7162659c832818dfcfce0f0b178"
+    },
+    "expected_versions": {
+      "python": "3.14.2",
+      "numpy": "2.5.4",
+      "scipy": "1.18.1",
+      "mlx": "0.32.4",
+      "scikit-learn": "1.9.1",
+      "faiss-cpu": "1.16.0",
+      "h5py": "3.16.0"
+    },
+    "expected_host": {
+      "machine": "arm64",
+      "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+      "cpu": "Apple M4 Max",
+      "ram_bytes": 137438953472
+    },
+    "output": "/Users/tunguz/Programming/mlxlearn/benchmarks/e_means/results/vibe/vibe-celeba-metal-s10-400ba2a3ee8f.json"
+  },
+  "dataset": {
+    "split_version": 1,
+    "split_seed": 1234,
+    "source_sha256": "168f89ccf8aaa22cc9ce6f81c241fd016eb67a0bc5b5b381b955ffa746a906f4",
+    "source_revision": "07b387891a221b7b073b83d2f752b76462e5fa03",
+    "split": "new deterministic 20,000-row holdout, exact duplicates removed from train",
+    "paper_split_exact": false,
+    "source_train_rows": 201599,
+    "train_rows": 181573,
+    "removed_rows": 20026,
+    "test_rows": 10000,
+    "holdout_indices_sha256": "a7ad1587ae8afecf1a76d15da6f7e3ae4d363e8d2c2ce7e260f73a4d0ac0be00",
+    "test_sha256": "8b405706ee50c4259f00f85e4d2418cd08adcb0d3ec300122d0047aa61965adc",
+    "train_sample_sha256": "bf9a565f228bf98ad1aaff7dc52b8c866b135c5f03abedd8b09ee93be3324e49",
+    "normalization": "as stored in the VIBE file; Euclidean clustering",
+    "train_rows_used": 181573,
+    "test_rows_used": 10000,
+    "dimension": 2048,
+    "requested_row_limit": null
+  },
+  "n": 181573,
+  "d": 2048,
+  "k": 8192,
+  "train_seconds": 3.2881681248545647,
+  "train_seconds_samples": [
+    3.2881681248545647
+  ],
+  "test_mse": 40.90295411992024,
+  "train_sample_mse": 35.69741115139629,
+  "train_score_rows": 10000,
+  "initial_centroids_sha256": "ed24cc7f15a54ea52e260a69dfa5a03e83afe2448f9debd39203e6c28089916c",
+  "final_centroids_sha256": "85cd089a88b29aa52e4926113eefeaa673e59026fba29385f1af859fb9b59fa4",
+  "recipe_resolved": {
+    "name": "paper",
+    "batch_law": "throughput",
+    "batch_law_requested": "auto",
+    "batch_law_reason": "paper: n <= 2M",
+    "batch_size": 16384,
+    "alpha0": 0.3088085910144062,
+    "nepochs": 3.0,
+    "epoch_rows": [
+      181573,
+      181573,
+      181573
+    ],
+    "epoch_steps": [
+      12,
+      12,
+      12
+    ],
+    "total_steps": 36,
+    "alpha_min_factor": 0.1,
+    "init_usage": 1e-10,
+    "split_epsilon": 0.0078125,
+    "unused_threshold": 0.1,
+    "check_unused_every": 5,
+    "tail_policy": "keep",
+    "fractional_policy": "full_closing_pass_when_T_ge_1",
+    "seed": 10,
+    "backend": "metal",
+    "precision": "float32",
+    "assignment": "auto",
+    "finalization": "last_epoch",
+    "spherical": false,
+    "slow_alpha": null,
+    "assignment_centering": "global_mean"
+  },
+  "algorithm_applied": {
+    "recipe": "paper",
+    "finalization": "last_epoch",
+    "precision": "float32"
+  },
+  "n_splits": 7840,
+  "timing_scope": "synchronized fit from NumPy input; includes fit validation/upload; excludes data load, init sampling, warmup, scoring",
+  "scoring": "Faiss IndexFlatL2 float32 assignment, residual recomputed by direct float64 difference",
+  "initialization": "NumPy RandomState(seed) permutation shared across methods; differs paper CUDA RNG",
+  "hardware": {
+    "machine": "arm64",
+    "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "cpu": "Apple M4 Max",
+    "ram_bytes": 137438953472,
+    "metal": {
+      "device_name": "Apple M4 Max",
+      "max_recommended_working_set_size": 115448725504,
+      "memory_size": 137438953472,
+      "architecture": "applegpu_g16s",
+      "max_buffer_length": 86586540032,
+      "resource_limit": 499000
+    }
+  },
+  "versions": {
+    "python": "3.14.2",
+    "numpy": "2.5.4",
+    "scipy": "1.18.1",
+    "mlx": "0.32.4",
+    "scikit-learn": "1.9.1",
+    "faiss-cpu": "1.16.0",
+    "h5py": "3.16.0"
+  },
+  "faiss_reference_revision": "ebab8f784c1d177129602269d5ad966c525fbdcb",
+  "source_sha256": {
+    "benchmarks/e_means/run.py": "ba5cde5b87e306ce902fb398bd04750bea0ab7506c9fd0567fa6d201729be399",
+    "benchmarks/e_means/vibe_manifest.json": "175cdf9c60208be8204eed0c60d7361ea4ccd26caf1a057519062a499213d63d",
+    "src/mlxlearn/cluster/__init__.py": "d392c1bfb85290a278128af698108dd59c1ae6f2d225ffe9eeb4f8944812fb79",
+    "src/mlxlearn/cluster/_e_means.py": "4b614a8349711a7afcb3310aa65ad2e2515e990cca4f02b59dffa1a6dd303964",
+    "src/mlxlearn/cluster/_recipe.py": "a384fb14e9fd904b2d07b77f63a5e7c85da5160e73b4e842dd0c44de5ca1c468",
+    "src/mlxlearn/_kernels/e_means.py": "3df3c15a2086ef9f2807ae7a35e3d3ee6588d7162659c832818dfcfce0f0b178"
+  },
+  "peak_gpu_memory_bytes": 4711076592
+}

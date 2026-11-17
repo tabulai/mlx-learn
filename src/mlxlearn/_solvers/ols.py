@@ -229,6 +229,8 @@ def _lstsq_products(
     """
     import mlx.core as mx
 
+    from mlxlearn_device._binary32 import matmul
+
     n_samples, n_features = X.shape
     if n_samples == 0 or n_features == 0:
         coef = np.zeros((n_features, y.shape[1]), dtype=np.float64)
@@ -237,7 +239,7 @@ def _lstsq_products(
     tall = n_samples >= n_features
     with use_device(device):
         Xm = mx.array(np.ascontiguousarray(X, dtype=NUMPY_FLOAT), dtype=mx.float32)
-        gram = Xm.T @ Xm if tall else Xm @ Xm.T
+        gram = matmul(Xm, Xm, transpose_a=True) if tall else matmul(Xm, Xm, transpose_b=True)
         mx.eval(gram)
         gram_np = np.asarray(gram, dtype=np.float64)
 

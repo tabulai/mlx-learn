@@ -1,0 +1,198 @@
+{
+  "status": "PASS",
+  "recorded_at_utc": "2026-11-15T13:34:37.806340+00:00",
+  "scope": "Interim independent read-only audit of first 12 full records, DEEP/SPACEV/SimSearchNet++; remaining two datasets excluded until completed. No GPU work, benchmarks, test reruns or training-array reads.",
+  "coverage": {
+    "datasets": [
+      "deep1b-10M",
+      "fb-ssnpp-10M",
+      "spacev-10M"
+    ],
+    "records": 12,
+    "n_each": 10000000,
+    "k": 65536,
+    "passes_each": 2,
+    "seed": 10,
+    "precision": "float32"
+  },
+  "checks": [
+    "Raw/runtime/harness/reference/sklearn SHA256 verified against frozen metadata and current files",
+    "Archive ZIP digest and every archived repository source verified",
+    "Same exact initialization, scoring sample, dataset identities and environment across four modes per dataset",
+    "Two complete passes and matching quality-law e-means recipe (B=65536, steps=153+153), including new integer SSN budget",
+    "Fresh final labels/inertia, scoring semantics and adaptive timing medians",
+    "Complete fit-window sampled memory; independent CSV memory maxima and arithmetic",
+    "Independent speedup/MSE-change arithmetic; partial report has correct coverage/algorithm/memory caveats"
+  ],
+  "comparisons": {
+    "fb-ssnpp-10M": {
+      "sklearn_over_metal_kmeans": 3.3526443303861657,
+      "metal_kmeans_over_metal_emeans": 1.0830963448366917,
+      "faiss_over_metal_emeans": 9.569400323546569,
+      "metal_kmeans_vs_sklearn_mse_change_pct": -0.0005580560249129896,
+      "metal_emeans_vs_metal_kmeans_mse_change_pct": -1.4899181711588216,
+      "metal_emeans_vs_faiss_mse_change_pct": 0.018566850447521155
+    },
+    "spacev-10M": {
+      "sklearn_over_metal_kmeans": 5.21394182384947,
+      "metal_kmeans_over_metal_emeans": 0.9154168901229541,
+      "faiss_over_metal_emeans": 14.390914025594892,
+      "metal_kmeans_vs_sklearn_mse_change_pct": 0.00013703552474986225,
+      "metal_emeans_vs_metal_kmeans_mse_change_pct": -4.481156970727184,
+      "metal_emeans_vs_faiss_mse_change_pct": -0.06003140498181958
+    },
+    "deep1b-10M": {
+      "sklearn_over_metal_kmeans": 6.185822018798028,
+      "metal_kmeans_over_metal_emeans": 0.8014149552067319,
+      "faiss_over_metal_emeans": 15.570821647099258,
+      "metal_kmeans_vs_sklearn_mse_change_pct": 0.0004900653645112385,
+      "metal_emeans_vs_metal_kmeans_mse_change_pct": -2.537354911831202,
+      "metal_emeans_vs_faiss_mse_change_pct": -0.09517963091334458
+    }
+  },
+  "raw_evidence": [
+    {
+      "path": "benchmarks/e_means/results/kmeans_comparison/deep1b-10M-faiss-emeans-s10-9135c4286f1c.json",
+      "sha256": "536aa7f6c48baf2c9e7eab833bee76e8c0b82099216b2489636e36e056ec0f5e",
+      "dataset": "deep1b-10M",
+      "mode": "faiss-emeans",
+      "seconds": 1316.1188714592718,
+      "test_mse": 0.342148982304257,
+      "fit_footprint_gib": 4.270389586687088,
+      "fit_rss_gib": 4.3201751708984375,
+      "label_sample_agreement": 1.0
+    },
+    {
+      "path": "benchmarks/e_means/results/kmeans_comparison/deep1b-10M-metal-emeans-s10-f8136fe8093f.json",
+      "sha256": "c3b3d64a0d9a090e7b091de3a89cce54fcab8ad4eecbf0421df048c53c13ac9b",
+      "dataset": "deep1b-10M",
+      "mode": "metal-emeans",
+      "seconds": 84.52468991605565,
+      "test_mse": 0.341823326165726,
+      "fit_footprint_gib": 6.814334876835346,
+      "fit_rss_gib": 3.9677886962890625,
+      "label_sample_agreement": 1.0
+    },
+    {
+      "path": "benchmarks/e_means/results/kmeans_comparison/deep1b-10M-metal-kmeans-s10-592e0a950692.json",
+      "sha256": "c74aa41e3e7dd87edd6556187ca50de6299d59c52ed77b0d20d39744d6b46d2f",
+      "dataset": "deep1b-10M",
+      "mode": "metal-kmeans",
+      "seconds": 67.73935058293864,
+      "test_mse": 0.35072239816239165,
+      "fit_footprint_gib": 6.998401626944542,
+      "fit_rss_gib": 3.8113555908203125,
+      "label_sample_agreement": 0.9998
+    },
+    {
+      "path": "benchmarks/e_means/results/kmeans_comparison/deep1b-10M-sklearn-kmeans-s10-af58e876d0a5.json",
+      "sha256": "c0f3a9ef452d59d5c42d617ea2ffc292de3d99bb27ef29e64f8d0529adbd1f6b",
+      "dataset": "deep1b-10M",
+      "mode": "sklearn-kmeans",
+      "seconds": 419.0235663750209,
+      "test_mse": 0.3507206794018157,
+      "fit_footprint_gib": 11.887735106050968,
+      "fit_rss_gib": 11.930145263671875,
+      "label_sample_agreement": 0.9999
+    },
+    {
+      "path": "benchmarks/e_means/results/kmeans_comparison/fb-ssnpp-10M-faiss-emeans-s10-9a2ce0e31135.json",
+      "sha256": "d7e29ba04876624e07a43eaf0be7e3a022f6de800a2d60bd60d3eefd2ea6e7c8",
+      "dataset": "fb-ssnpp-10M",
+      "mode": "faiss-emeans",
+      "seconds": 1493.6768081248738,
+      "test_mse": 109305.72659845056,
+      "fit_footprint_gib": 10.96306723356247,
+      "fit_rss_gib": 11.014755249023438,
+      "label_sample_agreement": 1.0
+    },
+    {
+      "path": "benchmarks/e_means/results/kmeans_comparison/fb-ssnpp-10M-metal-emeans-s10-bbd9c5d8e796.json",
+      "sha256": "c813f938b6a5e1f6808379e5495b043bd409dba5b0bce561099a171421b6e315",
+      "dataset": "fb-ssnpp-10M",
+      "mode": "metal-emeans",
+      "seconds": 156.08886216720566,
+      "test_mse": 109326.02122923867,
+      "fit_footprint_gib": 13.497750081121922,
+      "fit_rss_gib": 10.170211791992188,
+      "label_sample_agreement": 1.0
+    },
+    {
+      "path": "benchmarks/e_means/results/kmeans_comparison/fb-ssnpp-10M-metal-kmeans-s10-39d174e4bf4e.json",
+      "sha256": "1517e8c3f0b0a3d6c9babfb65dc85b5777db658d4a88de927bba7f98bb6e770b",
+      "dataset": "fb-ssnpp-10M",
+      "mode": "metal-kmeans",
+      "seconds": 169.05927608301863,
+      "test_mse": 110979.52534359875,
+      "fit_footprint_gib": 13.453911446034908,
+      "fit_rss_gib": 10.012359619140625,
+      "label_sample_agreement": 0.9994
+    },
+    {
+      "path": "benchmarks/e_means/results/kmeans_comparison/fb-ssnpp-10M-sklearn-kmeans-s10-35e05e5ee663.json",
+      "sha256": "bbd648565865db72ec2178c52672bd61812341032600ec978460c3bd4ef5e579",
+      "dataset": "fb-ssnpp-10M",
+      "mode": "sklearn-kmeans",
+      "seconds": 566.7956234589219,
+      "test_mse": 110980.14467498257,
+      "fit_footprint_gib": 30.198508724570274,
+      "fit_rss_gib": 30.2254638671875,
+      "label_sample_agreement": 0.9994
+    },
+    {
+      "path": "benchmarks/e_means/results/kmeans_comparison/spacev-10M-faiss-emeans-s10-4b6930a65866.json",
+      "sha256": "fa8d1689eba07695f4d863acfd02484be3e8a8e4424b004b189396133e496d95",
+      "dataset": "spacev-10M",
+      "mode": "faiss-emeans",
+      "seconds": 1317.2596747088246,
+      "test_mse": 6385.023368349446,
+      "fit_footprint_gib": 4.512043207883835,
+      "fit_rss_gib": 4.56048583984375,
+      "label_sample_agreement": 1.0
+    },
+    {
+      "path": "benchmarks/e_means/results/kmeans_comparison/spacev-10M-metal-emeans-s10-e33735c80c04.json",
+      "sha256": "8ceac990901f5db2714e657c248bee8da9330a5452f6d9ce49678a6f786cdb32",
+      "dataset": "spacev-10M",
+      "mode": "metal-emeans",
+      "seconds": 91.53412162465975,
+      "test_mse": 6381.190349113009,
+      "fit_footprint_gib": 6.916111022233963,
+      "fit_rss_gib": 4.1743011474609375,
+      "label_sample_agreement": 1.0
+    },
+    {
+      "path": "benchmarks/e_means/results/kmeans_comparison/spacev-10M-metal-kmeans-s10-ba793b268f60.json",
+      "sha256": "b30588b9be98c81c652c646b6976d4f53dc11352220256156427c08c25da439d",
+      "dataset": "spacev-10M",
+      "mode": "metal-kmeans",
+      "seconds": 83.79188095778227,
+      "test_mse": 6680.556575792508,
+      "fit_footprint_gib": 7.288639187812805,
+      "fit_rss_gib": 4.0909423828125,
+      "label_sample_agreement": 1.0
+    },
+    {
+      "path": "benchmarks/e_means/results/kmeans_comparison/spacev-10M-sklearn-kmeans-s10-179c986130d0.json",
+      "sha256": "15294cc045989a7660f691d33431ab0f482fadbda1a3d709c1aef9ddd0eba0eb",
+      "dataset": "spacev-10M",
+      "mode": "sklearn-kmeans",
+      "seconds": 436.8859926247969,
+      "test_mse": 6680.547421069294,
+      "fit_footprint_gib": 12.350458219647408,
+      "fit_rss_gib": 12.3902587890625,
+      "label_sample_agreement": 1.0
+    }
+  ],
+  "artifact_sha256": {
+    "benchmarks/e_means/kmeans_protocol.json": "743d976b3b632dce060d2f5981cba70d61176774e47a2b30cda4d319f7391d70",
+    "benchmarks/e_means/reference/kmeans-comparison-source.json": "7a99f00d848d53cdd32d8194a509757297b47c1f72f3b62ce8ae8cdca3664c8c",
+    "benchmarks/e_means/reference/kmeans-comparison-source.zip": "a0c98fea2653c920eea9290a44885cbdc546fdefbd12f10e0f129506be4e1ea4",
+    "benchmarks/e_means/results/kmeans_comparison/validation.json": "853a3b8b8ba4bd4b7d3fe10f778e5c348ef224ced8210dd484669dd3ffad032e",
+    "benchmarks/e_means/results/kmeans_comparison/summary.csv": "f35bdb23ef5a0e4d86aa0e7dfdf23016dad38c682f40716d8eab689f8a4944eb",
+    "benchmarks/e_means/results/kmeans_comparison/comparisons.csv": "9008749ab6d293e7399a728c510c6cfd867cd4ca876a1fbb7450d26b99423e5a",
+    "docs/k-means-10m-comparison-2026-11-15.md": "6b98ae6bf4e976f386a79a46edefc37886cb11754c18c81c535f10de322e6819",
+    "benchmarks/e_means/kmeans_report.py": "bc0b8a4199265f638bb60a787096bbbadbcc606a4e6c6c154c86e7010ab7d3d8"
+  },
+  "material_issues": []
+}
