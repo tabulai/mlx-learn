@@ -29,7 +29,7 @@ import time
 import traceback
 import zipfile
 from dataclasses import asdict, dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -68,6 +68,34 @@ def manifest(folder):
             for p in sorted(folder.rglob("*")) if p.is_file()}
 
 
+def extract_source_archive(source, destination):
+    """Copy git's source tree without extraction APIs added after Python 3.10.
+
+    Git source snapshots need only directories and regular files. Reject
+    links, special files and paths that escape or traverse existing symlinks;
+    exclusive file creation also prevents overwriting pre-existing hard links.
+    Validate every member before writing any archive content.
+    """
+    root = destination.resolve()
+    entries = []
+    for member in source.getmembers():
+        relative = PurePosixPath(member.name)
+        if (not relative.parts or relative.is_absolute() or ".." in relative.parts
+                or "\\" in member.name or not (member.isdir() or member.isfile())):
+            raise ValueError(f"Unsafe source archive member: {member.name!r}")
+        target = root.joinpath(*relative.parts)
+        if target.resolve() != target or not target.is_relative_to(root):
+            raise ValueError(f"Unsafe source archive path: {member.name!r}")
+        entries.append((member, target))
+    for member, target in entries:
+        if member.isdir():
+            target.mkdir(parents=True, exist_ok=True)
+        else:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with source.extractfile(member) as incoming, target.open("xb") as outgoing:
+                shutil.copyfileobj(incoming, outgoing)
+
+
 def snapshot(root, revision, destination):
     """Freeze Python/kernel source, without borrowing installed extensions."""
     destination.mkdir(parents=True)
@@ -82,7 +110,7 @@ def snapshot(root, revision, destination):
         commit = subprocess.check_output(["git", "-C", str(root), "rev-parse", revision], text=True).strip()
         archive = subprocess.check_output(["git", "-C", str(root), "archive", commit, "src"])
         with tarfile.open(fileobj=io.BytesIO(archive)) as source:
-            source.extractall(destination, filter="data")
+            extract_source_archive(source, destination)
     hashes = manifest(destination)
     return {"revision": revision or "working_tree", "commit": commit,
             "files": hashes, "sha256": digest(json.dumps(hashes, sort_keys=True).encode())}

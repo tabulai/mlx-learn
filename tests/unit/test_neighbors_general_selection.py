@@ -255,6 +255,9 @@ def test_public_query_beyond_mlx_sort_width_is_exact(n_query, k, family, filtere
                                                      monkeypatch):
     # MLX's Metal argsort is wrong on float32 rows of 2**21+ columns, and the
     # public memory plan uses one reference tile this wide for small queries.
+    # Pin the budget so low-memory runners exercise the same query-row count:
+    # splitting 16 rows into blocks below eight changes partial-selection routing.
+    monkeypatch.setattr(distance, "_distance_budget_bytes", lambda backend: 1 << 30)
     monkeypatch.setattr(general, "_gpu_family", lambda: family)
     monkeypatch.setattr(general, "_filtered_select_wins", lambda *shape: filtered)
     n_train = 2**21 + 3

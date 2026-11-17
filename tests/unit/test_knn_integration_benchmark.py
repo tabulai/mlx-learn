@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import argparse
 import copy
+import io
 import json
+import os
 import subprocess
 import sys
+import tarfile
 from types import SimpleNamespace
 
 import numpy as np
@@ -117,6 +120,78 @@ def test_snapshot_freezes_working_edits_and_omits_extensions(tmp_path):
     assert (tmp_path / "current/src/mlxlearn/__init__.py").read_text() == "VERSION = 2\n"
     assert "src/mlxlearn_common/__init__.py" in current["files"]
     assert "src/mlxlearn_common/__init__.py" in previous["files"]
+
+
+def _source_tar(entries):
+    data = io.BytesIO()
+    with tarfile.open(fileobj=data, mode="w") as archive:
+        for name, kind, payload in entries:
+            member = tarfile.TarInfo(name)
+            member.type = kind
+            if kind == tarfile.REGTYPE:
+                member.size = len(payload)
+                archive.addfile(member, io.BytesIO(payload))
+            else:
+                member.linkname = payload
+                archive.addfile(member)
+    data.seek(0)
+    return tarfile.open(fileobj=data)
+
+
+def test_source_archive_copy_does_not_depend_on_tarfile_extraction_filters(tmp_path, monkeypatch):
+    def unsupported(*args, **kwargs):
+        raise AssertionError("tarfile extraction APIs must not be used")
+
+    monkeypatch.setattr(tarfile.TarFile, "extractall", unsupported)
+    monkeypatch.setattr(tarfile.TarFile, "extract", unsupported)
+    with _source_tar([
+        ("src/", tarfile.DIRTYPE, ""),
+        ("src/mlxlearn_common/__init__.py", tarfile.REGTYPE, b"VALUE = 1\n"),
+    ]) as archive:
+        bench.extract_source_archive(archive, tmp_path)
+    assert (tmp_path / "src/mlxlearn_common/__init__.py").read_bytes() == b"VALUE = 1\n"
+
+
+@pytest.mark.parametrize("name,kind,payload", [
+    ("../escape.py", tarfile.REGTYPE, b"bad"),
+    ("/absolute.py", tarfile.REGTYPE, b"bad"),
+    ("src/../../escape.py", tarfile.REGTYPE, b"bad"),
+    ("src\\..\\escape.py", tarfile.REGTYPE, b"bad"),
+    ("src/link", tarfile.SYMTYPE, "../../escape.py"),
+    ("src/link", tarfile.LNKTYPE, "src/safe.py"),
+    ("src/fifo", tarfile.FIFOTYPE, ""),
+    ("src/device", tarfile.CHRTYPE, ""),
+])
+def test_source_archive_rejects_unsafe_members_before_writing(tmp_path, name, kind, payload):
+    with _source_tar([
+        ("src/safe.py", tarfile.REGTYPE, b"safe"),
+        (name, kind, payload),
+    ]) as archive:
+        with pytest.raises(ValueError, match="Unsafe source archive"):
+            bench.extract_source_archive(archive, tmp_path)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_source_archive_rejects_existing_symlink_components(tmp_path):
+    destination, outside = tmp_path / "snapshot", tmp_path / "outside"
+    destination.mkdir()
+    outside.mkdir()
+    (destination / "src").symlink_to(outside, target_is_directory=True)
+    with _source_tar([("src/escape.py", tarfile.REGTYPE, b"bad")]) as archive:
+        with pytest.raises(ValueError, match="Unsafe source archive path"):
+            bench.extract_source_archive(archive, destination)
+    assert list(outside.iterdir()) == []
+
+
+def test_source_archive_cannot_overwrite_an_existing_hardlink(tmp_path):
+    destination, outside = tmp_path / "snapshot", tmp_path / "outside.py"
+    destination.mkdir()
+    outside.write_bytes(b"original")
+    os.link(outside, destination / "source.py")
+    with _source_tar([("source.py", tarfile.REGTYPE, b"replacement")]) as archive:
+        with pytest.raises(FileExistsError):
+            bench.extract_source_archive(archive, destination)
+    assert outside.read_bytes() == b"original"
 
 
 @pytest.mark.parametrize("package", ["mlxlearn_device", "mlxlearn_common"])
