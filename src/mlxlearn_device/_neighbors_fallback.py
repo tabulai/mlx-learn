@@ -19,11 +19,13 @@ exact original-coordinate comparisons, so the result is the same (distance,
 index) ordering bit for bit. A chunk's list holds the chunk's exact top k
 entries, so the union of lists contains the row's top k entries.
 
-Callers whose uncertified rows still carry k exactly sorted real candidates
-(the compact and integer screens) may pass ``bounded=True``. The last
-candidate then bounds the row's k-th distance, and references provably
-farther are skipped before any exact comparison. On data with exact ties
-that skips most comparisons; the result is unchanged.
+Callers whose uncertified rows still carry k distinct real candidates with
+their compensated distances may pass ``bounded=True`` if the last distance
+is the farthest: the compact and integer screens keep their candidates in
+exact order, and the fused screen writes the largest of its k fast distances
+last. The last candidate then bounds the row's k-th distance, and references
+provably farther are skipped before any exact comparison. On data with exact
+ties that skips most comparisons; the result is unchanged.
 """
 
 from functools import lru_cache
@@ -90,11 +92,12 @@ for (int slot = int(lane); slot < k; slot += 32) {
 }
 float worst = INFINITY;
 int worst_index = sentinel;
-// BOUNDED: a valid last candidate is the k-th of k distinct, non-excluded
-// references in exact order, with its compensated distance. The row's true
-// k-th distance is then at most that distance's upper endpoint, and a
-// reference whose lower endpoint exceeds it is strictly farther than k others.
-// Skipping it avoids exact comparisons against tied list entries.
+// BOUNDED: the upper endpoint of a valid last candidate's distance is at
+// least the exact distance of each of k distinct, non-excluded references:
+// it is the k-th of them in exact order, or the largest of their compensated
+// distances. The row's true k-th distance is then at most that endpoint, and
+// a reference whose lower endpoint exceeds it is strictly farther than k
+// others. Skipping it avoids exact comparisons against tied list entries.
 float limit = INFINITY;
 if (BOUNDED) {
     const size_t last = size_t(query) * size_t(k) + size_t(k - 1);
@@ -264,9 +267,11 @@ def partitioned_neighbors(train, queries, k, values, indices, certificate, *,
 
     ``bounded`` promises that, for every uncertified row whose last candidate
     index is a valid reference, its k candidates are distinct non-excluded
-    references in exact order with their compensated FP32 distances. The
-    search then skips references provably farther than that last candidate.
-    The result is unchanged; tied data avoid most exact comparisons.
+    references with their compensated FP32 distances, and the last distance
+    is the farthest: either the k-th in exact order or the largest value.
+    The search then skips references provably farther than that last
+    candidate. The result is unchanged; tied data avoid most exact
+    comparisons.
     """
     rows, features = queries.shape
     n = train.shape[0]

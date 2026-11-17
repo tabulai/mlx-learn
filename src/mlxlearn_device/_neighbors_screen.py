@@ -4,8 +4,10 @@ The scan uses the established FP32 ranking. Its next-omitted distance certifies
 membership, and adjacent output intervals certify order. Only uncertain rows
 execute the exact-comparison fallback: small k <= 8 searches scan each such row
 with its own SIMD group in the finishing dispatch; all others hand them to the
-partitioned search of ``_neighbors_fallback``. No host synchronization is
-required.
+partitioned search of ``_neighbors_fallback``, bounded by the row's fast
+candidates so that references provably beyond its k-th distance skip the
+exact comparisons that exact ties would otherwise require. No host
+synchronization is required.
 """
 
 from functools import lru_cache
@@ -125,9 +127,35 @@ def _finish_kernel():
     )
 
 
+# An uncertain row's first K fast entries are K distinct, non-excluded
+# training rows, as long as every index is real, each with the compensated
+# FP32 distance the exact scans compute. (The paired scan's unguarded
+# compensation differs from the guarded one only after a sum overflows, and
+# both then report +inf.) The largest of those distances therefore has an
+# upper endpoint at least the exact distance of each of the K rows, and so at
+# least the row's true K-th distance. The row's outputs are written with that
+# largest distance last (index -1 unless all K indices are real), as the
+# bounded partitioned search requires; the search recomputes every output.
+# The fast list is sorted by FP32 value, so the largest is normally its last
+# entry; taking the maximum keeps the bound sound without relying on that.
+_UNCERTAIN = """
+    const bool listed = lane < uint(K);
+    const float fast = listed ? fast_distances[size_t(query) * W + lane] : 0.0f;
+    const int fast_index = listed ? fast_indices[size_t(query) * W + lane] : 0;
+    const float largest = metal::simd_max(fast);
+    const bool real = metal::simd_all(!listed || (fast_index >= 0 && fast_index < n_train));
+    if (listed) {
+        const bool last = lane + 1 == uint(K);
+        out_distances[size_t(query) * K + lane] = last ? largest : fast;
+        out_indices[size_t(query) * K + lane] = last && !real ? -1 : fast_index;
+    }
+    if (lane == 0) certified[query] = false;
+"""
+
+
 @lru_cache(maxsize=1)
 def _certify_kernel():
-    """Finish certified rows and flag the rest for the partitioned search."""
+    """Finish certified rows and flag the rest for the bounded partitioned search."""
     source = """
     #pragma clang fp contract(off)
     #pragma clang fp reassociate(off)
@@ -135,9 +163,7 @@ def _certify_kernel():
     const int query = int(thread_position_in_grid.x / 32);
     const int n_train = shape[0];
     if (query >= shape[1]) return; // uniform across this entire SIMDgroup
-""" + _CERTIFY.replace("{certify}", "\n        if (lane == 0) certified[query] = true;") + """
-    if (lane == 0) certified[query] = false;
-"""
+""" + _CERTIFY.replace("{certify}", "\n        if (lane == 0) certified[query] = true;") + _UNCERTAIN
     return mx.fast.metal_kernel(
         name="mlxlearn_screen_certify",
         input_names=["train", "queries", "fast_distances", "fast_indices", "barriers", "shape"],
@@ -187,7 +213,7 @@ def _finish(train, queries, k, values, indices, barriers, *, width, exclude_self
     )
     return partitioned_neighbors(
         train, queries, k, values, indices, certified,
-        exclude_self=exclude_self, query_offset=query_offset,
+        exclude_self=exclude_self, query_offset=query_offset, bounded=True,
     )
 
 
