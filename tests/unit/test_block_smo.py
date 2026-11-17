@@ -89,29 +89,44 @@ def test_budget_counts_pair_updates_and_certifies_returned_state(budget, callbac
         assert state.rho == 0
 
 
-def test_batched_callbacks_own_scratch_and_never_request_more_than_width():
-    y, bounds, diagonal, gram = problem(n=43)
+def test_extra_cache_reuses_rows_without_changing_the_working_set_solution():
+    y, bounds, diagonal, gram = problem(n=71)
     width = 8
     scratch = np.empty((width, len(y)), np.float32)
-    calls = []
-
-    def fetch(indices):
-        assert len(indices) <= width
-        assert len(set(indices)) == len(indices)
-        calls.append(list(indices))
-        scratch[:len(indices)] = gram[indices]
-        return scratch[:len(indices)]
-
     config = SMOConfig(tol=1e-6, max_iter=100000)
-    actual = block_smo.solve_c_svc(y, bounds, diagonal, fetch, config, working_set_size=width)
     expected = block_smo.solve_c_svc(y, bounds, diagonal, None, config, gram=gram, working_set_size=width)
-    assert actual.converged
-    np.testing.assert_array_equal(actual.alpha, expected.alpha)
-    assert actual.rho == expected.rho
-    assert actual.n_iter == expected.n_iter
-    assert any(len(indices) > 1 for indices in calls)
-    # Retained rows reduce the missing-row requests below full working sets.
-    assert any(1 < len(indices) < width for indices in calls)
+    assert expected.converged
+    _, gap = diagnostics(expected, y, bounds, gram)
+    assert gap < config.tol
+
+    def solve_with_retained_rows(capacity):
+        calls = []
+
+        def fetch(indices):
+            assert len(indices) <= width
+            assert len(set(indices)) == len(indices)
+            calls.append(list(indices))
+            # The callback reuses its scratch. The solver must own the rows
+            # if it will read them after a subsequent callback.
+            scratch[:len(indices)] = gram[indices]
+            return scratch[:len(indices)]
+
+        config = SMOConfig(tol=1e-6, max_iter=100000, cache_rows=width + capacity)
+        actual = block_smo.solve_c_svc(y, bounds, diagonal, fetch, config, working_set_size=width)
+        assert actual.converged
+        np.testing.assert_array_equal(actual.alpha, expected.alpha)
+        assert actual.rho == expected.rho
+        assert actual.n_iter == expected.n_iter
+        assert actual.max_kkt_violation == expected.max_kkt_violation
+        assert any(len(batch) > 1 for batch in calls)
+        return [row for batch in calls for row in batch]
+
+    small = solve_with_retained_rows(width)
+    intermediate = solve_with_retained_rows(3 * width)
+    complete = solve_with_retained_rows(len(y))
+    assert set(small) == set(intermediate) == set(complete)
+    assert len(complete) == len(set(complete))
+    assert len(complete) < len(intermediate) < len(small)
 
 
 def test_zero_boxes_are_excluded_from_feasible_directions():
@@ -160,6 +175,15 @@ def test_invalid_config(argument, value):
     args[argument] = value
     with pytest.raises(ValueError):
         native.solve(*args)
+
+
+@pytest.mark.parametrize("capacity", [-1, 3, 12])
+def test_invalid_explicit_cache_capacity(capacity):
+    args = raw_args()  # width 4, 11 samples
+    args[5] = args[4].__getitem__
+    args[4] = None
+    with pytest.raises(ValueError):
+        native.solve(*args, capacity)
 
 
 @pytest.mark.parametrize("argument,value", [(0, 0), (0, np.nan), (1, -1), (1, np.inf), (2, np.nan), (4, np.inf)])
@@ -224,3 +248,32 @@ def test_optional_extension(monkeypatch):
     monkeypatch.setattr(block_smo, "_smo_block_native", None)
     assert not block_smo.available()
     assert block_smo.solve_c_svc(None, None, None, None, SMOConfig()) is None
+
+
+def test_wrapper_can_use_an_older_working_set_extension(monkeypatch):
+    class PreviousExtension:
+        @staticmethod
+        def solve(y, bounds, diag, alpha, gram, fetch, tol, budget, width, tau):
+            return native.solve(y, bounds, diag, alpha, gram, fetch, tol, budget, width, tau)
+
+    y, bounds, diagonal, gram = problem()
+    config = SMOConfig(tol=1e-6, cache_rows=60)
+    monkeypatch.setattr(block_smo, "_smo_block_native", PreviousExtension)
+    result = block_smo.solve_c_svc(y, bounds, diagonal, gram.__getitem__, config, working_set_size=8)
+    assert result.converged
+    _, gap = diagnostics(result, y, bounds, gram)
+    assert gap < config.tol
+
+
+def test_callback_type_error_propagates_without_retry():
+    y, bounds, diagonal, _ = problem()
+    calls = 0
+
+    def fetch(_indices):
+        nonlocal calls
+        calls += 1
+        raise TypeError("kernel callback failed")
+
+    with pytest.raises(TypeError, match="kernel callback failed"):
+        block_smo.solve_c_svc(y, bounds, diagonal, fetch, SMOConfig(), working_set_size=8)
+    assert calls == 1

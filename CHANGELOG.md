@@ -83,6 +83,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- SVC training reuses kernel rows across native working sets when the full
+  Gram matrix exceeds `cache_size`. Each binary subproblem keeps recently
+  requested rows within its existing kernel-row budget after reserving room
+  for the next fetch.
 - Exact kNN candidate selection uses GPU-specific partial-selection regions
   and a chunk-minimum threshold that safely rejects values outside the top-k.
   Uncertified Gram, fused, compact and integer-screen rows use partitioned

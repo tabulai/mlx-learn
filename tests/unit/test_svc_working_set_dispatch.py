@@ -47,6 +47,30 @@ def test_bounded_working_set_batches_rows_without_a_full_gram(monkeypatch, backe
                                atol=3e-3, rtol=3e-3)
 
 
+def test_estimator_reserves_callback_scratch_with_extra_retained_rows(monkeypatch):
+    if not block_smo.available():
+        pytest.skip("native working-set extension not built")
+    x, y = _data()
+    model = SVC(cache_size=0.25)
+    total_rows = model._kernel_cache_rows(len(x))
+    assert total_rows < len(x)  # below the full Gram threshold
+    native_solve = block_smo._smo_block_native.solve
+    observed = []
+
+    def capture(*args):
+        width, retained = args[8], args[10]
+        observed.append((width, retained))
+        return native_solve(*args)
+
+    monkeypatch.setattr(block_smo._smo_block_native, "solve", capture)
+    with tuning_context(force_backend="cpu"):
+        model.fit(x, y)
+    assert model.fit_status_ == 0
+    (width, retained), = observed
+    assert width < retained
+    assert width + retained <= total_rows
+
+
 @pytest.mark.parametrize("shrinking", [False, True])
 def test_missing_block_extension_honors_pairwise_shrinking(monkeypatch, shrinking):
     if not native_smo.available():
