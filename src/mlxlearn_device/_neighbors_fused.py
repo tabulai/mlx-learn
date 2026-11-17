@@ -144,8 +144,13 @@ _VALUE_SCAN = """
     const int begin = int((size_t(part) * size_t(width)) / size_t(parts));
     const int end = int((size_t(part + 1) * size_t(width)) / size_t(parts));
     const int sentinel = 2147483647;
-    float distances[K];
-    int indices[K];
+    // Lists of 17..32 entries would stay in registers, where the dynamically
+    // indexed insertion below compiles to long select chains (K=32 measured
+    // up to 7x slower than K=33 on M4 Max). Padding them past 32 entries
+    // keeps them in thread memory; only the first K entries are used.
+    constexpr int CAPACITY = (K > 16 && K <= 32) ? 33 : K;
+    float distances[CAPACITY];
+    int indices[CAPACITY];
     for (int slot = 0; slot < K; ++slot) {
         distances[slot] = INFINITY;
         indices[slot] = sentinel;
@@ -179,6 +184,54 @@ _VALUE_SCAN = """
             out_indices[size_t(task) * K + slot] = winner_index;
         }
         if (index == winner_index && cursor < K) ++cursor;
+    }
+"""
+
+_SCAN_LOOP = """    for (int col = begin + int(lane); col < end; col += 32) {
+        float distance = values[size_t(row) * width + col];
+        // Overflow in a Gram tile may produce NaN. Keep a real candidate
+        // index so the caller can recompute that candidate's direct distance.
+        if (metal::isnan(distance)) distance = INFINITY;
+"""
+
+# Filtered selection: ``limit`` bounds the row's k-th smallest value, so larger
+# values cannot be selected. Values below ``limit`` lie in fewer than k chunks
+# of the minima pass. Partition ``part`` owns the 32-column groups part,
+# part + parts, ...; with 4+ partitions a lane holds at most one column of
+# each 128-column chunk, so it inserts fewer than k such values in any column
+# order (values equal to ``limit`` insert only while its list has room).
+# Contiguous ranges would leave every such value to one partition when
+# columns arrive in descending order.
+_FILTERED_VALUE_SCAN = _VALUE_SCAN.replace(_SCAN_LOOP, """    const float limit = threshold[row];
+    for (int col = part * 32 + int(lane); col < width; col += 32 * parts) {
+        float distance = values[size_t(row) * width + col];
+        if (metal::isnan(distance)) distance = INFINITY;
+        if (distance > limit) continue;
+""")
+
+_CHUNK_MINIMA = """
+    const uint lane = thread_index_in_simdgroup;
+    const uint task = thread_position_in_grid.x / 32;
+    const int width = shape[0];
+    const int rows = shape[1];
+    const int chunks = shape[2];
+    const int chunk = shape[3];
+    const int groups = (chunks + GROUP_CHUNKS - 1) / GROUP_CHUNKS;
+    const int row = int(task / uint(groups));
+    if (row >= rows) return;
+    const int first = int(task % uint(groups)) * GROUP_CHUNKS;
+    const int last = min(first + GROUP_CHUNKS, chunks);
+    for (int item = first; item < last; ++item) {
+        const int begin = item * chunk;
+        const int end = min(begin + chunk, width);
+        float lowest = INFINITY;
+        for (int col = begin + int(lane); col < end; col += 32) {
+            // NaN counts as +inf, as in the selection scan.
+            const float value = values[size_t(row) * width + col];
+            lowest = metal::isnan(value) ? lowest : metal::min(lowest, value);
+        }
+        lowest = metal::simd_min(lowest);
+        if (lane == 0) out_minima[size_t(row) * chunks + item] = lowest;
     }
 """
 
@@ -250,6 +303,29 @@ def _value_kernel():
         output_names=["out_distances", "out_indices"],
         source=_VALUE_SCAN,
         header=_HEADER,
+    )
+
+
+@lru_cache(maxsize=1)
+def _filtered_value_kernel():
+    if _FILTERED_VALUE_SCAN == _VALUE_SCAN:  # pragma: no cover - source drift guard
+        raise RuntimeError("filtered selection scan no longer matches the value scan source")
+    return mx.fast.metal_kernel(
+        name="mlxlearn_neighbor_filtered_value_select",
+        input_names=["values", "threshold", "shape"],
+        output_names=["out_distances", "out_indices"],
+        source=_FILTERED_VALUE_SCAN,
+        header=_HEADER,
+    )
+
+
+@lru_cache(maxsize=1)
+def _chunk_minima_kernel():
+    return mx.fast.metal_kernel(
+        name="mlxlearn_neighbor_chunk_minima",
+        input_names=["values", "shape"],
+        output_names=["out_minima"],
+        source=_CHUNK_MINIMA,
     )
 
 
@@ -329,12 +405,59 @@ def fused_neighbors(
     )
 
 
-def select_topk(values: mx.array, k: int, *, offset: int = 0) -> tuple[mx.array, mx.array]:
+#: Filtered selection: columns per chunk minimum, the most chunks per row (the
+#: limit sorts one row of chunk minima), chunks reduced per SIMD group, and the
+#: SIMD-group count its partitions target.
+_FILTER_CHUNK = 128
+_FILTER_MAX_CHUNKS = 2**16
+_FILTER_GROUP_CHUNKS = 8
+_FILTER_GROUPS = 2048
+
+
+def _filtered_partitions(rows: int, width: int) -> int:
+    return min(32, max(1, width // 512), max(1, (_FILTER_GROUPS + rows - 1) // rows))
+
+
+def _selection_limit(values: mx.array, k: int) -> mx.array | None:
+    """Return a value per row with at least ``k`` row entries at or below it.
+
+    The chunks are disjoint, so their minima are distinct entries and the k-th
+    smallest minimum has at least k entries at or below it; no larger entry
+    can be among the row's k smallest. NaN counts as +inf, as in selection.
+    Returns None when a row has fewer than ``k`` chunks.
+    """
+    rows, width = values.shape
+    chunk = max(_FILTER_CHUNK, 32 * -(-width // (32 * _FILTER_MAX_CHUNKS)))
+    chunks = -(-width // chunk)
+    if chunks < k:
+        return None
+    groups = rows * -(-chunks // _FILTER_GROUP_CHUNKS)
+    (minima,) = _chunk_minima_kernel()(
+        inputs=[values, mx.array([width, rows, chunks, chunk], mx.int32)],
+        template=[("GROUP_CHUNKS", _FILTER_GROUP_CHUNKS)],
+        grid=(((groups * 32 + 127) // 128) * 128, 1, 1),
+        threadgroup=(128, 1, 1),
+        output_shapes=[(rows, chunks)],
+        output_dtypes=[mx.float32],
+        stream=mx.gpu,
+    )
+    # At most 2**16 columns: well inside MLX's correct sort widths.
+    return mx.sort(minima, axis=1)[:, k - 1]
+
+
+def select_topk(
+    values: mx.array, k: int, *, offset: int = 0, filtered: bool = False,
+) -> tuple[mx.array, mx.array]:
     """Select sorted row minima without a full-shaped sort-index allocation.
 
     ``values`` is a float32 matrix; ``1 <= k <= 128``. Returned global column
     indices include ``offset`` and break equal-value ties. NaN entries are
     treated as positive infinity. Both result arrays remain on the GPU.
+
+    ``filtered`` first bounds each row's k-th smallest value with chunk minima
+    and skips every larger value, which keeps the scan's per-lane insertions
+    near k in any column order (descending columns otherwise insert every
+    value). It costs an extra pass over ``values``; results are identical.
     """
     if not isinstance(values, mx.array) or values.dtype != mx.float32:
         raise TypeError("values must be a float32 MLX array")
@@ -353,10 +476,16 @@ def select_topk(values: mx.array, k: int, *, offset: int = 0) -> tuple[mx.array,
     rows, width = values.shape
     if rows == 0:
         return mx.zeros((0, k), mx.float32), mx.zeros((0, k), mx.int32)
-    parts = _partitions(rows, width)
+    limit = _selection_limit(values, k) if filtered else None
+    if limit is None:
+        parts = _partitions(rows, width)
+        kernel, inputs = _value_kernel(), [values]
+    else:
+        parts = _filtered_partitions(rows, width)
+        kernel, inputs = _filtered_value_kernel(), [values, limit]
     task_count = rows * parts
-    partial_values, partial_indices = _value_kernel()(
-        inputs=[values, mx.array([width, rows, parts, offset], mx.int32)],
+    partial_values, partial_indices = kernel(
+        inputs=inputs + [mx.array([width, rows, parts, offset], mx.int32)],
         template=[("K", int(k))],
         grid=(((task_count * 32 + 127) // 128) * 128, 1, 1),
         threadgroup=(128, 1, 1),
@@ -646,62 +775,25 @@ def precise_select_candidates(train, queries, indices, k, values=None):
     ))
 
 
-_EXHAUSTIVE_LARGE_K = r"""
-#pragma clang fp contract(off)
-#pragma clang fp reassociate(off)
-const int query = int(thread_position_in_grid.x);
-if (query >= shape[1]) return;
-const int n = shape[0], k = shape[2];
-const size_t base = size_t(query) * k;
-const int sentinel = 2147483647;
-for (int slot = 0; slot < k; ++slot) {
-    out_distances[base + slot] = INFINITY;
-    out_indices[base + slot] = sentinel;
-}
-for (int reference = 0; reference < n; ++reference) {
-    if (EXCLUDE_SELF && reference == query + shape[3]) continue;
-    float distance = 0.0f, correction = 0.0f;
-    for (int feature = 0; feature < D; ++feature) {
-        const float delta = queries[size_t(query) * D + feature]
-                          - train[size_t(reference) * D + feature];
-        const float adjusted = delta * delta - correction;
-        const float total = distance + adjusted;
-        correction = metal::isfinite(total) ? (total - distance) - adjusted : 0.0f;
-        distance = total;
-    }
-    if (!precise_neighbor_precedes<D>(distance, reference,
-            out_distances[base + k - 1], out_indices[base + k - 1], train, queries, query, n)) continue;
-    int slot = k - 1;
-    while (slot > 0 && precise_neighbor_precedes<D>(distance, reference,
-            out_distances[base + slot - 1], out_indices[base + slot - 1], train, queries, query, n)) {
-        out_distances[base + slot] = out_distances[base + slot - 1];
-        out_indices[base + slot] = out_indices[base + slot - 1];
-        --slot;
-    }
-    out_distances[base + slot] = distance;
-    out_indices[base + slot] = reference;
-}
-"""
+#: For k <= 8 the single-dispatch kernel below scans each uncertified row with
+#: one SIMD group. On M4 Max one failing row cost about 1 ms once
+#: n_train * features reached 2**20, 4 ms at 65536 x 64 and 142 ms at
+#: 131072 x 1024. The partitioned fallback costs a fixed 10-30 us per block
+#: more when every row is certified (two more dispatches): 1-6% of a query
+#: at that size, against 4-12% for the smallest general-path queries.
+_PARTITIONED_SMALL_K_WORK = 2**20
 
 
-@lru_cache(maxsize=2)
-def _certified_kernel(large_k):
-    if large_k:
-        source = _EXHAUSTIVE_LARGE_K.replace(
-            "const int n = shape[0], k = shape[2];",
-            """const int n = shape[0], k = shape[2];
-if (certified[query]) {
-    for (int slot = 0; slot < k; ++slot) {
-        out_distances[size_t(query) * k + slot] = candidate_distances[size_t(query) * k + slot];
-        out_indices[size_t(query) * k + slot] = candidate_indices[size_t(query) * k + slot];
-    }
-    return;
-}""",
-        )
-    else:
-        source = _SCAN.replace(
-            "const int part = int(task % uint(parts));",
-            """if (certified[query]) {
+def _use_partitioned_fallback(n_train, features, k):
+    """Choose the partitioned fallback; k > 8 had one GPU thread per row."""
+    return k > 8 or n_train * features >= _PARTITIONED_SMALL_K_WORK
+
+
+@lru_cache(maxsize=1)
+def _certified_kernel():
+    source = _SCAN.replace(
+        "const int part = int(task % uint(parts));",
+        """if (certified[query]) {
         if (lane < uint(K)) {
             out_distances[size_t(query) * K + lane] = candidate_distances[size_t(query) * K + lane];
             out_indices[size_t(query) * K + lane] = candidate_indices[size_t(query) * K + lane];
@@ -709,9 +801,9 @@ if (certified[query]) {
         return;
     }
     const int part = int(task % uint(parts));""",
-        )
+    )
     return mx.fast.metal_kernel(
-        name=f"mlxlearn_certified_general_finish_{int(large_k)}",
+        name="mlxlearn_certified_general_finish_0",
         input_names=["train", "queries", "candidate_distances", "candidate_indices", "certified", "shape"],
         output_names=["out_distances", "out_indices"], source=source,
         header=_HEADER + PRECISION_HEADER,
@@ -720,16 +812,23 @@ if (certified[query]) {
 
 def certified_neighbors(train, queries, k, values, indices, certificate, *,
                         exclude_self=False, query_offset=0):
-    """Keep certified rows and scan every original reference for the rest."""
+    """Keep certified rows and search every original reference for the rest.
+
+    The result equals the exact (distance, index) order for every row; only
+    the uncertified rows are recomputed, from the original coordinates.
+    """
     rows, features = queries.shape
-    large = k > 8
-    shape = ([train.shape[0], rows, k, query_offset] if large
-             else [train.shape[0], rows, features, 1, query_offset])
-    threads = rows if large else rows * 32
-    return tuple(_certified_kernel(large)(
-        inputs=[train, queries, values, indices, certificate, mx.array(shape, mx.int32)],
-        template=([("K", int(k))] if not large else [])
-                 + [("D", features), ("EXCLUDE_SELF", bool(exclude_self))],
-        grid=(((threads + 127) // 128) * 128, 1, 1), threadgroup=(128, 1, 1),
+    if _use_partitioned_fallback(train.shape[0], features, k):
+        from ._neighbors_fallback import partitioned_neighbors
+
+        return partitioned_neighbors(
+            train, queries, k, values, indices, certificate,
+            exclude_self=exclude_self, query_offset=query_offset,
+        )
+    return tuple(_certified_kernel()(
+        inputs=[train, queries, values, indices, certificate,
+                mx.array([train.shape[0], rows, features, 1, query_offset], mx.int32)],
+        template=[("K", int(k)), ("D", features), ("EXCLUDE_SELF", bool(exclude_self))],
+        grid=(((rows * 32 + 127) // 128) * 128, 1, 1), threadgroup=(128, 1, 1),
         output_shapes=[(rows, k)] * 2, output_dtypes=[mx.float32, mx.int32], stream=mx.gpu,
     ))

@@ -58,6 +58,8 @@ from dataclasses import dataclass, replace
 import mlx.core as mx
 import numpy as np
 
+from mlxlearn_device._binary32 import matmul
+
 from .._common.arrays import NUMPY_FLOAT
 from .._common.device import use_device
 from .fused_lbfgs import _convergence_gradient_max, minimize
@@ -242,7 +244,7 @@ def _multinomial_arrays(
 ):
     n_features = X.shape[1]
     W = theta[:, :n_features]
-    raw = X @ W.T
+    raw = matmul(X, W, transpose_b=True)
     if fit_intercept:
         raw = raw + theta[:, n_features]
 
@@ -257,7 +259,7 @@ def _multinomial_arrays(
         loss = loss * sw
         residual = residual * mx.reshape(sw, (-1, 1))
 
-    grad = (residual.T @ X) / sw_sum
+    grad = matmul(residual, X, transpose_a=True) / sw_sum
     if penalized:
         grad = grad + l2 * W
     if fit_intercept:
@@ -484,7 +486,7 @@ def _multinomial_bias_statistics(linear, bias, y_onehot, sw):
         residual = residual * sw.reshape(-1, 1)
         weighted_probabilities = probabilities * sw.reshape(-1, 1)
     sums = mx.sum(weighted_probabilities, axis=0)
-    hessian = mx.diag(sums) - probabilities.T @ weighted_probabilities
+    hessian = mx.diag(sums) - matmul(probabilities, weighted_probabilities, transpose_a=True)
     return _blocked_rows_sum(mx, residual), hessian
 
 
@@ -517,7 +519,7 @@ def _polish_multinomial_intercepts(X, y_index, y_onehot, sw, sw_sum, center, con
     ):
         return state
 
-    linear = X @ state.x[:, :-1].T
+    linear = matmul(X, state.x[:, :-1], transpose_b=True)
     mx.eval(linear)
     n_fev = state.n_fev
     for _ in range(min(4, config.max_iter - state.n_iter)):

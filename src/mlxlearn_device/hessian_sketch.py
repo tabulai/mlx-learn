@@ -12,6 +12,9 @@ import math
 
 import mlx.core as mx
 
+# Absolute, so the module still loads by path outside its package.
+from mlxlearn_device._binary32 import matmul
+
 __all__ = ["build_sketch_history", "initial_metric_from_parts"]
 
 
@@ -97,7 +100,7 @@ def build_sketch_history(
     # Scaling by sqrt(n) before the multiplication limits accumulation range;
     # a nonfinite result is rejected below rather than stored in the history.
     probes = probes / math.sqrt(n)
-    features = X.T @ probes
+    features = matmul(X, probes, transpose_a=True)
     # Normalize each projected probe before the Hessian products. A max-norm
     # pass avoids overflowing a squared norm for large, but finite, columns.
     maximum = mx.max(mx.abs(features), axis=0)
@@ -107,11 +110,11 @@ def build_sketch_history(
     valid_length = finite_scale & mx.isfinite(length) & (length > 0)
     features = scaled / mx.where(valid_length, length, 1.0)
 
-    projection = X @ features
+    projection = matmul(X, features)
     weighted = projection * (0.25 / float(sw_sum))
     if sample_weight is not None:
         weighted = weighted * sample_weight[:, None]
-    y_features = X.T @ weighted + float(l2) * features
+    y_features = matmul(X, weighted, transpose_a=True) + float(l2) * features
     if fit_intercept:
         s = mx.concatenate([features.T, mx.zeros((k, 1), dtype=mx.float32)], axis=1)
         bias_y = mx.sum(weighted, axis=0)

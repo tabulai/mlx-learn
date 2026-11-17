@@ -107,6 +107,8 @@ class PreparedKernel:
         """Evaluate ``K(A, prepared_supports) @ weights - bias`` in bounded tiles."""
         import mlx.core as mx
 
+        from mlxlearn_device._binary32 import matmul
+
         from .kernels import _block_rows, _device, _prepare, _transform
 
         query = _prepare(A)
@@ -136,8 +138,8 @@ class PreparedKernel:
                 if self._center_device is not None:
                     block = block - self._center_device
                 norms = mx.sum(block * block, axis=1) if self._norms is not None else None
-                tile = _transform(mx, self.spec, block @ self._right_t, norms,
-                                  self._norms, backend=self.backend)
+                tile = _transform(mx, self.spec, matmul(block, self._right, transpose_b=True),
+                                  norms, self._norms, backend=self.backend)
                 mx.eval(tile)
                 host_tile = np.asarray(tile)
                 native = svc_cpu.contract(host_tile, weights, bias)

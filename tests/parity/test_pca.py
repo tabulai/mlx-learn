@@ -137,6 +137,134 @@ def test_pca_wide_matrix_parity():
         )
 
 
+@pytest.mark.parametrize("seed", [11, 20, 29, 34])
+def test_pca_wide_full_components_orthonormal(seed):
+    # Before row re-orthonormalization these seeds reached 2.0e-5 .. 2.4e-5: the head
+    # rows came from float32 dual-Gram eigenvectors, orthogonal only to about
+    # eps * s_0**2 / (s_i * s_j).
+    X = _make_well_conditioned(128, 512, seed=seed)
+    with tuning_context(force_backend="mlx"):
+        model = PCA(svd_solver="full").fit(X)
+    assert model.execution_backend_ == "mlx"
+    C = model.components_
+    np.testing.assert_allclose(C @ C.T, np.eye(C.shape[0]), rtol=0, atol=1e-6)
+
+
+def test_pca_wide_full_tail_components_orthonormal():
+    # A spectrum down to 1e-4 * s_0 sends the trailing rows through the deflated tail
+    # SVD, which runs in single precision and left them orthogonal to only ~1e-6.
+    rng = np.random.default_rng(0)
+    U, _ = np.linalg.qr(rng.standard_normal((300, 300)))
+    V, _ = np.linalg.qr(rng.standard_normal((900, 300)))
+    X = (U * np.geomspace(1.0, 1e-4, 300)) @ V.T
+    with tuning_context(force_backend="mlx"):
+        model = PCA(svd_solver="full").fit(X)
+    assert model.execution_backend_ == "mlx"
+    C = model.components_
+    np.testing.assert_allclose(C @ C.T, np.eye(C.shape[0]), rtol=0, atol=1e-6)
+    reference = SkPCA(svd_solver="full").fit(X)
+    np.testing.assert_allclose(
+        model.singular_values_[:-1], reference.singular_values_[:-1], rtol=1e-4
+    )
+
+
+def test_pca_wide_full_single_head_component():
+    # One dominant direction leaves a one-column head of the column-major eigh
+    # output. Read in descending order, that column was a negative-stride view that
+    # NumPy still calls contiguous, and MLX refused to import it.
+    rng = np.random.default_rng(0)
+    X = 10.0 * np.outer(rng.standard_normal(8), rng.standard_normal(4096))
+    X += 0.01 * rng.standard_normal((8, 4096))
+    reference = SkPCA(svd_solver="full").fit(X)
+    with tuning_context(force_backend="mlx"):
+        model = PCA(svd_solver="full").fit(X)
+    assert model.execution_backend_ == "mlx"
+    C = model.components_
+    np.testing.assert_allclose(C @ C.T, np.eye(C.shape[0]), rtol=0, atol=1e-6)
+    np.testing.assert_allclose(C[0], reference.components_[0], rtol=0, atol=1e-6)
+    np.testing.assert_allclose(model.singular_values_[0], reference.singular_values_[0], rtol=1e-6)
+
+
+def _wide_below_old_rank_tolerance(kind: str) -> np.ndarray:
+    rng = np.random.default_rng(0)
+    if kind == "geometric":
+        n_samples, n_features = 64, 2048
+        G = rng.standard_normal((n_samples, n_samples - 1))
+        U, _ = np.linalg.qr(G - G.mean(axis=0))
+        V, _ = np.linalg.qr(rng.standard_normal((n_features, n_samples - 1)))
+        return (U * np.geomspace(1.0, 1e-4, n_samples - 1)) @ V.T
+    X = 10.0 * np.outer(rng.standard_normal(8), rng.standard_normal(4096))
+    return X + 0.005 * rng.standard_normal((8, 4096))
+
+
+@pytest.mark.parametrize("kind", ["geometric", "rank_one_plus_noise"])
+def test_pca_wide_full_keeps_tail_components_below_old_rank_tolerance(kind):
+    # The wide path replaced every component whose singular value fell below
+    # s_0 * max(n, d) * 1e-7 with basis vectors orthogonalized against the rest, while
+    # still reporting the tail SVD's singular values for them. Those rows were
+    # unrelated to scikit-learn's (sin = 1.0) and their whitened scores had standard
+    # deviations of 0.02-0.07 instead of 1. The tail SVD's own rows are kept now.
+    X = _wide_below_old_rank_tolerance(kind)
+    reference = SkPCA(svd_solver="full").fit(X)
+    s = reference.singular_values_
+    assert np.sum(s[:-1] < s[0] * max(X.shape) * 1e-7) >= 5
+    with tuning_context(force_backend="mlx"):
+        model = PCA(svd_solver="full").fit(X)
+        Z = PCA(svd_solver="full", whiten=True).fit_transform(X)
+    assert model.execution_backend_ == "mlx"
+    C = model.components_
+    np.testing.assert_allclose(C @ C.T, np.eye(C.shape[0]), rtol=0, atol=1e-6)
+    # The last row belongs to the structurally zero singular value of centered data.
+    cos = np.abs(np.sum(C * reference.components_, axis=1))[:-1]
+    np.testing.assert_array_less(np.sqrt(np.clip(1.0 - cos**2, 0.0, None)), 1e-3)
+    np.testing.assert_allclose(model.singular_values_[:-1], s[:-1], rtol=1e-4)
+    np.testing.assert_allclose(Z.std(axis=0, ddof=1)[:-1], 1.0, rtol=0, atol=1e-4)
+
+
+def test_to_mlx_f32_copies_negative_stride_views():
+    import mlx.core as mx
+
+    from mlxlearn._solvers.pca import to_mlx_f32
+
+    _, vectors = mx.linalg.eigh(mx.eye(4) + mx.ones((4, 4)), stream=mx.cpu)
+    descending = np.asarray(vectors)[:, ::-1]
+    column = descending[:, :1]
+    np.testing.assert_array_equal(np.asarray(to_mlx_f32(column)), column)
+    reversed_row = np.arange(6, dtype=np.float32)[::-1][None, :]
+    np.testing.assert_array_equal(np.asarray(to_mlx_f32(reversed_row)), reversed_row)
+
+
+def test_orthonormalize_rows_sweeps_in_row_order():
+    import mlx.core as mx
+
+    from mlxlearn._solvers.pca import _orthonormalize_rows
+
+    rng = np.random.default_rng(3)
+    Q, _ = np.linalg.qr(rng.standard_normal((1024, 64)))
+    V = (Q.T + 3e-5 * rng.standard_normal((64, 1024))).astype(np.float32)
+    out = np.asarray(_orthonormalize_rows(mx.array(V)), dtype=np.float64)
+
+    np.testing.assert_allclose(out @ out.T, np.eye(64), rtol=0, atol=1e-6)
+    # Gram-Schmidt order: the leading row is only normalized, and every row stays
+    # in the span of the rows before it.
+    V64 = V.astype(np.float64)
+    np.testing.assert_allclose(out[0], V64[0] / np.linalg.norm(V64[0]), rtol=0, atol=1e-7)
+    coefficients = out @ np.linalg.pinv(V64)
+    np.testing.assert_allclose(np.triu(coefficients, 1), 0.0, rtol=0, atol=1e-5)
+
+
+def test_orthonormalize_rows_normalizes_rank_deficient_rows():
+    import mlx.core as mx
+
+    from mlxlearn._solvers.pca import _orthonormalize_rows
+
+    row = np.random.default_rng(4).standard_normal(256)
+    V = np.stack([3.0 * row, -2.0 * row]).astype(np.float32)
+    out = np.asarray(_orthonormalize_rows(mx.array(V)), dtype=np.float64)
+    expected = row / np.linalg.norm(row)
+    np.testing.assert_allclose(out, np.stack([expected, -expected]), rtol=0, atol=1e-6)
+
+
 def test_pca_shifted_data_numerical_stability():
     """Large constant offset (1e4) must not degrade float32 mean or variance accuracy."""
     X = _make_well_conditioned(2048, 32, seed=23, shift=1e4)

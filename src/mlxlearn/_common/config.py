@@ -24,6 +24,8 @@ from contextlib import contextmanager
 from dataclasses import dataclass, fields, replace
 from typing import Any, Literal, get_args
 
+from mlxlearn_common._neighbors_plan import DEFAULTS as _NEIGHBOR_DEFAULTS
+
 __all__ = [
     "Config",
     "Tuning",
@@ -176,12 +178,12 @@ class Tuning:
     pca_randomized_min_work: int = 8_000_000  # n_samples * n_features
 
     # ---- blocking ---------------------------------------------------------------------
-    distance_block_bytes: int = 256 * 1024 * 1024
-    distance_block_bytes_max: int = 1024 * 1024 * 1024
-    query_block_rows: int = 1024
-    query_block_align: int = 128
-    cpu_distance_block_bytes: int = 128 * 1024 * 1024
-    cpu_query_block_rows: int = 256
+    distance_block_bytes: int = _NEIGHBOR_DEFAULTS.distance_block_bytes
+    distance_block_bytes_max: int = _NEIGHBOR_DEFAULTS.distance_block_bytes_max
+    query_block_rows: int = _NEIGHBOR_DEFAULTS.query_block_rows
+    query_block_align: int = _NEIGHBOR_DEFAULTS.query_block_align
+    cpu_distance_block_bytes: int = _NEIGHBOR_DEFAULTS.cpu_distance_block_bytes
+    cpu_query_block_rows: int = _NEIGHBOR_DEFAULTS.cpu_query_block_rows
 
     # ---- solvers ----------------------------------------------------------------------
     lbfgs_history: int = 10

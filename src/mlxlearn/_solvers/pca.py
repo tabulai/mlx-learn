@@ -17,6 +17,8 @@ import numpy as np
 import scipy.linalg
 import scipy.sparse.linalg
 
+from mlxlearn_device._binary32 import addmm, matmul
+
 from .._common.arrays import to_numpy
 from .._common.preparation import cast_float32_checked
 from .._kernels.pca_input import pca_stats, prepare_pca_centered
@@ -30,7 +32,13 @@ def ensure_f32_2d(array: np.ndarray) -> np.ndarray:
 
 
 def to_mlx_f32(array: np.ndarray) -> mx.array:
-    return mx.array(np.asarray(array, dtype=np.float32, order="C"))
+    host = np.asarray(array, dtype=np.float32, order="C")
+    # NumPy ignores the stride of a length-1 axis when it checks contiguity, so a
+    # single reversed column (one eigenvector of column-major eigh output, read in
+    # descending order) comes back as a view with a negative stride. MLX rejects it.
+    if any(stride < 0 for stride in host.strides):
+        host = host.copy()
+    return mx.array(host)
 
 
 def borrow_mlx_f32(c_f32_array: np.ndarray) -> mx.array:
@@ -252,7 +260,7 @@ def _transform_from_centered(
             scale = np.where(scale < min_scale, min_scale, scale)
             V_T = (V_T / scale.astype(np.float32)).astype(np.float32, copy=False)
         V_mx = to_mlx_f32(V_T)
-        Z_mx = X_c_mx @ V_mx
+        Z_mx = matmul(X_c_mx, V_mx)
         mx.eval(Z_mx)
         return to_numpy(Z_mx).astype(out_dtype, copy=False)
 
@@ -440,6 +448,43 @@ def _solve_cpu_full_or_eigh(
     )
 
 
+def _orthonormalize_rows(V_mx: mx.array) -> mx.array:
+    """Make the rows of a nearly orthonormal float32 block orthonormal, on the GPU.
+
+    One Cholesky QR in row order: with ``V @ V.T = L @ L.T``, the rows of
+    ``inv(L) @ V`` are orthonormal, and row ``i`` mixes in only rows ``0 .. i``, so
+    this is a Gram-Schmidt sweep from the leading row down. When the rows are
+    singular vectors in descending order, that is also the more accurate
+    direction to correct: the error of a pair sits mostly in the vector with the
+    smaller singular value.
+
+    The ``k x k`` Gram matrix comes from one float32 GEMM, whose rounding is small
+    on the small off-diagonal entries; its diagonal is replaced by row sums of
+    squares, which a reduction rounds less than a length-``n_features`` GEMM
+    accumulation. The factorization and the triangular inverse run on the host
+    in float64. The update is applied as ``V + (inv(L) - I) @ V``: the correction
+    matrix is small, so the GEMM rounds only the correction, not the rows.
+
+    The block must have full row rank. If the factorization still fails, which
+    takes non-finite or degenerate rows, the rows are only normalized.
+    """
+    sq_mx = mx.sum(V_mx * V_mx, axis=1)
+    G_mx = matmul(V_mx, V_mx, transpose_b=True)
+    mx.eval(sq_mx, G_mx)
+    # LAPACK reads one triangle of the symmetric matrix. The transpose is a
+    # Fortran-ordered view of the same buffer, so it reaches LAPACK uncopied.
+    A = to_numpy(G_mx).astype(np.float64).T
+    np.fill_diagonal(A, to_numpy(sq_mx))
+    R, info = scipy.linalg.lapack.dpotrf(A, lower=0, clean=1, overwrite_a=1)
+    if info == 0:
+        R_inv, info = scipy.linalg.lapack.dtrtri(R, lower=0, overwrite_c=1)
+    if info != 0:
+        return V_mx * mx.rsqrt(mx.maximum(sq_mx[:, None], 1e-30))
+    # A = R.T @ R with R = L.T, so inv(L) = inv(R).T.
+    R_inv[np.diag_indices_from(R_inv)] -= 1.0
+    return addmm(V_mx, to_mlx_f32(R_inv.T), V_mx)
+
+
 def _solve_gpu_full_or_eigh(
     X_mx: mx.array,
     mean_mx: mx.array,
@@ -462,12 +507,13 @@ def _solve_gpu_full_or_eigh(
     # directly without allocating or writing an n x d centered copy X_c.
     if fit_svd_solver == "covariance_eigh" and bool(np.all(mean_ss <= 10.0 * col_ss)):
         X_c_mx: mx.array | None = None
-        G_mx = mx.addmm(
-            mean_mx[:, None] @ mean_mx[None, :],
-            X_mx.T,
+        G_mx = addmm(
+            matmul(mean_mx[:, None], mean_mx[None, :]),
+            X_mx,
             X_mx,
             alpha=1.0,
             beta=-float(n_samples),
+            transpose_a=True,
         )
     else:
         X_c_mx = prepare_pca_centered(X_mx, mean_mx)
@@ -475,7 +521,7 @@ def _solve_gpu_full_or_eigh(
     if fit_svd_solver == "covariance_eigh" or n_samples >= n_features:
         # Primal Gram matrix G = X_c.T @ X_c of shape (n_features, n_features) on GPU.
         if X_c_mx is not None:
-            G_mx = X_c_mx.T @ X_c_mx
+            G_mx = matmul(X_c_mx, X_c_mx, transpose_a=True)
         w_mx, V_mx = mx.linalg.eigh(G_mx, stream=mx.cpu)
         mx.eval(w_mx, V_mx)
 
@@ -513,11 +559,13 @@ def _solve_gpu_full_or_eigh(
             idx = int(np.searchsorted(-w_desc[:max_rank], -1e-3 * w_desc[0], side="right"))
             if idx < max_rank:
                 V_full_mx = to_mlx_f32(V_desc[:, :max_rank])
-                Y_mx = X_c_mx @ V_full_mx
+                Y_mx = matmul(X_c_mx, V_full_mx)
                 if idx > 0:
                     inv_s_head = to_mlx_f32((1.0 / S[:idx]).astype(np.float32))
                     U_head_mx = Y_mx[:, :idx] * inv_s_head
-                    Y_tail_mx = Y_mx[:, idx:] - U_head_mx @ (U_head_mx.T @ Y_mx[:, idx:])
+                    Y_tail_mx = Y_mx[:, idx:] - matmul(
+                        U_head_mx, matmul(U_head_mx, Y_mx[:, idx:], transpose_a=True)
+                    )
                 else:
                     Y_tail_mx = Y_mx
                 mx.eval(Y_tail_mx)
@@ -542,7 +590,7 @@ def _solve_gpu_full_or_eigh(
     else:
         # Wide matrix (n_samples < n_features) with fit_svd_solver == "full":
         # Dual Gram matrix G_dual = X_c @ X_c.T of shape (n_samples, n_samples) on GPU.
-        G_dual_mx = X_c_mx @ X_c_mx.T
+        G_dual_mx = matmul(X_c_mx, X_c_mx, transpose_b=True)
         w_mx, U_mx = mx.linalg.eigh(G_dual_mx, stream=mx.cpu)
         mx.eval(w_mx, U_mx)
 
@@ -563,27 +611,50 @@ def _solve_gpu_full_or_eigh(
         if idx > 0:
             U_head_mx = to_mlx_f32(U_desc[:, :idx])
             inv_s_mx = to_mlx_f32((1.0 / S[:idx]).astype(np.float32))
-            Vt_head_mx = (U_head_mx.T @ X_c_mx) * inv_s_mx[:, None]
-            Vt_head_mx = Vt_head_mx * mx.rsqrt(
-                mx.maximum(mx.sum(Vt_head_mx * Vt_head_mx, axis=1, keepdims=True), 1e-30)
-            )
+            Vt_head_mx = matmul(U_head_mx, X_c_mx, transpose_a=True) * inv_s_mx[:, None]
+            # Rows built from float32 dual-Gram eigenvectors are only orthogonal to
+            # about eps * s_0**2 / (s_i * s_j), up to ~2e-4 inside the head; restore it.
+            Vt_head_mx = _orthonormalize_rows(Vt_head_mx)
             mx.eval(Vt_head_mx)
             Vt[:idx] = to_numpy(Vt_head_mx)
 
         if idx < n_nontrivial:
             U_tail_mx = to_mlx_f32(U_desc[:, idx:])
-            X_rem_mx = U_tail_mx.T @ X_c_mx
+            X_rem_mx = matmul(U_tail_mx, X_c_mx, transpose_a=True)
             if idx > 0:
                 Vt_head_mx_ref = to_mlx_f32(Vt[:idx])
-                X_rem_mx = X_rem_mx - (X_rem_mx @ Vt_head_mx_ref.T) @ Vt_head_mx_ref
+                X_rem_mx = X_rem_mx - matmul(
+                    matmul(X_rem_mx, Vt_head_mx_ref, transpose_b=True), Vt_head_mx_ref
+                )
             mx.eval(X_rem_mx)
             X_rem_np = to_numpy(X_rem_mx)
             if float(np.linalg.norm(X_rem_np)) > 1e-7 * float(S[0]):
                 _, S_tail, Vt_tail = scipy.linalg.svd(X_rem_np, full_matrices=False)
+                Vt_tail_mx = to_mlx_f32(Vt_tail)
+                if idx > 0:
+                    # Rounding left in the deflated block puts the rows with the
+                    # smallest singular values off the head by up to ~1e-4; project
+                    # that out once. Only the small correction goes through the GEMM.
+                    Vt_tail_mx = addmm(
+                        Vt_tail_mx,
+                        matmul(Vt_tail_mx, Vt_head_mx_ref, transpose_b=True),
+                        Vt_head_mx_ref,
+                        alpha=-1.0,
+                    )
+                # A single-precision SVD leaves its rows orthogonal to only ~1e-6.
+                Vt_tail = to_numpy(_orthonormalize_rows(Vt_tail_mx))
                 n_tail = S_tail.shape[0]
                 S[idx : idx + n_tail] = S_tail.astype(np.float64)
                 Vt[idx : idx + n_tail] = Vt_tail.astype(np.float32, copy=False)
-                valid_rows = int(np.sum(S > float(S[0]) * max(n_samples, n_features) * 1e-7))
+                # Every tail row is kept, however small its singular value. Its float32
+                # error behaves like a perturbation of at most about 10 * eps * s_0,
+                # which tilts row i by at most that over min(gap_i, s_i): rows down to
+                # 1e-4 * s_0 measured 1.5e-4 to 2.5e-3 from float64, as close as the
+                # rows above them. Only rows below a few eps * s_0 are arbitrary, as in
+                # any SVD of rank-deficient data. Swapping rows below a rank tolerance
+                # for basis vectors left them unrelated to the singular values still
+                # reported for them.
+                valid_rows = idx + n_tail
             else:
                 S[idx:] = 0.0
                 valid_rows = idx
@@ -660,7 +731,7 @@ def _solve_gpu_full_or_eigh(
 
 def _gram_f64(A_mx: mx.array) -> np.ndarray:
     """Return the small Gram matrix ``A.T @ A`` on the host, symmetrized, in float64."""
-    G = to_numpy(A_mx.T @ A_mx).astype(np.float64)
+    G = to_numpy(matmul(A_mx, A_mx, transpose_a=True)).astype(np.float64)
     return 0.5 * (G + G.T)
 
 
@@ -737,7 +808,7 @@ def _orthonormalize(
             if not resolved:
                 R = scipy.linalg.cholesky(G + floor * identity, lower=False, check_finite=False)
             R_inv = scipy.linalg.solve_triangular(R, identity, lower=False, check_finite=False)
-            Q_mx = Q_mx @ to_mlx_f32(R_inv)
+            Q_mx = matmul(Q_mx, to_mlx_f32(R_inv))
             if resolved:
                 clean += 1
                 if clean >= passes:
@@ -802,7 +873,9 @@ def _randomized_noise_variance(
             residual_var = residual_ss / (n_samples - 1)
         else:
             directions_mx = to_mlx_f32(components)
-            residual_mx = mx.addmm(centered, centered @ directions_mx.T, directions_mx, alpha=-1.0)
+            residual_mx = addmm(
+                centered, matmul(centered, directions_mx, transpose_b=True), directions_mx, alpha=-1.0
+            )
             scaled = residual_mx / math.sqrt(total_var * (n_samples - 1))
             residual_var = float(mx.sum(mx.square(scaled)).item()) * total_var
 
@@ -971,6 +1044,14 @@ def _solve_randomized(
     transpose = n_samples < n_features
     M_mx = X_c_mx.T if transpose else X_c_mx
     m_rows, m_cols = M_mx.shape
+
+    def m_times(Q: mx.array) -> mx.array:
+        """``M_mx @ Q`` from the stored centered matrix."""
+        return matmul(X_c_mx, Q, transpose_a=transpose)
+
+    def m_t_times(Q: mx.array) -> mx.array:
+        """``M_mx.T @ Q`` from the stored centered matrix."""
+        return matmul(X_c_mx, Q, transpose_a=not transpose)
     size = min(n_random, m_rows, m_cols)
 
     Q_init = rng.normal(size=(m_cols, n_random)).astype(np.float32, copy=False)
@@ -997,7 +1078,7 @@ def _solve_randomized(
     )
 
     if use_gram_subspace:
-        G_mx = M_mx.T @ M_mx
+        G_mx = matmul(X_c_mx, X_c_mx, transpose_a=not transpose, transpose_b=transpose)
         mx.eval(G_mx)
         G_np = to_numpy(G_mx)
         Q_np = Q_init
@@ -1043,17 +1124,17 @@ def _solve_randomized(
     Q_mx = to_mlx_f32(Q_init)
     for _ in range(n_direct_iter):
         if normalizer == "none":
-            Q_mx = _unit_scale(M_mx.T @ _unit_scale(M_mx @ Q_mx))
+            Q_mx = _unit_scale(m_t_times(_unit_scale(m_times(Q_mx))))
             mx.eval(Q_mx)
             continue
         Q_mx = _orthonormalize(
-            M_mx.T @ _orthonormalize(M_mx @ Q_mx, normalizer, rescale=rescale),
+            m_t_times(_orthonormalize(m_times(Q_mx), normalizer, rescale=rescale)),
             normalizer,
             rescale=rescale,
         )
 
-    Q_y_mx = _orthonormalize(M_mx @ Q_mx, "QR", passes=2, rescale=rescale)
-    B_T_mx = M_mx.T @ Q_y_mx
+    Q_y_mx = _orthonormalize(m_times(Q_mx), "QR", passes=2, rescale=rescale)
+    B_T_mx = m_t_times(Q_y_mx)
     mx.eval(B_T_mx, Q_y_mx)
     B = to_numpy(B_T_mx).T
     if n_direct_iter == 0 and n_iter > 0:
@@ -1061,7 +1142,7 @@ def _solve_randomized(
         B = B.astype(np.float64)
     Uhat, S, Vt = scipy.linalg.svd(B, full_matrices=False)
     if transpose:
-        Q_y_Uhat_mx = Q_y_mx @ to_mlx_f32(Uhat[:, :k].astype(np.float32))
+        Q_y_Uhat_mx = matmul(Q_y_mx, to_mlx_f32(Uhat[:, :k].astype(np.float32)))
         mx.eval(Q_y_Uhat_mx)
         Vt_k_raw = to_numpy(Q_y_Uhat_mx).T
         U_k_raw = Vt[:k].T
@@ -1091,7 +1172,7 @@ def _solve_randomized(
             transformed = (U_k_flipped * scale_vec).astype(out_dtype, copy=False)
         else:
             W = (Uhat_flipped[:, :k] * scale_vec).astype(np.float32)  # type: ignore[index]
-            Z_mx = Q_y_mx @ to_mlx_f32(W)
+            Z_mx = matmul(Q_y_mx, to_mlx_f32(W))
             mx.eval(Z_mx)
             transformed = to_numpy(Z_mx).astype(out_dtype, copy=False)
     else:
@@ -1373,7 +1454,7 @@ def pca_transform(
             if not whiten and device_components is not None and device_mean is not None:
                 V_mx = device_components.T
                 bias_mx = -(device_mean @ V_mx)
-                Z_mx = mx.addmm(bias_mx, X_mx, V_mx)
+                Z_mx = addmm(bias_mx, X_mx, device_components, transpose_b=True)
                 mx.eval(Z_mx)
                 return to_numpy(Z_mx).astype(out_dtype, copy=False)
             V_T = components.T.astype(np.float64, copy=True)
@@ -1385,7 +1466,7 @@ def pca_transform(
             bias = -(mean.astype(np.float64, copy=False) @ V_T)
             V_mx = to_mlx_f32(V_T.astype(np.float32))
             bias_mx = to_mlx_f32(bias.astype(np.float32))
-            Z_mx = mx.addmm(bias_mx, X_mx, V_mx)
+            Z_mx = addmm(bias_mx, X_mx, V_mx)
             mx.eval(Z_mx)
             return to_numpy(Z_mx).astype(out_dtype, copy=False)
         finally:
@@ -1434,7 +1515,7 @@ def pca_inverse_transform(
         try:
             X_mx = borrow_mlx_f32(X_f32)
             if not whiten and device_components is not None and device_mean is not None:
-                out_mx = mx.addmm(device_mean, X_mx, device_components)
+                out_mx = addmm(device_mean, X_mx, device_components)
                 mx.eval(out_mx)
                 return to_numpy(out_mx).astype(out_dtype, copy=False)
             comp = components.astype(np.float64, copy=True)
@@ -1442,7 +1523,7 @@ def pca_inverse_transform(
                 comp = np.sqrt(explained_variance.astype(np.float64)[:, np.newaxis]) * comp
             comp_mx = to_mlx_f32(comp.astype(np.float32))
             mean_mx = device_mean if device_mean is not None else to_mlx_f32(mean.astype(np.float32))
-            out_mx = mx.addmm(mean_mx, X_mx, comp_mx)
+            out_mx = addmm(mean_mx, X_mx, comp_mx)
             mx.eval(out_mx)
             return to_numpy(out_mx).astype(out_dtype, copy=False)
         finally:
@@ -1501,7 +1582,7 @@ def pca_score_samples(
             row_ss_mx = mx.sum(X_c_mx * X_c_mx, axis=1)
             if k > 0:
                 V_mx = to_mlx_f32(components.T.astype(np.float32, copy=False))
-                Z_mx = X_c_mx @ V_mx
+                Z_mx = matmul(X_c_mx, V_mx)
                 mx.eval(row_ss_mx, Z_mx)
                 row_ss = to_numpy(row_ss_mx).astype(np.float64)
                 Z = to_numpy(Z_mx).astype(np.float64)
