@@ -2,14 +2,17 @@
 
 The scan uses the established FP32 ranking. Its next-omitted distance certifies
 membership, and adjacent output intervals certify order. Only uncertain rows
-execute the exact-comparison fallback. No host synchronization is required.
+execute the exact-comparison fallback: small k <= 8 searches scan each such row
+with its own SIMD group in the finishing dispatch; all others hand them to the
+partitioned search of ``_neighbors_fallback``. No host synchronization is
+required.
 """
 
 from functools import lru_cache
 
 import mlx.core as mx
 
-from ._neighbors_fused import _EXHAUSTIVE_LARGE_K, _HEADER, _MERGE, _SCAN
+from ._neighbors_fused import _HEADER, _MERGE, _SCAN
 from ._neighbors_precision import PRECISION_HEADER
 from ._neighbors_registers import paired_scan_source
 
@@ -65,44 +68,12 @@ def _merge_kernel():
     )
 
 
-@lru_cache(maxsize=2)
-def _finish_kernel(large):
-    if large:
-        source = _EXHAUSTIVE_LARGE_K.replace("const size_t base = size_t(query) * k;", """
-const size_t base = size_t(query) * k;
-bool clear = true;
-for (int slot = 0; slot < k; ++slot) {
-    if (slot + 1 == k && n - int(EXCLUDE_SELF) == k) continue;
-    const float left = fast_distances[base + slot];
-    const float right = slot + 1 < k ? fast_distances[base + slot + 1] : barriers[query];
-    clear = clear && precise_distance_lower<D>(right) > precise_distance_upper<D>(left);
-}
-if (clear) {
-    for (int slot = 0; slot < k; ++slot) {
-        out_distances[base + slot] = fast_distances[base + slot];
-        out_indices[base + slot] = fast_indices[base + slot];
-    }
-    return;
-}
-const bool membership = n - int(EXCLUDE_SELF) == k ||
-    precise_distance_lower<D>(barriers[query]) > precise_distance_upper<D>(fast_distances[base + k - 1]);
-if (membership) {
-    for (int slot = 0; slot < k; ++slot) {
-        float distance = fast_distances[base + slot];
-        int index = fast_indices[base + slot], at = slot;
-        while (at > 0 && precise_neighbor_precedes<D>(distance, index,
-            out_distances[base + at - 1], out_indices[base + at - 1], train, queries, query, n)) {
-            out_distances[base + at] = out_distances[base + at - 1];
-            out_indices[base + at] = out_indices[base + at - 1];
-            --at;
-        }
-        out_distances[base + at] = distance; out_indices[base + at] = index;
-    }
-    return;
-}
-""", 1)
-    else:
-        source = _SCAN.replace("const int part = int(task % uint(parts));", """
+# One SIMD group per row. "Clear" rows have separated adjacent intervals and
+# keep the fast order; "membership" rows have a certified boundary and are
+# re-sorted with exact comparisons. A certified row returns early, recording
+# ``{certify}`` first; every other row needs a complete exact search. Lane l
+# checks slot l, so K <= 32, and W >= K is the width of the fast lists.
+_CERTIFY = """
     bool clear = true;
     if (lane < uint(K) && (lane + 1 < uint(K) || n_train - int(EXCLUDE_SELF) > K)) {
         const float left = fast_distances[size_t(query) * W + lane];
@@ -114,7 +85,7 @@ if (membership) {
         if (lane < uint(K)) {
             out_distances[size_t(query) * K + lane] = fast_distances[size_t(query) * W + lane];
             out_indices[size_t(query) * K + lane] = fast_indices[size_t(query) * W + lane];
-        }
+        }{certify}
         return;
     }
     const bool membership = n_train - int(EXCLUDE_SELF) == K ||
@@ -129,16 +100,94 @@ if (membership) {
                 out_indices[size_t(query) * K + slot] = winner.index;
             }
             if (index == winner.index) { index = 2147483647; value = INFINITY; }
-        }
+        }{certify}
         return;
     }
-    const int part = int(task % uint(parts));
-""", 1)
+"""
+
+
+@lru_cache(maxsize=1)
+def _finish_kernel():
+    """Certify rows, then scan each other row with its SIMD group, in one dispatch.
+
+    Only for K <= 8: the scan keeps a K-entry list per lane in a private array,
+    and Metal's backend compile time explodes beyond that (M4 Max: under a
+    second at K=12, over 90 s at K=16, over 30 minutes at K=32).
+    """
+    source = _SCAN.replace(
+        "const int part = int(task % uint(parts));",
+        _CERTIFY.replace("{certify}", "") + "    const int part = int(task % uint(parts));", 1)
     return mx.fast.metal_kernel(
-        name=f"mlxlearn_screen_finish_{int(large)}",
+        name="mlxlearn_screen_finish",
         input_names=["train", "queries", "fast_distances", "fast_indices", "barriers", "shape"],
         output_names=["out_distances", "out_indices"], source=source,
         header=_HEADER + PRECISION_HEADER,
+    )
+
+
+@lru_cache(maxsize=1)
+def _certify_kernel():
+    """Finish certified rows and flag the rest for the partitioned search."""
+    source = """
+    #pragma clang fp contract(off)
+    #pragma clang fp reassociate(off)
+    const uint lane = thread_index_in_simdgroup;
+    const int query = int(thread_position_in_grid.x / 32);
+    const int n_train = shape[0];
+    if (query >= shape[1]) return; // uniform across this entire SIMDgroup
+""" + _CERTIFY.replace("{certify}", "\n        if (lane == 0) certified[query] = true;") + """
+    if (lane == 0) certified[query] = false;
+"""
+    return mx.fast.metal_kernel(
+        name="mlxlearn_screen_certify",
+        input_names=["train", "queries", "fast_distances", "fast_indices", "barriers", "shape"],
+        output_names=["out_distances", "out_indices", "certified"], source=source,
+        header=_HEADER + PRECISION_HEADER,
+    )
+
+
+#: Training work (rows x features) from which uncertain k <= 8 rows go to the
+#: partitioned search. On M4 Max one uncertain row cost a SIMD-group scan about
+#: 0.2 ms at 2**15 (0.5 ms at 2**18, 2 ms at 2**21), and exact ties cost far
+#: more; the partitioned search was 2-5x faster on tied integer data from
+#: n_train ~1500. Its three extra dispatches cost 25-40 us per block when every
+#: row certifies: up to ~25% of a 0.15 ms query, ~1% of a millisecond one.
+#: Smaller k <= 8 searches keep the single dispatch.
+_PARTITIONED_WORK = 2**15
+
+
+def _use_partitioned_finish(n_train, features, k):
+    """Search uncertain rows with the partitioned fallback.
+
+    k > 8 always does: the single-dispatch kernel is limited to K <= 8, and
+    the one-thread-per-row scan it used to fall back to cost 0.5 ms or more
+    per uncertain row even at n_train = 2049 (hundreds of ms at 262144).
+    """
+    return k > 8 or n_train * features >= _PARTITIONED_WORK
+
+
+def _finish(train, queries, k, values, indices, barriers, *, width, exclude_self, query_offset):
+    n, features = train.shape
+    rows = queries.shape[0]
+    shape = mx.array([n, rows, features, 1, query_offset], mx.int32)
+    template = [("K", k), ("W", width), ("D", features), ("EXCLUDE_SELF", exclude_self)]
+    launch = {"grid": (((rows * 32 + 127) // 128) * 128, 1, 1), "threadgroup": (128, 1, 1),
+              "stream": mx.gpu}
+    inputs = [train, queries, values, indices, barriers, shape]
+    if k <= 8 and not _use_partitioned_finish(n, features, k):
+        return tuple(_finish_kernel()(
+            inputs=inputs, template=template, output_shapes=[(rows, k)] * 2,
+            output_dtypes=[mx.float32, mx.int32], **launch,
+        ))
+    from ._neighbors_fallback import partitioned_neighbors
+
+    values, indices, certified = _certify_kernel()(
+        inputs=inputs, template=template, output_shapes=[(rows, k), (rows, k), (rows,)],
+        output_dtypes=[mx.float32, mx.int32, mx.bool_], **launch,
+    )
+    return partitioned_neighbors(
+        train, queries, k, values, indices, certified,
+        exclude_self=exclude_self, query_offset=query_offset,
     )
 
 
@@ -167,12 +216,5 @@ def screen_neighbors(train, queries, k, *, partitions, paired, exclude_self=Fals
         )
     else:
         values, indices, barriers = values.reshape(rows, k), indices.reshape(rows, k), barriers.reshape(rows)
-    large = k > 8
-    shape = ([n, rows, k, query_offset] if large else [n, rows, features, 1, query_offset])
-    threads = rows if large else rows * 32
-    return tuple(_finish_kernel(large)(
-        inputs=[train, queries, values, indices, barriers, mx.array(shape, mx.int32)],
-        template=([("K", k), ("W", width)] if not large else []) + [("D", features), ("EXCLUDE_SELF", exclude_self)],
-        grid=(((threads + 127) // 128) * 128, 1, 1), threadgroup=(128, 1, 1),
-        output_shapes=[(rows, k)] * 2, output_dtypes=[mx.float32, mx.int32], stream=mx.gpu,
-    ))
+    return _finish(train, queries, k, values, indices, barriers, width=width,
+                   exclude_self=exclude_self, query_offset=query_offset)

@@ -775,44 +775,6 @@ def precise_select_candidates(train, queries, indices, k, values=None):
     ))
 
 
-_EXHAUSTIVE_LARGE_K = r"""
-#pragma clang fp contract(off)
-#pragma clang fp reassociate(off)
-const int query = int(thread_position_in_grid.x);
-if (query >= shape[1]) return;
-const int n = shape[0], k = shape[2];
-const size_t base = size_t(query) * k;
-const int sentinel = 2147483647;
-for (int slot = 0; slot < k; ++slot) {
-    out_distances[base + slot] = INFINITY;
-    out_indices[base + slot] = sentinel;
-}
-for (int reference = 0; reference < n; ++reference) {
-    if (EXCLUDE_SELF && reference == query + shape[3]) continue;
-    float distance = 0.0f, correction = 0.0f;
-    for (int feature = 0; feature < D; ++feature) {
-        const float delta = queries[size_t(query) * D + feature]
-                          - train[size_t(reference) * D + feature];
-        const float adjusted = delta * delta - correction;
-        const float total = distance + adjusted;
-        correction = metal::isfinite(total) ? (total - distance) - adjusted : 0.0f;
-        distance = total;
-    }
-    if (!precise_neighbor_precedes<D>(distance, reference,
-            out_distances[base + k - 1], out_indices[base + k - 1], train, queries, query, n)) continue;
-    int slot = k - 1;
-    while (slot > 0 && precise_neighbor_precedes<D>(distance, reference,
-            out_distances[base + slot - 1], out_indices[base + slot - 1], train, queries, query, n)) {
-        out_distances[base + slot] = out_distances[base + slot - 1];
-        out_indices[base + slot] = out_indices[base + slot - 1];
-        --slot;
-    }
-    out_distances[base + slot] = distance;
-    out_indices[base + slot] = reference;
-}
-"""
-
-
 #: For k <= 8 the single-dispatch kernel below scans each uncertified row with
 #: one SIMD group. On M4 Max one failing row cost about 1 ms once
 #: n_train * features reached 2**20, 4 ms at 65536 x 64 and 142 ms at
