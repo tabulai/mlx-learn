@@ -2,9 +2,12 @@
 
 Half precision is only an internal search filter. Measured quantization errors
 produce conservative distance lower bounds; returned distances use the original
-float32 compensated arithmetic. Any uncertain query runs the complete exact scan.
-Overlapping rounding intervals use exact original-coordinate comparison; only
-true distance ties use index order. No query result or user buffer is cached.
+float32 compensated arithmetic. Any uncertain query runs the complete exact scan:
+in the finishing dispatch for small training sets, otherwise in the
+partitioned search of ``_neighbors_fallback``, bounded by the row's exactly
+sorted shortlist. Overlapping rounding intervals use exact original-coordinate
+comparison; only true distance ties use index order. No query result or user
+buffer is cached.
 """
 
 from functools import lru_cache
@@ -144,7 +147,10 @@ if (query_base + {query} < nq) {{
     return "\n".join(lines)
 
 
-_FINISH = r"""
+# One SIMD group per query: merge the partition lists, sort the shortlist with
+# exact comparisons and certify it. ``certified`` records the result; rows that
+# fail need a complete exact search of the original coordinates.
+_CERTIFY = r"""
 #pragma clang fp contract(off)
 #pragma clang fp reassociate(off)
 const uint lane = thread_index_in_simdgroup;
@@ -219,6 +225,13 @@ const float omitted_exact_lower = omitted_lower == INFINITY ? INFINITY
 const bool accepted = real_count >= uint(K) && metal::isfinite(cutoff)
                    && omitted_exact_lower > precise_distance_upper<D>(cutoff);
 if (lane == 0) certified[query] = accepted;
+"""
+
+# The single-dispatch finish: an uncertain row redoes the complete search with
+# its own SIMD group (32 lanes over all n training rows). The precise per-lane
+# K-entry list must stay at K <= 8: Metal's backend compile time explodes
+# beyond that (see _neighbors_screen._finish_kernel).
+_FINISH = _CERTIFY + r"""
 if (accepted) return;
 // Uncertain rows redo the complete search with the original arithmetic.
 float distances[K];
@@ -298,6 +311,66 @@ def _finish_kernel():
     )
 
 
+@lru_cache(maxsize=1)
+def _certify_kernel():
+    """Finish certified rows and flag the rest for the partitioned search."""
+    return mx.fast.metal_kernel(
+        name="mlxlearn_compact_neighbors_certify",
+        input_names=["partial_distances", "partial_indices", "train", "queries", "shape"],
+        output_names=["out_distances", "out_indices", "certified"],
+        source=_CERTIFY,
+        header=_HEADER + PRECISION_HEADER,
+    )
+
+
+#: Training work (rows x features) from which uncertain rows go to the
+#: partitioned search. The single-dispatch finish scans each such row with one
+#: SIMD group: integer data at 262144 x 16 (95 of 256 rows uncertain at k=8)
+#: took 21 ms on M4 Max, 2.1 ms partitioned. The partitioned route costs 20-30
+#: us more per block when every row certifies. Relative to the single dispatch
+#: on tied integer data (64 or 256 queries, k=8) it took 0.4-1.1x at 2**16,
+#: 0.3-0.65x at 2**17 and 0.3-0.55x at 2**18, but 0.9-1.9x below 2**15.
+#: The dispatch layer only uses these screens from 2**18.
+_PARTITIONED_WORK = 2**16
+
+
+def _use_partitioned_finish(n_train, features):
+    """Search uncertain rows with the partitioned fallback (bounded by the shortlist)."""
+    return n_train * features >= _PARTITIONED_WORK
+
+
+def finish_neighbors(partial_distances, partial_indices, train, queries, shape, k, *,
+                     carry, exclude_self, query_offset):
+    """Merge, certify and exactly refine partition lists; search uncertain rows.
+
+    ``partial_*`` hold ``carry`` sorted lower-bound entries per query and
+    partition; ``shape`` is ``[n, nq, parts, query_offset]``. Returns sorted
+    compensated FP32 squared distances, indices and the per-row certificate
+    (rows proven without the complete search). Shared by the compact and
+    integer screens.
+    """
+    n, features = train.shape
+    nq, parts = partial_distances.shape[:2]
+    template = [("K", int(k)), ("C", int(carry)), ("D", features),
+                ("EXCLUDE_SELF", bool(exclude_self)), ("LISTS", (parts + 31) // 32)]
+    launch = {"grid": (((nq * 32 + 127) // 128) * 128, 1, 1), "threadgroup": (128, 1, 1),
+              "output_shapes": [(nq, k), (nq, k), (nq,)],
+              "output_dtypes": [mx.float32, mx.int32, mx.bool_], "stream": mx.gpu}
+    inputs = [partial_distances, partial_indices, train, queries, shape]
+    if not _use_partitioned_finish(n, features):
+        return tuple(_finish_kernel()(inputs=inputs, template=template, **launch))
+    from ._neighbors_fallback import partitioned_neighbors
+
+    values, indices, certified = _certify_kernel()(inputs=inputs, template=template, **launch)
+    # An uncertain row's outputs are still its exactly sorted shortlist: with
+    # at least K real candidates, slot K-1 bounds the true K-th distance.
+    values, indices = partitioned_neighbors(
+        train, queries, k, values, indices, certified,
+        exclude_self=exclude_self, query_offset=query_offset, bounded=True,
+    )
+    return values, indices, certified
+
+
 def prepare_compact(train):
     """Build lazy, owned half storage and per-row squared quantization errors."""
     n, features = train.shape
@@ -348,14 +421,8 @@ def compact_neighbors(
         output_dtypes=[mx.float32, mx.int32],
         stream=mx.gpu,
     )
-    result = tuple(_finish_kernel()(
-        inputs=[partial_distances, partial_indices, train, queries, shape],
-        template=[("K", int(k)), ("C", int(carry)), ("D", features),
-                  ("EXCLUDE_SELF", bool(exclude_self)), ("LISTS", (parts + 31) // 32)],
-        grid=(((nq * 32 + 127) // 128) * 128, 1, 1),
-        threadgroup=(128, 1, 1),
-        output_shapes=[(nq, k), (nq, k), (nq,)],
-        output_dtypes=[mx.float32, mx.int32, mx.bool_],
-        stream=mx.gpu,
-    ))
+    result = finish_neighbors(
+        partial_distances, partial_indices, train, queries, shape, k,
+        carry=carry, exclude_self=exclude_self, query_offset=query_offset,
+    )
     return result if return_certificate else result[:2]

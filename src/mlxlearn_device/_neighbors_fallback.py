@@ -18,6 +18,12 @@ Each chunk keeps its own sorted top-k list, and the lists are merged with the
 exact original-coordinate comparisons, so the result is the same (distance,
 index) ordering bit for bit. A chunk's list holds the chunk's exact top k
 entries, so the union of lists contains the row's top k entries.
+
+Callers whose uncertified rows still carry k exactly sorted real candidates
+(the compact and integer screens) may pass ``bounded=True``. The last
+candidate then bounds the row's k-th distance, and references provably
+farther are skipped before any exact comparison. On data with exact ties
+that skips most comparisons; the result is unchanged.
 """
 
 from functools import lru_cache
@@ -84,6 +90,18 @@ for (int slot = int(lane); slot < k; slot += 32) {
 }
 float worst = INFINITY;
 int worst_index = sentinel;
+// BOUNDED: a valid last candidate is the k-th of k distinct, non-excluded
+// references in exact order, with its compensated distance. The row's true
+// k-th distance is then at most that distance's upper endpoint, and a
+// reference whose lower endpoint exceeds it is strictly farther than k others.
+// Skipping it avoids exact comparisons against tied list entries.
+float limit = INFINITY;
+if (BOUNDED) {
+    const size_t last = size_t(query) * size_t(k) + size_t(k - 1);
+    const int bound_index = candidate_indices[last];
+    if (bound_index >= 0 && bound_index < n)
+        limit = precise_distance_upper<D>(candidate_distances[last]);
+}
 for (int start = begin; start < end; start += 32) {
     const int reference = start + int(lane);
     bool pending = reference < end && !(EXCLUDE_SELF && reference == query + shape[3]);
@@ -99,7 +117,8 @@ for (int start = begin; start < end; start += 32) {
             correction = metal::isfinite(total) ? (total - distance) - adjusted : 0.0f;
             distance = total;
         }
-        pending = precise_neighbor_precedes<D>(distance, reference, worst, worst_index,
+        pending = !(BOUNDED && precise_distance_lower<D>(distance) > limit) &&
+                  precise_neighbor_precedes<D>(distance, reference, worst, worst_index,
                                                train, queries, query, n);
     }
     while (metal::simd_any(pending)) {
@@ -205,7 +224,8 @@ def _header():
 def _scan_kernel():
     return mx.fast.metal_kernel(
         name="mlxlearn_uncertified_chunk_scan",
-        input_names=["train", "queries", "positions", "shape"],
+        input_names=["train", "queries", "candidate_distances", "candidate_indices",
+                     "positions", "shape"],
         output_names=["out_distances", "out_indices"],
         source=_SCAN, header=_header(),
     )
@@ -234,13 +254,19 @@ def scan_groups(rows, n, k):
 
 
 def partitioned_neighbors(train, queries, k, values, indices, certificate, *,
-                          exclude_self=False, query_offset=0):
+                          exclude_self=False, query_offset=0, bounded=False):
     """Keep certified rows; search every training row for the others.
 
     ``values``/``indices`` hold each row's sorted candidates and
     ``certificate`` marks rows whose candidates are proven exact. Other rows
     are recomputed from the original coordinates. With ``exclude_self``,
     query row ``i`` skips training row ``query_offset + i``.
+
+    ``bounded`` promises that, for every uncertified row whose last candidate
+    index is a valid reference, its k candidates are distinct non-excluded
+    references in exact order with their compensated FP32 distances. The
+    search then skips references provably farther than that last candidate.
+    The result is unchanged; tied data avoid most exact comparisons.
     """
     rows, features = queries.shape
     n = train.shape[0]
@@ -250,9 +276,9 @@ def partitioned_neighbors(train, queries, k, values, indices, certificate, *,
     if positions.dtype != mx.int32:  # MLX 0.32 already sums bool as int32
         positions = positions.astype(mx.int32)
     shape = mx.array([n, rows, k, query_offset, groups], mx.int32)
-    template = [("D", features), ("EXCLUDE_SELF", bool(exclude_self))]
+    template = [("D", features), ("EXCLUDE_SELF", bool(exclude_self)), ("BOUNDED", bool(bounded))]
     partial_distances, partial_indices = _scan_kernel()(
-        inputs=[train, queries, positions, shape], template=template,
+        inputs=[train, queries, values, indices, positions, shape], template=template,
         grid=(((groups * 32 + 127) // 128) * 128, 1, 1), threadgroup=(128, 1, 1),
         output_shapes=[(groups, k)] * 2, output_dtypes=[mx.float32, mx.int32],
         stream=mx.gpu,
