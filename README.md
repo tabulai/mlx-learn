@@ -410,6 +410,11 @@ distances, indices = index.query(mx.array([[0.2, 0.1]]), k=2)
 mx.eval(distances, indices)  # results remain MLX arrays
 ```
 
+The unreleased integration shares memory-budget query planning between this
+resident API and the NumPy interface, adds filtered candidate selection and
+parallel exact fallback, and includes the M5 binary32 and wide-PCA correctness
+fixes. See the [combined tests and benchmarks](docs/knn-integration-2026-11-17.md).
+
 Performance depends on training size, feature count, query batch, neighbor count
 and data distribution. Automatic KNN selects its owned CPU or GPU search under
 the policy captured at fit; explicit device choices remain fixed. The linked

@@ -15,7 +15,7 @@ from functools import lru_cache
 
 import mlx.core as mx
 
-from ._neighbors_compact import _finish_kernel
+from ._neighbors_compact import finish_neighbors
 
 _HEADER = r"""
 #include <metal_tensor>
@@ -366,21 +366,8 @@ def integer_neighbors(
         output_dtypes=[mx.float32, mx.int32],
         stream=mx.gpu,
     )
-    result = tuple(
-        _finish_kernel()(
-            inputs=[partial_distances, partial_indices, train, queries, shape],
-            template=[
-                ("D", 32),
-                ("C", carry),
-                ("K", int(k)),
-                ("LISTS", (parts + 31) // 32),
-                ("EXCLUDE_SELF", bool(exclude_self)),
-            ],
-            grid=(((nq * 32 + 127) // 128) * 128, 1, 1),
-            threadgroup=(128, 1, 1),
-            output_shapes=[(nq, k), (nq, k), (nq,)],
-            output_dtypes=[mx.float32, mx.int32, mx.bool_],
-            stream=mx.gpu,
-        )
+    result = finish_neighbors(
+        partial_distances, partial_indices, train, queries, shape, k,
+        carry=carry, exclude_self=exclude_self, query_offset=query_offset,
     )
     return result if return_certificate else result[:2]

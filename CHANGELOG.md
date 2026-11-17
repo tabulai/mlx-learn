@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Large exact-neighbor queries no longer sort float32 Gram tiles wider than
+  `2**20` columns, avoiding incorrect MLX sort orders at `2**21` training rows
+  and above. Candidate certification and exact merging still cover all tiles.
 - Exact nearest neighbors on M5-generation GPUs. On macOS 26.2+, MLX runs
   float32 matrix products on the M5 GPU neural accelerators with TF32 operands
   by default. The general GPU path's Gram screen assumes binary32 rounding, so
@@ -78,13 +81,29 @@ All notable changes to this project are documented here. The format follows
   21 -> 15 ms at 128x8192, 263 -> 119 ms at 1000x4096 and 2235 -> 568 ms at
   2000x8192. Tail-branch fits that cut nothing take the same time.
 
+### Changed
+
+- Exact kNN candidate selection uses GPU-specific partial-selection regions
+  and a chunk-minimum threshold that safely rejects values outside the top-k.
+  Uncertified Gram, fused, compact and integer-screen rows use partitioned
+  exact scans and exact merges. Valid candidate distances additionally bound
+  the fused, compact and integer fallbacks, reducing expensive comparisons on
+  tied data without changing distance or index ordering.
+- The resident and NumPy-facing neighbor APIs share memory-budget tile
+  planning. The resident general search can use larger tiles on machines with
+  sufficient memory while retaining explicit block sizes, CPU bounds and
+  NumPy-free operation. Host tuning contexts remain scoped to the host API.
+  See the [integration report](docs/knn-integration-2026-11-17.md) for the
+  combined validation, benchmark protocol and performance limits.
+
 ### Measured
 
 - Reran the MNIST, Fashion-MNIST and Kannada-MNIST benchmarks for
   LogisticRegression, KNeighborsClassifier, SVC and PCA on an M1 Ultra, an M4
-  Max and an M5 Ultra, with an identical software stack. Converged logistic
-  regression fit **15.4–20.7×**, **7.1–12.5×** and **9.5–14.4×** faster than
-  scikit-learn. KNN prediction was **14.3–15.7×**, **11.6–12.2×** and
+  Max and an M5 Ultra, with an identical software stack, at `aa729e5`, before
+  the kNN selection changes above. Converged logistic regression fit
+  **15.4–20.7×**, **7.1–12.5×** and **9.5–14.4×** faster than scikit-learn.
+  KNN prediction was **14.3–15.7×**, **11.6–12.2×** and
   **13.2–14.5×** faster, and SVC fits at the default cache were **18.2–23.6×**,
   **13.0–17.4×** and **15.4–19.6×** faster. Every KNN neighbor set was exact on
   every machine, and SVC predictions agreed with scikit-learn's on 99.98–100% of

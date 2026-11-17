@@ -20,9 +20,10 @@ The rules this module enforces:
 from __future__ import annotations
 
 import functools
-import os
 from contextlib import contextmanager
 from dataclasses import dataclass
+
+from mlxlearn_common._neighbors_plan import physical_memory_bytes
 
 from ..exceptions import DeviceError
 from .config import get_config
@@ -53,23 +54,6 @@ class DeviceInfo:
             else "unknown memory"
         )
         return f"mlx {self.mlx_version} on {self.kind} ({mem})"
-
-
-@functools.lru_cache(maxsize=1)
-def physical_memory_bytes() -> int | None:
-    """Total physical memory, or ``None`` where the platform will not say.
-
-    Used to bound the SVM kernel cache and the distance-block target. On unified
-    memory this is also, usefully, the GPU's memory.
-    """
-    try:
-        page_size = int(os.sysconf("SC_PAGE_SIZE"))
-        page_count = int(os.sysconf("SC_PHYS_PAGES"))
-    except (AttributeError, OSError, ValueError):
-        return None
-    if page_size <= 0 or page_count <= 0:
-        return None
-    return page_size * page_count
 
 
 @functools.lru_cache(maxsize=1)
