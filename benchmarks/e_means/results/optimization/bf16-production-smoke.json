@@ -1,0 +1,104 @@
+{
+  "source_sha256": "cbe903b6972ab2fcca06b940005a5d3ae4e700f9595460036f14880625f3e4ea",
+  "command": "PYTHONPATH=src .venv/bin/python /tmp/e_means_bf16_smoke.py",
+  "checks": [
+    {
+      "n": 1,
+      "k": 1,
+      "d": 1,
+      "spherical": false,
+      "mismatches": 0,
+      "max_score_error": 0.0
+    },
+    {
+      "n": 1,
+      "k": 1,
+      "d": 1,
+      "spherical": true,
+      "mismatches": 0,
+      "max_score_error": 0.0
+    },
+    {
+      "n": 9,
+      "k": 67,
+      "d": 11,
+      "spherical": false,
+      "mismatches": 0,
+      "max_score_error": 8.344650268554688e-07
+    },
+    {
+      "n": 9,
+      "k": 67,
+      "d": 11,
+      "spherical": true,
+      "mismatches": 0,
+      "max_score_error": 4.172325134277344e-07
+    },
+    {
+      "n": 37,
+      "k": 131,
+      "d": 96,
+      "spherical": false,
+      "mismatches": 0,
+      "max_score_error": 1.109391450881958e-05
+    },
+    {
+      "n": 37,
+      "k": 131,
+      "d": 96,
+      "spherical": true,
+      "mismatches": 0,
+      "max_score_error": 2.4959444999694824e-06
+    },
+    {
+      "n": 67,
+      "k": 71,
+      "d": 100,
+      "spherical": false,
+      "mismatches": 0,
+      "max_score_error": 1.0476447641849518e-05
+    },
+    {
+      "n": 67,
+      "k": 71,
+      "d": 100,
+      "spherical": true,
+      "mismatches": 0,
+      "max_score_error": 4.76837158203125e-06
+    },
+    {
+      "n": 67,
+      "k": 133,
+      "d": 129,
+      "spherical": false,
+      "mismatches": 0,
+      "max_score_error": 1.5072524547576904e-05
+    },
+    {
+      "n": 67,
+      "k": 133,
+      "d": 129,
+      "spherical": true,
+      "mismatches": 0,
+      "max_score_error": 8.054077625274658e-06
+    },
+    {
+      "n": 35,
+      "k": 65,
+      "d": 3072,
+      "spherical": false,
+      "mismatches": 0,
+      "max_score_error": 0.0006412863249352085
+    },
+    {
+      "n": 35,
+      "k": 65,
+      "d": 3072,
+      "spherical": true,
+      "mismatches": 0,
+      "max_score_error": 0.00021866895258426666
+    }
+  ],
+  "large_finite_and_lowest_tie_index_pass": true,
+  "validation_program": "import json,sys,hashlib\nfrom pathlib import Path\nimport numpy as np\nimport mlx.core as mx\nfrom mlxlearn._kernels.e_means_bf16 import assign_bf16,prepare_centers\nrng=np.random.default_rng(5)\nrecords=[]\nfor n,k,d in [(1,1,1),(9,67,11),(37,131,96),(67,71,100),(67,133,129),(35,65,3072)]:\n x=mx.array(rng.standard_normal((n,d),dtype=np.float32)).astype(mx.bfloat16)\n c=mx.array(rng.standard_normal((k,d),dtype=np.float32)).astype(mx.bfloat16)\n xn=np.asarray(x.astype(mx.float32)).astype(np.float64);cn=np.asarray(c.astype(mx.float32)).astype(np.float64)\n for sph in [False,True]:\n  labels,scores=assign_bf16(x,c,spherical=sph,batch_size=17)\n  lab=np.asarray(labels);actual=np.asarray(scores)\n  dist=-(xn@cn.T) if sph else np.sum(cn*cn,axis=1)-2*(xn@cn.T)\n  wanted=np.argmin(dist,axis=1)\n  np.testing.assert_array_equal(lab,wanted)\n  np.testing.assert_allclose(actual,dist[np.arange(n),wanted],rtol=3e-6,atol=2e-4)\n  records.append({'n':n,'k':k,'d':d,'spherical':sph,'mismatches':int(np.count_nonzero(lab!=wanted)),'max_score_error':float(np.max(abs(actual-dist[np.arange(n),wanted])))})\nx=mx.array([[100000.,200000.,-300000.],[0.,0.,0.]],dtype=mx.float32)\nc=mx.array([[100000.,200000.,-300000.],[100000.,200000.,-300000.],[0.,0.,0.]],dtype=mx.float32)\nlabels,scores=assign_bf16(x,c);np.testing.assert_array_equal(np.asarray(labels),[0,2]);assert np.isfinite(np.asarray(scores)).all()\nsource=Path('src/mlxlearn/_kernels/e_means_bf16.py').read_bytes()\nPath('benchmarks/e_means/results/optimization/bf16-production-smoke.json').write_text(json.dumps({'source_sha256':hashlib.sha256(source).hexdigest(),'command':'PYTHONPATH=src .venv/bin/python /tmp/e_means_bf16_smoke.py','checks':records,'large_finite_and_lowest_tie_index_pass':True},indent=2)+'\\n')\nprint('Production BF16 smoke passed: 12 ragged/spherical oracle cases, chunking, >FP16 range, smallest-index tie')\n"
+}

@@ -127,6 +127,25 @@ HEADER_EXEMPT = {
     "tools/compliance.py",
 }
 
+# Exact derived files and their retained notices. This is not a file exemption:
+# each listed path and header must also appear in the copied/derived-source
+# section of THIRD_PARTY_NOTICES.md, and any additional upstream header fails.
+RECORDED_UPSTREAM_HEADERS = {
+    "src/mlxlearn/_kernels/e_means_bf16.py": ("Copyright © 2024 Apple Inc.",),
+    "benchmarks/e_means/experimental_kernels.py": ("Copyright © 2024 Apple Inc.",),
+    "benchmarks/e_means/results/optimization/bf16-dispatch-sweep.json": ("Copyright © 2024 Apple Inc.",),
+    "benchmarks/e_means/results/optimization/bf16-tile-sweep3.json": ("Copyright © 2024 Apple Inc.",),
+    "benchmarks/e_means/results/optimization/bf16-tile-sweep4.json": ("Copyright © 2024 Apple Inc.",),
+    "benchmarks/e_means/experiments/gap_assignment.py": ("Copyright © 2024 Apple Inc.",),
+    "benchmarks/e_means/experiments/gap_coalescing.py": ("Copyright © 2024 Apple Inc.",),
+    "benchmarks/e_means/results/gap_investigation/source/metal_v2_e_means_bf16.py": ("Copyright © 2024 Apple Inc.",),
+    "benchmarks/e_means/results/gap_investigation/roofline.json": ("Copyright © 2024 Apple Inc.",),
+    "benchmarks/e_means/results/gap_investigation/schedule.json": ("Copyright © 2024 Apple Inc.",),
+    "benchmarks/e_means/results/gap_investigation/tiles.json": ("Copyright © 2024 Apple Inc.",),
+    "benchmarks/e_means/results/gap_investigation/lowdim.json": ("Copyright © 2024 Apple Inc.",),
+    "benchmarks/e_means/results/gap_investigation/coalescing.json": ("Copyright © 2024 Apple Inc.",),
+}
+
 REQUIRED_PACKAGES = (
     "src/mlxlearn/__init__.py",
     "src/mlxlearn/_common/__init__.py",
@@ -270,6 +289,13 @@ def check_private_imports(paths: list[Path]) -> Result:
 
 def check_headers(paths: list[Path]) -> Result:
     result = Result("headers")
+    notices = read_text(REPO / "THIRD_PARTY_NOTICES.md") or ""
+    section = re.search(
+        r"^## 1\. Copied or derived source\s*\n(.*?)(?=^## |\Z)",
+        notices, flags=re.MULTILINE | re.DOTALL,
+    )
+    derived_notices = section.group(1) if section else ""
+    notice_entries = re.split(r"(?=^### )", derived_notices, flags=re.MULTILINE)
     for path in paths:
         rel = path.relative_to(REPO).as_posix()
         if rel in HEADER_EXEMPT or rel.startswith("phase0/"):
@@ -279,6 +305,13 @@ def check_headers(paths: list[Path]) -> Result:
             continue
         result.checked += 1
         head = "\n".join(text.splitlines()[:60])
+        entries = [entry for entry in notice_entries if f"`{rel}`" in entry]
+        if entries:
+            for header in RECORDED_UPSTREAM_HEADERS.get(rel, ()):
+                if any(header in entry for entry in entries):
+                    # Immutable benchmark JSON embeds the exact source with
+                    # JSON-escaped Unicode; its notice is still the same one.
+                    head = head.replace(header, "").replace(json.dumps(header)[1:-1], "")
         for pattern in UPSTREAM_HEADER_PATTERNS:
             if pattern.search(head):
                 result.failures.append(

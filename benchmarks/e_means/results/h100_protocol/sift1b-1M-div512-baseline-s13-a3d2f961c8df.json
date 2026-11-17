@@ -1,0 +1,324 @@
+{
+  "status": "completed",
+  "kind": "h100_protocol_metal",
+  "config": {
+    "dataset": "sift1b-1M-div512",
+    "mode": "baseline",
+    "seed": 13,
+    "epochs": 3.0,
+    "epochs_override": null,
+    "rows": null,
+    "k_override": null,
+    "precision": "bfloat16",
+    "recipe": "faiss",
+    "finalization": "last_epoch",
+    "assignment": "gemm",
+    "warmup": true,
+    "capture_assignments": true,
+    "threads": 8,
+    "train_score_rows": 10000,
+    "memory": true,
+    "memory_interval_seconds": 0.01,
+    "protocol_path": "/Users/tunguz/Programming/mlxlearn/benchmarks/e_means/h100_protocol.json",
+    "protocol_config": {
+      "dataset": "sift1b-1M-div512",
+      "suite": "core1m",
+      "n": 1000000,
+      "d": 128,
+      "k": 16384,
+      "epochs": 3.0,
+      "epoch_budget_source": "supplemental_local_choice",
+      "h100_epoch_association_verified": false,
+      "published_h100_epochs": null,
+      "table11_listed_epochs": null,
+      "reported_h100_emeans_seconds": null,
+      "reported_h100_seconds_source": null,
+      "seed_ids": [
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19
+      ],
+      "seed_count": 10,
+      "seed_id_provenance": "supplemental_local_choice_10_to_19",
+      "split_status": "same_corpus_no_released_1M_fingerprint",
+      "dataset_identity": {
+        "train_sample_sha256": "303394e8b1288e5ce6a38b1848a90dcff6ed608e8a28d551ac6ed74f1ca667e0",
+        "test_sha256": "18547427b92169841b11943bab5e5139e39a4f57f60a48e3d68d8772bd1c029b",
+        "train_rows_used": 1000000,
+        "test_rows_used": 5000,
+        "dimension": 128
+      },
+      "exact_h100_reproduction": false,
+      "notes": [
+        "No H100 crossing budget or corresponding H100 time is published for this exact core1M configuration in Table4; T=3 is supplemental and unmatched."
+      ]
+    },
+    "cache": "/Users/tunguz/.cache/mlxlearn/e_means",
+    "faiss_source": "/Users/tunguz/Programming/mlxlearn/tmp/e_means/faiss",
+    "expected_source_sha256": {
+      "benchmarks/e_means/run.py": "ba5cde5b87e306ce902fb398bd04750bea0ab7506c9fd0567fa6d201729be399",
+      "benchmarks/e_means/vibe_manifest.json": "175cdf9c60208be8204eed0c60d7361ea4ccd26caf1a057519062a499213d63d",
+      "src/mlxlearn/cluster/__init__.py": "d392c1bfb85290a278128af698108dd59c1ae6f2d225ffe9eeb4f8944812fb79",
+      "src/mlxlearn/cluster/_e_means.py": "fb1db4e9e6edc54df09248c397aab2f20140102b8536b146b718b29171d2c9db",
+      "src/mlxlearn/cluster/_recipe.py": "a384fb14e9fd904b2d07b77f63a5e7c85da5160e73b4e842dd0c44de5ca1c468",
+      "src/mlxlearn/_kernels/e_means.py": "12766f6ba973e29fab849d533bb4f8a98e7ff4d85bc17f735252e41c25a42b81",
+      "benchmarks/e_means/h100.py": "710d8e1325c6905b3ebe8e6e625a7ef636d5010d52eeef948fc5b1f52e104633",
+      "benchmarks/e_means/memory.py": "2140f828d3789ec615af6a27499a24ad79432781e4de083cb7ff183e595876e7",
+      "benchmarks/e_means/h100_protocol.json": "90c885b91fe5fba59590ebe5872d9d751c80dd2e6e9b732c8907df100da91b28",
+      "src/mlxlearn/_kernels/__init__.py": "0a2227680a6afb7d09a596f0aaab4ef6671fe9e58169739d1cc3a9e32c3b062e",
+      "src/mlxlearn/_kernels/distance.py": "2857c9343031e28de213406b6cebac96e3fa13d86a55dc96a272057bd071c4d5",
+      "src/mlxlearn/_kernels/e_means_bf16.py": "cbe903b6972ab2fcca06b940005a5d3ae4e700f9595460036f14880625f3e4ea",
+      "src/mlxlearn/_kernels/kernels.py": "eea5010cb0b160346fa3c75a724a3e23dc82ea3ed2fe29877f49a7a0c68d657b",
+      "src/mlxlearn/_kernels/logistic_input.py": "5f0180ba62076f9899fafca359f67e04f50c796febd2111ea3b3610e6f758efb",
+      "src/mlxlearn/_kernels/neighbors_cpu.py": "3e4955ebae4ae0c64ee8c81d7fcacd91dea4fd1f60e8dfbf65207a53c3854b27",
+      "src/mlxlearn/_kernels/pca_input.py": "5668debf3b48c99b0a215c7a800615438804960295e19290f44d35e71a11d3f1",
+      "src/mlxlearn/_kernels/svc_cpu.py": "c7679b03ba486083b35916ba9dc090dacb9f97d140225c4f1d4668d013c44f29",
+      "src/mlxlearn/_kernels/svc_fused.py": "ccb7db387ac8067df5022a623f0b8c1cc311f18ed9230211db5f79f3967b2fd9",
+      "src/mlxlearn/_kernels/svc_predict.py": "ad8dfe6911b9d8b5b9241e0571d3354b7767990512f269395a871e31b9445f8c"
+    },
+    "expected_versions": {
+      "python": "3.14.2",
+      "numpy": "2.5.4",
+      "scipy": "1.18.1",
+      "mlx": "0.32.4",
+      "scikit-learn": "1.9.1",
+      "faiss-cpu": "1.16.0",
+      "h5py": "3.16.0"
+    },
+    "expected_host": {
+      "machine": "arm64",
+      "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+      "cpu": "Apple M4 Max",
+      "ram_bytes": 137438953472
+    },
+    "output": "/Users/tunguz/Programming/mlxlearn/benchmarks/e_means/results/h100_protocol/sift1b-1M-div512-baseline-s13-a3d2f961c8df.json",
+    "worker_output": "/Users/tunguz/Programming/mlxlearn/benchmarks/e_means/results/h100_protocol/sift1b-1M-div512-baseline-s13-a3d2f961c8df.json.worker.tmp"
+  },
+  "dataset": {
+    "paper_split_exact": false,
+    "split": "1M prefix with next 10,000 evaluation rows, seed1234 second half",
+    "normalization": "divide by 512 (exact power of two)",
+    "note": "same SIFT corpus/protocol; upstream has no SIFT1M fingerprints",
+    "train_rows_used": 1000000,
+    "test_rows_used": 5000,
+    "dimension": 128,
+    "requested_row_limit": null,
+    "train_sample_sha256": "303394e8b1288e5ce6a38b1848a90dcff6ed608e8a28d551ac6ed74f1ca667e0",
+    "test_sha256": "18547427b92169841b11943bab5e5139e39a4f57f60a48e3d68d8772bd1c029b"
+  },
+  "n": 1000000,
+  "d": 128,
+  "k": 16384,
+  "train_seconds": 2.928731916937977,
+  "train_seconds_samples": [
+    2.928731916937977
+  ],
+  "test_mse": 0.19362436796944876,
+  "train_sample_mse": 0.1918926625008225,
+  "train_score_rows": 10000,
+  "initial_centroids_sha256": "efc2826e7cd7dbef0a5e4057bff5e1614ce436a7cb43d307d156de82ee6868a7",
+  "final_centroids_sha256": "90bfc8ea740265932768ecbe5e3a3520d5822c5ce853c3db01cbf45bc27c42f0",
+  "recipe_resolved": {
+    "name": "faiss",
+    "batch_law": "throughput",
+    "batch_law_requested": "throughput",
+    "batch_law_reason": "requested",
+    "batch_size": 65536,
+    "alpha0": 0.3608988199706412,
+    "nepochs": 3.0,
+    "epoch_rows": [
+      1000000,
+      1000000,
+      1000000
+    ],
+    "epoch_steps": [
+      16,
+      16,
+      16
+    ],
+    "total_steps": 48,
+    "alpha_min_factor": 0.1,
+    "init_usage": 1.52587890625e-05,
+    "split_epsilon": 0.0001,
+    "unused_threshold": 0.1,
+    "check_unused_every": 5,
+    "tail_policy": "keep",
+    "fractional_policy": "full_closing_pass_when_T_ge_1",
+    "seed": 13,
+    "backend": "metal",
+    "precision": "bfloat16",
+    "assignment": "gemm",
+    "finalization": "last_epoch",
+    "spherical": false,
+    "slow_alpha": null,
+    "assignment_centering": "none",
+    "statistics_representation": "bfloat16"
+  },
+  "iteration_history": [
+    {
+      "epoch": 1,
+      "rows": 1000000,
+      "steps": 16,
+      "moving_objective": 220191.875,
+      "moving_mse": 0.220191875,
+      "seconds": 1.0000216667540371,
+      "cumulative_seconds": 1.0001486670225859,
+      "splits": 4493,
+      "pass_count_squares": 82360688.0
+    },
+    {
+      "epoch": 2,
+      "rows": 1000000,
+      "steps": 32,
+      "moving_objective": 203984.109375,
+      "moving_mse": 0.203984109375,
+      "seconds": 0.9727782909758389,
+      "cumulative_seconds": 1.9731160840019584,
+      "splits": 4671,
+      "pass_count_squares": 73763616.0
+    },
+    {
+      "epoch": 3,
+      "rows": 1000000,
+      "steps": 48,
+      "moving_objective": 196805.96875,
+      "moving_mse": 0.19680596875,
+      "seconds": 0.9544827919453382,
+      "cumulative_seconds": 2.927763666957617,
+      "splits": 4684,
+      "pass_count_squares": 71686976.0
+    }
+  ],
+  "n_splits": 4684,
+  "captured_assignments": {
+    "shape": [
+      1000000
+    ],
+    "dtype": "mlx.core.int64",
+    "semantics": "online final-pass labels, no extra nearest-centroid pass"
+  },
+  "mlx_memory_samples": [
+    {
+      "peak_active_bytes": 1792300032,
+      "active_after_fit_bytes": 545178116,
+      "cached_after_fit_bytes": 1314841672
+    }
+  ],
+  "preparation_seconds": 0.05080716731026769,
+  "warmup_seconds": 3.048192874994129,
+  "source_sha256": {
+    "benchmarks/e_means/run.py": "ba5cde5b87e306ce902fb398bd04750bea0ab7506c9fd0567fa6d201729be399",
+    "benchmarks/e_means/vibe_manifest.json": "175cdf9c60208be8204eed0c60d7361ea4ccd26caf1a057519062a499213d63d",
+    "src/mlxlearn/cluster/__init__.py": "d392c1bfb85290a278128af698108dd59c1ae6f2d225ffe9eeb4f8944812fb79",
+    "src/mlxlearn/cluster/_e_means.py": "fb1db4e9e6edc54df09248c397aab2f20140102b8536b146b718b29171d2c9db",
+    "src/mlxlearn/cluster/_recipe.py": "a384fb14e9fd904b2d07b77f63a5e7c85da5160e73b4e842dd0c44de5ca1c468",
+    "src/mlxlearn/_kernels/e_means.py": "12766f6ba973e29fab849d533bb4f8a98e7ff4d85bc17f735252e41c25a42b81",
+    "benchmarks/e_means/h100.py": "710d8e1325c6905b3ebe8e6e625a7ef636d5010d52eeef948fc5b1f52e104633",
+    "benchmarks/e_means/memory.py": "2140f828d3789ec615af6a27499a24ad79432781e4de083cb7ff183e595876e7",
+    "benchmarks/e_means/h100_protocol.json": "90c885b91fe5fba59590ebe5872d9d751c80dd2e6e9b732c8907df100da91b28",
+    "src/mlxlearn/_kernels/__init__.py": "0a2227680a6afb7d09a596f0aaab4ef6671fe9e58169739d1cc3a9e32c3b062e",
+    "src/mlxlearn/_kernels/distance.py": "2857c9343031e28de213406b6cebac96e3fa13d86a55dc96a272057bd071c4d5",
+    "src/mlxlearn/_kernels/e_means_bf16.py": "cbe903b6972ab2fcca06b940005a5d3ae4e700f9595460036f14880625f3e4ea",
+    "src/mlxlearn/_kernels/kernels.py": "eea5010cb0b160346fa3c75a724a3e23dc82ea3ed2fe29877f49a7a0c68d657b",
+    "src/mlxlearn/_kernels/logistic_input.py": "5f0180ba62076f9899fafca359f67e04f50c796febd2111ea3b3610e6f758efb",
+    "src/mlxlearn/_kernels/neighbors_cpu.py": "3e4955ebae4ae0c64ee8c81d7fcacd91dea4fd1f60e8dfbf65207a53c3854b27",
+    "src/mlxlearn/_kernels/pca_input.py": "5668debf3b48c99b0a215c7a800615438804960295e19290f44d35e71a11d3f1",
+    "src/mlxlearn/_kernels/svc_cpu.py": "c7679b03ba486083b35916ba9dc090dacb9f97d140225c4f1d4668d013c44f29",
+    "src/mlxlearn/_kernels/svc_fused.py": "ccb7db387ac8067df5022a623f0b8c1cc311f18ed9230211db5f79f3967b2fd9",
+    "src/mlxlearn/_kernels/svc_predict.py": "ad8dfe6911b9d8b5b9241e0571d3354b7767990512f269395a871e31b9445f8c"
+  },
+  "versions": {
+    "python": "3.14.2",
+    "numpy": "2.5.4",
+    "scipy": "1.18.1",
+    "mlx": "0.32.4",
+    "scikit-learn": "1.9.1",
+    "faiss-cpu": "1.16.0",
+    "h5py": "3.16.0"
+  },
+  "hardware": {
+    "machine": "arm64",
+    "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "cpu": "Apple M4 Max",
+    "ram_bytes": 137438953472
+  },
+  "metal_device": {
+    "device_name": "Apple M4 Max",
+    "max_recommended_working_set_size": 115448725504,
+    "memory_size": 137438953472,
+    "architecture": "applegpu_g16s",
+    "max_buffer_length": 86586540032,
+    "resource_limit": 499000
+  },
+  "faiss_reference_revision": "ebab8f784c1d177129602269d5ad966c525fbdcb",
+  "timing_scope": "resident FP32 input; identical full warmup; new model plus device fit and sync; shuffling, BF16 casts, online history and final-pass labels included; preparation/upload and host output/scoring excluded",
+  "quality_fit_index": 0,
+  "scoring": "shared Faiss IndexFlatL2 float32 nearest assignment then direct float64 squared residuals",
+  "memory_scope": "sampled per timed-fit process footprint/RSS including resident-input baseline; warmup, cache clearing and output export excluded; MLX allocator recorded separately",
+  "differences_from_h100": [
+    "Apple Metal hardware and kernels, no local H100",
+    "NumPy permutations/donor RNG instead of CUDA Torch RNG",
+    "full input finite/range validation in untimed preparation; per-fit signature/state checks inside timing",
+    "online objective/history accumulation FP32 on Metal versus upstream FP64"
+  ],
+  "memory_samples": [
+    {
+      "supported": true,
+      "source": "proc_pid_rusage",
+      "pid": 72144,
+      "sample_interval_seconds": 0.01,
+      "sample_count": 294,
+      "duration_seconds": 2.929041979,
+      "maximum_sample_gap_seconds": 0.015161792,
+      "baseline": {
+        "supported": true,
+        "source": "proc_pid_rusage",
+        "pid": 72144,
+        "rusage_flavor": 4,
+        "monotonic_ns": 2227027988038687,
+        "collection_duration_ns": 33375,
+        "rss_bytes": 1761886208,
+        "physical_footprint_bytes": 3228223792,
+        "lifetime_peak_physical_footprint_bytes": 3232139568,
+        "process_start_abstime": 53448581810485,
+        "process_exit_abstime": 0
+      },
+      "end": {
+        "supported": true,
+        "source": "proc_pid_rusage",
+        "pid": 72144,
+        "rusage_flavor": 4,
+        "monotonic_ns": 2227030917080666,
+        "collection_duration_ns": 10917,
+        "rss_bytes": 1762312192,
+        "physical_footprint_bytes": 3232123184,
+        "lifetime_peak_physical_footprint_bytes": 3452963096,
+        "process_start_abstime": 53448581810485,
+        "process_exit_abstime": 0
+      },
+      "peak_rss_bytes": 1762312192,
+      "peak_physical_footprint_bytes": 3232123184,
+      "rss_peak_increase_bytes": 425984,
+      "physical_footprint_peak_increase_bytes": 3899392,
+      "lifetime_peak_physical_footprint_bytes": 3452963096,
+      "sampling_errors": [],
+      "complete": true,
+      "notes": [
+        "Phase peaks are maxima of current-memory samples, not lifetime maxima.",
+        "Sampling can miss transients shorter than the observed sampling gaps.",
+        "Phase totals include memory allocated before FIT_READY; increments subtract that baseline.",
+        "RSS and physical footprint are different process metrics and must not be added.",
+        "Process footprint is not an exclusive GPU-memory measurement.",
+        "Lifetime peak is diagnostic only and includes preparation/warm-up."
+      ]
+    }
+  ],
+  "wall_seconds_including_load_warmup_score": 6.958190457895398
+}

@@ -137,6 +137,26 @@ Gradient norms below ~`1e-6 · ‖initial gradient‖` are not resolvable in flo
 rejected, and `n_iter_` reports what actually happened. An estimator that stops early
 because the objective stopped moving records it in diagnostics.
 
+### 2.4 Matrix products on M5-generation GPUs
+
+On macOS 26.2+ with GPU generation 17 or later (M5), MLX 0.32 runs every float32 GEMM
+(`matmul`, `addmm`, `einsum` and friends) on the GPU neural accelerators with **TF32
+operands** unless the process started with `MLX_ENABLE_TF32=0`. The flag is read once per
+process and has no per-call override. Operands keep about eleven significant bits. Measured
+errors reach thousands of binary32 ulps (2^-23) of `|a| @ |b|` on an M5 Ultra, and up to
+about 18,000 in the kNN measurements, against about five on M4. Matrix-vector products keep
+binary32 operands.
+
+Every tolerance in this document assumes binary32 products, and so do the kNN screening
+certificate and the PCA, clustering, logistic and SVC parity tests. On such GPUs (and on any
+architecture mlx-learn does not recognise), mlx-learn therefore computes its float32 GEMMs
+with its own `simdgroup_matrix<float>` kernel (`mlxlearn_device._binary32`). It applies the
+same fp32 multiply-accumulate that MLX uses on earlier GPUs, and its measured error matches
+MLX with TF32 disabled. Earlier GPUs, the CPU, other dtypes and matrix-vector shapes keep the
+original MLX expressions. Users do not need to set `MLX_ENABLE_TF32`. The one deliberate
+exception is the BF16 e-means GEMM baseline: TF32 represents its BF16-rounded operands
+exactly, so it keeps MLX's GEMM.
+
 ## 3. Tolerances the test suite uses
 
 These are the numbers, and the reasoning for each. Tests do not invent their own.

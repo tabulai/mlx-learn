@@ -1,0 +1,165 @@
+{
+  "status": "completed",
+  "config": {
+    "dataset": "deep1b-1M",
+    "seed": 10,
+    "method": "metal",
+    "epochs": 3.0,
+    "lloyd_iters": 25,
+    "k": null,
+    "rows": null,
+    "threads": 8,
+    "precision": "float32",
+    "recipe": "faiss",
+    "finalization": "last_epoch",
+    "assignment": "auto",
+    "batch_size": null,
+    "batch_law": "auto",
+    "repeats": 1,
+    "warmup": true,
+    "train_score_rows": 10000,
+    "cache": "/Users/tunguz/.cache/mlxlearn/e_means",
+    "faiss_source": "/Users/tunguz/Programming/mlxlearn/tmp/e_means/faiss",
+    "expected_source_sha256": {
+      "benchmarks/e_means/run.py": "ba5cde5b87e306ce902fb398bd04750bea0ab7506c9fd0567fa6d201729be399",
+      "benchmarks/e_means/vibe_manifest.json": "175cdf9c60208be8204eed0c60d7361ea4ccd26caf1a057519062a499213d63d",
+      "src/mlxlearn/cluster/__init__.py": "d392c1bfb85290a278128af698108dd59c1ae6f2d225ffe9eeb4f8944812fb79",
+      "src/mlxlearn/cluster/_e_means.py": "4b614a8349711a7afcb3310aa65ad2e2515e990cca4f02b59dffa1a6dd303964",
+      "src/mlxlearn/cluster/_recipe.py": "a384fb14e9fd904b2d07b77f63a5e7c85da5160e73b4e842dd0c44de5ca1c468",
+      "src/mlxlearn/_kernels/e_means.py": "3df3c15a2086ef9f2807ae7a35e3d3ee6588d7162659c832818dfcfce0f0b178"
+    },
+    "expected_versions": {
+      "python": "3.14.2",
+      "numpy": "2.5.4",
+      "scipy": "1.18.1",
+      "mlx": "0.32.4",
+      "scikit-learn": "1.9.1",
+      "faiss-cpu": "1.16.0",
+      "h5py": "3.16.0"
+    },
+    "expected_host": {
+      "machine": "arm64",
+      "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+      "cpu": "Apple M4 Max",
+      "ram_bytes": 137438953472
+    },
+    "output": "/Users/tunguz/Programming/mlxlearn/benchmarks/e_means/results/cpu_reference/deep1b-1M-metal-s10-425f56d1d286.json"
+  },
+  "dataset": {
+    "paper_split_exact": true,
+    "fingerprints": {
+      "kind": "shipped_queries",
+      "n_val": 5000,
+      "n_test": 5000,
+      "val_sha256": "ca94deceddb13e16d6cfb81365e2e18c319bf704b1d0ea9a28e5067bba03c458",
+      "test_sha256": "05d685ccf5e413a0559348b3586ec82a72da637d50b7d2b9a521e70c6cd29b6f",
+      "n_train": 1000000,
+      "dim": 96,
+      "train_rows_sha256": "7b74aeede93a64c6a2e598f021fbaa42061a7e09e9f3f75f1c1254fbb4419368",
+      "n_eval_rows_in_train": 4
+    },
+    "split": "official upstream paper_data.py + paper_splits fingerprints",
+    "train_rows_used": 1000000,
+    "test_rows_used": 5000,
+    "dimension": 96,
+    "requested_row_limit": null,
+    "train_sample_sha256": "7b74aeede93a64c6a2e598f021fbaa42061a7e09e9f3f75f1c1254fbb4419368",
+    "test_sha256": "05d685ccf5e413a0559348b3586ec82a72da637d50b7d2b9a521e70c6cd29b6f"
+  },
+  "n": 1000000,
+  "d": 96,
+  "k": 16384,
+  "train_seconds": 2.4764749999158084,
+  "train_seconds_samples": [
+    2.4764749999158084
+  ],
+  "test_mse": 0.3881990412885088,
+  "train_sample_mse": 0.3615192610738265,
+  "train_score_rows": 10000,
+  "initial_centroids_sha256": "e7f05e16d9bef45750339f48d0939fb8cb911cc3b3e81d859c117f01a11f3707",
+  "final_centroids_sha256": "cebd21e94f7d4056ec07e7b17d162caf41da582862390c8ce1e269b4fce07091",
+  "recipe_resolved": {
+    "name": "faiss",
+    "batch_law": "throughput",
+    "batch_law_requested": "auto",
+    "batch_law_reason": "faiss: d > 16",
+    "batch_size": 65536,
+    "alpha0": 0.3608988199706412,
+    "nepochs": 3.0,
+    "epoch_rows": [
+      1000000,
+      1000000,
+      1000000
+    ],
+    "epoch_steps": [
+      16,
+      16,
+      16
+    ],
+    "total_steps": 48,
+    "alpha_min_factor": 0.1,
+    "init_usage": 1.52587890625e-05,
+    "split_epsilon": 0.0001,
+    "unused_threshold": 0.1,
+    "check_unused_every": 5,
+    "tail_policy": "keep",
+    "fractional_policy": "full_closing_pass_when_T_ge_1",
+    "seed": 10,
+    "backend": "metal",
+    "precision": "float32",
+    "assignment": "auto",
+    "finalization": "last_epoch",
+    "spherical": false,
+    "slow_alpha": null,
+    "assignment_centering": "global_mean"
+  },
+  "algorithm_applied": {
+    "recipe": "faiss",
+    "finalization": "last_epoch",
+    "precision": "float32"
+  },
+  "n_splits": 6969,
+  "timing_scope": "synchronized fit from NumPy input; includes fit validation/upload; excludes data load, init sampling, warmup, scoring",
+  "scoring": "Faiss IndexFlatL2 float32 assignment, residual recomputed by direct float64 difference",
+  "initialization": "NumPy RandomState(seed) permutation shared across methods; differs paper CUDA RNG",
+  "hardware": {
+    "machine": "arm64",
+    "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "cpu": "Apple M4 Max",
+    "ram_bytes": 137438953472,
+    "metal": {
+      "device_name": "Apple M4 Max",
+      "max_recommended_working_set_size": 115448725504,
+      "memory_size": 137438953472,
+      "architecture": "applegpu_g16s",
+      "max_buffer_length": 86586540032,
+      "resource_limit": 499000
+    }
+  },
+  "versions": {
+    "python": "3.14.2",
+    "numpy": "2.5.4",
+    "scipy": "1.18.1",
+    "mlx": "0.32.4",
+    "scikit-learn": "1.9.1",
+    "faiss-cpu": "1.16.0",
+    "h5py": "3.16.0"
+  },
+  "faiss_reference_revision": "ebab8f784c1d177129602269d5ad966c525fbdcb",
+  "source_sha256": {
+    "benchmarks/e_means/run.py": "ba5cde5b87e306ce902fb398bd04750bea0ab7506c9fd0567fa6d201729be399",
+    "benchmarks/e_means/vibe_manifest.json": "175cdf9c60208be8204eed0c60d7361ea4ccd26caf1a057519062a499213d63d",
+    "src/mlxlearn/cluster/__init__.py": "d392c1bfb85290a278128af698108dd59c1ae6f2d225ffe9eeb4f8944812fb79",
+    "src/mlxlearn/cluster/_e_means.py": "4b614a8349711a7afcb3310aa65ad2e2515e990cca4f02b59dffa1a6dd303964",
+    "src/mlxlearn/cluster/_recipe.py": "a384fb14e9fd904b2d07b77f63a5e7c85da5160e73b4e842dd0c44de5ca1c468",
+    "src/mlxlearn/_kernels/e_means.py": "3df3c15a2086ef9f2807ae7a35e3d3ee6588d7162659c832818dfcfce0f0b178"
+  },
+  "paper_quality_reference": {
+    "method": "Flash-KMeans25, paper median over seeds10-19",
+    "median_test_mse": 0.38925347141324373,
+    "relative_mse": -0.0027088522060103593,
+    "comparison": "same dataset/split/k; different initialization RNG and assignment precision",
+    "runtime_comparison": "not applicable: paper timings are on an H100"
+  },
+  "peak_gpu_memory_bytes": 1591300384
+}

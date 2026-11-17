@@ -17,6 +17,124 @@ All notable changes to this project are documented here. The format follows
   twins. Votes and averages use every training row inside `radius`; empty
   neighborhoods follow scikit-learn (`outlier_label` or `NaN`).
 
+### Fixed
+
+- Large exact-neighbor queries no longer sort float32 Gram tiles wider than
+  `2**20` columns, avoiding incorrect MLX sort orders at `2**21` training rows
+  and above. Candidate certification and exact merging still cover all tiles.
+- Exact nearest neighbors on M5-generation GPUs. On macOS 26.2+, MLX runs
+  float32 matrix products on the M5 GPU neural accelerators with TF32 operands
+  by default. The general GPU path's Gram screen assumes binary32 rounding, so
+  its lower bounds could exceed exact distances, by up to 7.9e8 on monotone
+  data, and certify wrong neighbor indices. GPUs that may take that route
+  (generation 17+, or an unrecognised architecture) now compute the screen with
+  a dedicated binary32 kernel that matches MLX's own fp32 GEMM speed. Earlier
+  GPUs keep `mx.matmul`, with unchanged results and speed.
+- Float32 matrix products everywhere else on M5-generation GPUs. The same TF32
+  route costs thousands of binary32 ulps of `|a| @ |b|`, against about five on
+  M4. It broke 65 tests on an M5 Ultra across PCA (every GPU solver, transforms
+  and scores), KMeans/EMeans float32 assignment and transforms, multinomial
+  logistic regression, SVC kernel tiles and the logistic Hessian sketch. Those
+  products now go through one shared binary32 kernel
+  (`mlxlearn_device._binary32`) that handles transposed operands without
+  copies, fuses `addmm` epilogues and splits long reductions. On M5 it ran
+  0.64-1.11x MLX's own fp32 GEMM time across 19 measured shapes. End to end,
+  every measured estimator matched or beat MLX with `MLX_ENABLE_TF32=0`. On
+  M1-M4 the original MLX expressions run unchanged: outputs are bit-identical
+  and speed is within noise. The BF16 e-means baseline keeps MLX's GEMM, since
+  TF32 represents BF16 operands exactly.
+- Orthonormal PCA components from the wide GPU `svd_solver="full"` path
+  (`n_samples < n_features`). It builds components as `U.T @ X_c / s` from the
+  float32 dual-Gram eigenvectors, which are orthogonal to only about
+  `eps * s_0**2 / (s_i * s_j)`: 2e-4 was measured inside the well-conditioned
+  head. On `test_pca_wide_matrix_parity`'s 128x512 fixture, 35 of seeds 0-39
+  exceeded `max|C @ C.T - I| = 1e-5` on an M4 Max and 38 on an M5 Ultra; the
+  test seed passed on M4 by luck at 9.7e-6. The head rows now go through one
+  row-ordered Cholesky QR: a float32 GPU Gram matrix, a float64 host
+  factorization, and a GPU correction applied as `V + (inv(L) - I) @ V`. The
+  single-precision tail SVD rows get the same pass. All 40 seeds now stay at or
+  below 1.6e-7 on both machines. So do spectra that reach the tail branch (down
+  to 1e-4 * s_0), which measured up to 2.3e-4 before. Components also move
+  slightly closer to scikit-learn's. This changes results on every GPU
+  generation, M1-M4 included. Wide `full` fits without a tail take 11-22%
+  longer: +0.3 ms at 128x512, +0.7 ms at 300x900, 186 -> 214 ms at 2000x8192
+  on M4 Max (172 -> 198 ms on M5 Ultra). A 1000x4096 fit that runs the tail
+  branch took 1-2% longer.
+- A crash in the same wide GPU `svd_solver="full"` path when exactly one
+  component clears the head threshold, as with one dominant direction over
+  small noise: `ValueError: Cannot convert DLPack arrays with negative strides`.
+  MLX's CPU `eigh` returns column-major eigenvectors, and a single column of
+  them read in descending order is a negative-stride view that NumPy still
+  calls contiguous, so it reached `mx.array` uncopied. The PCA solver's float32
+  upload now copies any view with a negative stride.
+- Trailing components of the same wide GPU `svd_solver="full"` path. After the
+  deflated tail SVD it replaced every component whose singular value fell below
+  `s_0 * max(n_samples, n_features) * 1e-7` (4e-4 * s_0 at 4096 features,
+  2e-3 at 20000) with a basis vector orthogonalized against the others, while
+  `singular_values_` and `explained_variance_` still reported the tail SVD's
+  values for it. Those components were unrelated to scikit-learn's (|cos| at
+  most 0.05). Their whitened scores had standard deviations of 0.0005-0.76
+  instead of 1 on spectra down to 1e-4 * s_0, and 270 on steeper ones.
+  `fit_transform` was off by 1.6e-4 to 2e-3 relative. From about 316,000
+  features on, the cut reached into the head rows: it replaced 5 of 7
+  components of an 8 x 1,000,000 fit and left `fit_transform` off by 0.1.
+  The tail SVD's own rows are kept now. Over 26 measured shapes and spectra,
+  on both M4 Max and M5 Ultra, rows down to 1e-4 * s_0 land 4e-5 to 2.5e-3 from
+  float64, with subspace angles of 4e-6 to 7e-4. That is as close as the rows
+  above the old cut-off, as close as the tall GPU path at the same
+  singular-value ratios, and closer than the host float32 SVD (up to 0.83).
+  Neither of those paths ever cut rows. Only rows below a few `eps * s_0` stay
+  arbitrary, as in any SVD of rank-deficient data. `fit_transform` now matches
+  scikit-learn to 6e-5. The deflation leaves the smallest tail rows up to 1.3e-4
+  off the head, so the tail is projected off the head once on the GPU before
+  its Cholesky QR. All components stay orthonormal to 1.6e-7. Fits that cut
+  rows got faster, because the replacement was a Python loop: on M4 Max,
+  21 -> 15 ms at 128x8192, 263 -> 119 ms at 1000x4096 and 2235 -> 568 ms at
+  2000x8192. Tail-branch fits that cut nothing take the same time.
+
+### Changed
+
+- SVC training reuses kernel rows across native working sets when the full
+  Gram matrix exceeds `cache_size`. Each binary subproblem keeps recently
+  requested rows within its existing kernel-row budget after reserving room
+  for the next fetch.
+- Exact kNN candidate selection uses GPU-specific partial-selection regions
+  and a chunk-minimum threshold that safely rejects values outside the top-k.
+  Uncertified Gram, fused, compact and integer-screen rows use partitioned
+  exact scans and exact merges. Valid candidate distances additionally bound
+  the fused, compact and integer fallbacks, reducing expensive comparisons on
+  tied data without changing distance or index ordering.
+- The resident and NumPy-facing neighbor APIs share memory-budget tile
+  planning. The resident general search can use larger tiles on machines with
+  sufficient memory while retaining explicit block sizes, CPU bounds and
+  NumPy-free operation. Host tuning contexts remain scoped to the host API.
+  See the [integration report](docs/knn-integration-2026-11-17.md) for the
+  combined validation, benchmark protocol and performance limits.
+
+## [0.1.3] — 2026-11-15
+
+### Added
+
+- `mlxlearn.cluster.EMeans` implements the paper and pinned Faiss e-means
+  recipes on Apple Silicon GPUs. It supports FP32, FP16, and native BF16
+  assignment, final nearest-centroid labels and inertia, spherical clustering,
+  and the published finalization choices. See the [estimator guide](docs/e-means.md).
+- `mlxlearn.cluster.KMeans` implements dense FP32 Lloyd clustering on Metal with
+  scikit-learn-style `fit`, `predict`, `transform`, and `score` methods, multiple
+  initializations, bounded work tiles, and final labels and inertia. See the
+  [KMeans guide](docs/k-means.md).
+- Reproducible benchmark drivers, pinned source archives, raw results, and
+  hardware and quality reports for the paper datasets and Faiss reference.
+
+### Measured
+
+- On five 10M-vector datasets with 65,536 centers and matched FP32 pass budgets,
+  Metal KMeans ran **1.96–6.19×** faster than scikit-learn KMeans with test-MSE
+  differences under **0.003%**. Metal e-means reduced test MSE by **1.43–4.48%**
+  compared with Metal KMeans at those budgets. These are single-seed, single-fit
+  results; see the [complete comparison](docs/k-means-10m-comparison-2026-11-15.md)
+  for memory, timings, and limits.
+
 ## [0.1.2] — 2026-11-11
 
 ### Added
@@ -575,7 +693,8 @@ Each of these is now covered by a regression test:
   shape, making `fit` a non-pure function of its arguments.
 - `except Exception:` around the accelerated path, rerunning silently on scikit-learn.
 
-[Unreleased]: https://github.com/tabulai/mlx-learn/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/tabulai/mlx-learn/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/tabulai/mlx-learn/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/tabulai/mlx-learn/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/tabulai/mlx-learn/compare/v0.1.0a2...v0.1.1
 [0.1.0a2]: https://github.com/tabulai/mlx-learn/compare/v0.1.0a1...v0.1.0a2

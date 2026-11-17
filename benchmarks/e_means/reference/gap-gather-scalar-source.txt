@@ -1,0 +1,67 @@
+"""Compare a fused indexed BF16 cast with the current two-step gather/cast.
+
+This prototype preserves the same permutation and BF16 represented values.
+Run only while holding exclusive benchmark GPU ownership.
+"""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import time
+from pathlib import Path
+
+import mlx.core as mx
+import numpy as np
+
+SOURCE = r"""
+    uint i = thread_position_in_grid.x;
+    if (i >= B * D) return;
+    uint row = i / D, feature = i % D;
+    batch[i] = bfloat16_t(data[ulong(order[row]) * D + feature]);
+"""
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output", type=Path, required=True)
+    args = parser.parse_args()
+    kernel = mx.fast.metal_kernel(name="emeans_gather_cast_bf16", input_names=["data", "order"],
+                                  output_names=["batch"], source=SOURCE)
+    records = []
+    rng = np.random.default_rng(1901)
+    for d in (96, 200, 768, 1024, 3072):
+        n, b = 100000, 32768
+        data = mx.array(rng.standard_normal((n, d), dtype=np.float32))
+        order = mx.array(rng.permutation(n)[:b], dtype=mx.int32)
+        mx.eval(data, order)
+        methods = {
+            "previous": lambda data=data, order=order: data[order].astype(mx.bfloat16),
+            "fused": lambda data=data, order=order, b=b, d=d: kernel(inputs=[data, order], template=[("B", b), ("D", d)],
+                                    grid=(b * d, 1, 1), threadgroup=(256, 1, 1),
+                                    output_shapes=[(b, d)], output_dtypes=[mx.bfloat16], stream=mx.gpu)[0],
+        }
+        previous, fused = (method() for method in methods.values())
+        mx.eval(previous, fused)
+        assert np.array_equal(np.array(previous.view(mx.uint16)), np.array(fused.view(mx.uint16)))
+        times = {mode: [] for mode in methods}
+        for repetition in range(20):
+            modes = list(methods) if repetition % 2 == 0 else list(reversed(methods))
+            for mode in modes:
+                start = time.perf_counter()
+                output = methods[mode]()
+                mx.eval(output)
+                mx.synchronize()
+                times[mode].append(time.perf_counter() - start)
+        record = {"n": n, "b": b, "d": d, "seconds": times, "same_bf16_bits": True,
+                  "median_speedup": float(np.median(times["previous"]) / np.median(times["fused"]))}
+        records.append(record)
+        print(json.dumps(record), flush=True)
+        args.output.write_text(json.dumps({"script_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+                                          "kernel_source": SOURCE, "hardware": mx.device_info(),
+                                          "protocol": "resident random FP32 data and fixed random rows; BF16 bitwise oracle; 20 alternating synchronized previous/fused pairs; allocation included; no cache clearing between microcalls",
+                                          "records": records}, indent=2) + "\n")
+
+
+if __name__ == "__main__":
+    main()

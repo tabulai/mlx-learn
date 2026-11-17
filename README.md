@@ -38,7 +38,7 @@ stock inheritance. See the [compatibility details](docs/support_matrix.md).
 
 ## Status
 
-**`0.1.2` — alpha.** The API may change. See [CHANGELOG.md](CHANGELOG.md).
+**`0.1.3` — alpha.** The API may change. See [CHANGELOG.md](CHANGELOG.md).
 
 | Estimator | Status |
 |---|---|
@@ -50,9 +50,51 @@ stock inheritance. See the [compatibility details](docs/support_matrix.md).
 | `mlxlearn.linear_model.LogisticRegression` | 0.1.0 |
 | `mlxlearn.svm.SVC` (exact) | 0.1.0 |
 | `mlxlearn.decomposition.PCA` | 0.1.2 |
-| `LinearRegression`, `Ridge`, `KMeans`, `DBSCAN`, `TSNE` | planned, 0.2.x |
+| `mlxlearn.cluster.EMeans` | 0.1.3; Metal GPU, paper/Faiss recipes |
+| `mlxlearn.cluster.KMeans` | 0.1.3; Metal GPU, Lloyd clustering |
+| `LinearRegression`, `Ridge`, `DBSCAN`, `TSNE` | planned, 0.2.x |
 | `SVR`, `NuSVR`, `NuSVC` | deferred — will not ship until they implement the true objective |
 | tree ensembles | out of scope |
+
+## E-means clustering
+
+Version 0.1.3 includes [e-means](https://arxiv.org/abs/2611.09501),
+with Metal assignment and update kernels for Apple Silicon:
+
+```python
+from mlxlearn.cluster import EMeans
+
+model = EMeans(n_clusters=4096, max_iter=3, random_state=10).fit(X_train)
+labels = model.predict(X_test)
+```
+
+It supports the published recipe, a separately specified Faiss recipe,
+last-epoch means, slow EMA, and spherical clustering. See the
+[implementation guide](docs/e-means.md) and [reproducible paper-data benchmarks](benchmarks/e_means/README.md).
+Measured results are in the [M4 Max benchmark report](docs/e-means-benchmarks-2026-11-14.md).
+The [direct Faiss e-means comparison](docs/e-means-faiss-comparison-2026-11-14.md)
+measures runtime, process memory, and held-out quality with matched Faiss recipes.
+`precision="bfloat16"` enables native BF16 Metal assignment with float32
+accumulation and state, plus the Faiss BF16 statistics semantics. The
+[optimization and H100 protocol report](docs/e-means-h100-protocol-2026-11-14.md)
+compares it with a matched Metal GEMM baseline and documents the limits of
+comparison with published H100 times.
+The subsequent [hardware-gap investigation](docs/e-means-gap-investigation-2026-11-14.md)
+separates arithmetic throughput from implementation overhead and compares further
+optimizations against a frozen native-BF16 implementation in fresh paired runs.
+The [five-dataset 10M-vector comparison](docs/e-means-10m-comparison-2026-11-14.md)
+measures matched FP32 Metal and original Faiss CPU runs: Metal is 3.98–18.95×
+faster, with test-MSE differences within 0.061% in this single-seed campaign.
+`EMeans` is an explicit estimator; it does not replace sklearn's `KMeans` through patching.
+
+For full-batch Lloyd clustering, [Metal `KMeans`](docs/k-means.md) is available
+through `from mlxlearn.cluster import KMeans`. It supports dense FP32 training,
+explicit, random or k-means++ initialization, multiple restarts, and final
+nearest-centroid labels and inertia. Use the direct estimator; it is not part
+of `patch_sklearn()`.
+
+The [four-method 10M-vector comparison](docs/k-means-10m-comparison-2026-11-15.md)
+reports runtime, peak fit memory, and test MSE on five datasets.
 
 ## Requirements
 
@@ -69,7 +111,7 @@ CI tests only valid pairs — see [`docs/support_matrix.md`](docs/support_matrix
 pip install mlx-learn
 ```
 
-Version `0.1.2` provides Apple silicon wheels for Python 3.10–3.13 with Metal
+Version `0.1.3` provides Apple silicon wheels for Python 3.10–3.13 with Metal
 and C++ CPU extensions. Source builds can also include these optional extensions.
 The KNN CPU extension handles small workloads and is compiled at build time;
 fitting or querying never invokes the C++ compiler. A compatible wheel includes
@@ -246,8 +288,9 @@ CPU routines handle statistics, decision reductions and multiclass voting;
 NumPy remains at the validation and public-array boundary, with portable
 fallbacks if the optional extensions are unavailable. Automatic backend
 thresholds remain conservative. See the
-[working-set implementation and benchmarks](docs/svc-working-set-2026-10-31.md)
-and the [earlier native-loop acceleration](docs/svc-native-2026-10-31.md).
+[working-set implementation](docs/svc-working-set-2026-10-31.md),
+[kernel-row cache benchmarks](docs/svc-row-cache-2026-11-17.md), and
+[earlier native-loop acceleration](docs/svc-native-2026-10-31.md).
 
 KNN shares a NumPy-free GPU search core with `mlxlearn_device.fit_neighbors`.
 Small neighbor counts use fused Metal distance/selection kernels, and GPU
@@ -369,6 +412,11 @@ index = fit_neighbors(mx.array([[0., 0.], [1., 1.], [2., 2.]]))
 distances, indices = index.query(mx.array([[0.2, 0.1]]), k=2)
 mx.eval(distances, indices)  # results remain MLX arrays
 ```
+
+The unreleased integration shares memory-budget query planning between this
+resident API and the NumPy interface, adds filtered candidate selection and
+parallel exact fallback, and includes the M5 binary32 and wide-PCA correctness
+fixes. See the [combined tests and benchmarks](docs/knn-integration-2026-11-17.md).
 
 Performance depends on training size, feature count, query batch, neighbor count
 and data distribution. Automatic KNN selects its owned CPU or GPU search under

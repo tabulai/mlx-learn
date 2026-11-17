@@ -1,0 +1,30 @@
+{
+  "kind": "compliance_validation",
+  "status": "passed",
+  "recorded_at_utc": "2026-11-14T17:14:29.897991+00:00",
+  "tests": {
+    "command": ".venv/bin/python -m pytest -q tests/unit/test_compliance_headers.py",
+    "result": "13 passed in 0.03s"
+  },
+  "ruff": {
+    "command": ".venv/bin/ruff check tools/compliance.py tests/unit/test_compliance_headers.py",
+    "result": "All checks passed!"
+  },
+  "compliance": {
+    "command": ".venv/bin/python tools/compliance.py",
+    "gates": {
+      "branding": 1557,
+      "private-imports": 52,
+      "headers": 1565,
+      "licenses": 4,
+      "layout": 9
+    },
+    "result": "compliance passed (mechanical checks only)"
+  },
+  "policy": "Only five exact derived-file paths are eligible; each exact copyright string must be in the same Section1 notice entry as its exact file path; every other upstream header remains rejected. JSON source snapshots preserve Unicode-escaped notices.",
+  "source_sha256": {
+    "tools/compliance.py": "d3c6c27b8949428b82e1255fc8dc59cf024bbaa7b8e9544cb7c9afe83234d214",
+    "tests/unit/test_compliance_headers.py": "044749b43ee376e22ae9e3581785b69f2739e4be5ba4505fe0abdcce2c65b90d",
+    "THIRD_PARTY_NOTICES.md": "1f5cf9beeb8fde9dca151b555766f4f5d3329c9fe31f2d46e62e28043006ac46"
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "kind": "kmeans_report_validation",
+  "scope": "CPU-only report/provenance tests; no GPU, datasets, fits, or plots",
+  "pytest": {
+    "command": ".venv/bin/python -m pytest -q tests/unit/test_kmeans_report.py",
+    "passed": 21,
+    "seconds": 0.06
+  },
+  "ruff": {
+    "command": ".venv/bin/ruff check benchmarks/e_means/kmeans_report.py tests/unit/test_kmeans_report.py",
+    "passed": true
+  },
+  "source_sha256": {
+    "benchmarks/e_means/kmeans_report.py": "bc0b8a4199265f638bb60a787096bbbadbcc606a4e6c6c154c86e7010ab7d3d8",
+    "tests/unit/test_kmeans_report.py": "9e83b7e92d19d179bd29e5ea3e08f045e0cb28211ce55d778bd929b30d64d325",
+    "docs/k-means.md": "a072c5d18707da47b99af0d5948e9a129b9d7dbf3a44f39f43b2a6e240719c1f",
+    "benchmarks/e_means/kmeans_plot.py": "7cbedf5e5818c5d3ebaf1caeffe0b9d777aa282e0cdd066a9c137a8ac2140580"
+  },
+  "initial_report_generation": {
+    "accepted_records": 0,
+    "expected_records": 20,
+    "rejected": [],
+    "archive_verified": true
+  },
+  "plotter_status": "Source linted only; never executed, plotted, or imported matplotlib during campaign.",
+  "report_heading": "Budget / actual passes",
+  "enhancements": [
+    "Complete-only observed speedup and MSE range headline",
+    "Five significant digits retain small percentage MSE differences",
+    "Conditional relative PNG embed and PDF link; no plotting executed"
+  ],
+  "delivery_readiness_review": {
+    "scope": "Read-only source and 12-record metadata review; no GPU, benchmarks, plots or numerical tests.",
+    "findings": "No DINO/SIFT shape or plotting dynamic-range blocker. Final report gate, isolated no-project plotting, then report regeneration to embed plots.",
+    "edits": "Plotter docstring isolated command and API documentation wording only.",
+    "plotter_ruff_passed": true
+  }
+}

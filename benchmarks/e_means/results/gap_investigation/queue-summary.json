@@ -1,0 +1,206 @@
+{
+  "raw_path": "benchmarks/e_means/results/gap_investigation/queue.json",
+  "raw_sha256": "bb9ab3441df702e19a4878b3346d312e3e3ecf49ad80e046b32391fd3fa560a6",
+  "runtime_changed": false,
+  "interpretation": "Periodic synchronization reduces MLX active allocation peak, especially for SPACEV. No reliable runtime improvement is established by these three interleaved samples: timing ranges overlap, paired directions vary, and runtime drifts during the run. This isolates queue depth as a contributor to current memory usage; it does not by itself establish the cause of the earlier gather-versus-frozen memory regression.",
+  "datasets": [
+    {
+      "dataset": "spacev-1M",
+      "all_fit_centroid_hashes": [
+        "0410a4095dabc33d27f8f32bdae22197b0abf02499c78103e11f09d3fb59f094"
+      ],
+      "all_fit_history_hashes": [
+        "cffc1f532e61404c52c9596711fd51e297a0a6437fbee1ab0d25d7578a98b120"
+      ],
+      "periods": [
+        {
+          "period": 0,
+          "seconds": [
+            1.1415499593131244,
+            1.1855932092294097,
+            1.0282430411316454
+          ],
+          "median_seconds": 1.1415499593131244,
+          "time_change_percent": 0.0,
+          "peak_active_bytes": [
+            2036933408,
+            2036933408,
+            2036933408
+          ],
+          "median_peak_gib": 1.897042065858841,
+          "peak_change_percent": 0.0,
+          "per_round_time_change_percent": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "period": 2,
+          "seconds": [
+            1.1718769581057131,
+            1.1775659169070423,
+            0.9874185407534242
+          ],
+          "median_seconds": 1.1718769581057131,
+          "time_change_percent": 2.6566510335506166,
+          "peak_active_bytes": [
+            816436276,
+            816436276,
+            816436276
+          ],
+          "median_peak_gib": 0.7603655345737934,
+          "peak_change_percent": -59.91836194578237,
+          "per_round_time_change_percent": [
+            2.6566510335506166,
+            -0.6770696947214216,
+            -3.9703162331438113
+          ]
+        },
+        {
+          "period": 4,
+          "seconds": [
+            1.2036437089554965,
+            1.246824124827981,
+            1.1186313331127167
+          ],
+          "median_seconds": 1.2036437089554965,
+          "time_change_percent": 5.439424629276335,
+          "peak_active_bytes": [
+            1158682932,
+            1158682932,
+            1158682932
+          ],
+          "median_peak_gib": 1.0791075713932514,
+          "peak_change_percent": -43.11630770798375,
+          "per_round_time_change_percent": [
+            5.439424629276335,
+            5.164580492019599,
+            8.790557131472854
+          ]
+        },
+        {
+          "period": 8,
+          "seconds": [
+            1.1311415419913828,
+            1.2085262909531593,
+            1.1053242082707584
+          ],
+          "median_seconds": 1.1311415419913828,
+          "time_change_percent": -0.911779395796608,
+          "peak_active_bytes": [
+            1782276128,
+            1782276128,
+            1782276128
+          ],
+          "median_peak_gib": 1.6598739922046661,
+          "peak_change_percent": -12.501993388681266,
+          "per_round_time_change_percent": [
+            -0.911779395796608,
+            1.9343128440028057,
+            7.496395701767189
+          ]
+        }
+      ]
+    },
+    {
+      "dataset": "vibe-agnews",
+      "all_fit_centroid_hashes": [
+        "5c610916f103d4e855cd6be2e9dfb805e1c63950991db5f6d599846c54ad7dc3"
+      ],
+      "all_fit_history_hashes": [
+        "20f0b182400dad6a98a6c3dbf7d02e33a164a9ef82f59ddf2c19d32f175f38ad"
+      ],
+      "periods": [
+        {
+          "period": 0,
+          "seconds": [
+            4.862809999845922,
+            5.501766458153725,
+            5.782188416924328
+          ],
+          "median_seconds": 5.501766458153725,
+          "time_change_percent": 0.0,
+          "peak_active_bytes": [
+            4486732668,
+            4486732668,
+            4486732668
+          ],
+          "median_peak_gib": 4.178595419973135,
+          "peak_change_percent": 0.0,
+          "per_round_time_change_percent": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "period": 2,
+          "seconds": [
+            5.312530249822885,
+            5.3605884169228375,
+            5.62646225001663
+          ],
+          "median_seconds": 5.3605884169228375,
+          "time_change_percent": -2.5660493280600605,
+          "peak_active_bytes": [
+            4268268920,
+            4268268920,
+            4268268920
+          ],
+          "median_peak_gib": 3.975135199725628,
+          "peak_change_percent": -4.86910551988341,
+          "per_round_time_change_percent": [
+            9.248155901448186,
+            -2.5660493280600605,
+            -2.6932046429322676
+          ]
+        },
+        {
+          "period": 4,
+          "seconds": [
+            5.254661709070206,
+            5.266024250071496,
+            5.5905060837976635
+          ],
+          "median_seconds": 5.266024250071496,
+          "time_change_percent": -4.284845783173042,
+          "peak_active_bytes": [
+            4485421908,
+            4485421908,
+            4485421908
+          ],
+          "median_peak_gib": 4.177374679595232,
+          "peak_change_percent": -0.029214131908250618,
+          "per_round_time_change_percent": [
+            8.058133244702127,
+            -4.284845783173042,
+            -3.3150482015704363
+          ]
+        },
+        {
+          "period": 8,
+          "seconds": [
+            5.279586459044367,
+            5.485063292086124,
+            5.613562750164419
+          ],
+          "median_seconds": 5.485063292086124,
+          "time_change_percent": -0.3035964211611675,
+          "peak_active_bytes": [
+            4486077288,
+            4486077288,
+            4486077288
+          ],
+          "median_peak_gib": 4.1779850497841835,
+          "peak_change_percent": -0.014607065954119758,
+          "per_round_time_change_percent": [
+            8.570691826570442,
+            -0.3035964211611675,
+            -2.916294914678752
+          ]
+        }
+      ]
+    }
+  ]
+}

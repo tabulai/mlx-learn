@@ -1,0 +1,1101 @@
+{
+  "kind": "manual_fragment_kernel_sweep",
+  "hardware": {
+    "device_name": "Apple M4 Max",
+    "max_recommended_working_set_size": 115448725504,
+    "memory_size": 137438953472,
+    "architecture": "applegpu_g16s",
+    "max_buffer_length": 86586540032,
+    "resource_limit": 499000
+  },
+  "source_sha256": "e33bcef201b722f9cfc6da4ec64e7ceebb1c06773414ddeabf2c587b516747ed",
+  "experimental_source": "\"\"\"Experimental BF16 Metal assignment and statistics kernels, not runtime code.\n\nBF16 operands are represented explicitly; centroid norms and MMA accumulators\nare FP32. No half-precision conversion or implicit centering occurs. Statistics\nconsume the supplied values (pass BF16 rows for upstream's resident-BF16 path).\n\nThe register-coordinate mapping follows Apple's installed MLX Steel\nBaseMMAFrag<float,8,8>::get_coord (Apache-2.0): an 8x8 SIMD fragment owns two\nadjacent columns per lane. Other kernel code is specific to this experiment.\n\"\"\"\n\nfrom __future__ import annotations\n\nfrom dataclasses import dataclass\nfrom functools import lru_cache\n\nimport mlx.core as mx\n\n\n@dataclass(frozen=True)\nclass BF16Config:\n    rows: int = 32\n    cols: int = 128\n    depth: int = 32\n    warps_m: int = 2\n    warps_n: int = 2\n    native_bf16: bool = True\n    register_argmin: bool = True\n    padding: int = 8\n    manual_fragments: bool = True\n\n    def validate(self):\n        if min(self.rows, self.cols, self.depth, self.warps_m, self.warps_n) < 1:\n            raise ValueError(\"positive tile sizes and warp counts are required\")\n        if self.rows % (8 * self.warps_m) or self.cols % (8 * self.warps_n):\n            raise ValueError(\"matrix tiles must divide evenly over 8x8 SIMD fragments\")\n        if self.depth % 8 or min(self.rows, self.cols, self.depth, self.warps_m, self.warps_n) < 1:\n            raise ValueError(\"positive tiles and a depth divisible by eight are required\")\n        threads = 32 * self.warps_m * self.warps_n\n        if threads > 1024:\n            raise ValueError(\"too many threads\")\n        element_bytes = 2 if self.native_bf16 else 4\n        shared = (self.rows + self.cols) * (self.depth + self.padding) * element_bytes\n        shared += self.rows * self.warps_n * 8 if self.register_argmin else self.rows * self.cols * 4\n        if shared > 32768:\n            raise ValueError(f\"tile needs {shared} bytes of threadgroup memory\")\n        return threads\n\n\n_PREFIX = r\"\"\"\n    constexpr uint TM = BM / (8 * WM);\n    constexpr uint TN = BN / (8 * WN);\n    constexpr uint LD = BK + PAD;\n    constexpr uint THREADS = 32 * WM * WN;\n    threadgroup T xs[BM * LD];\n    // Store centroids in their natural [centroid,feature] layout so that\n    // adjacent loading lanes read adjacent global addresses.\n    threadgroup T cs[BN * LD];\n    uint tid = thread_index_in_threadgroup;\n    uint sg = simdgroup_index_in_threadgroup;\n    uint lane = thread_index_in_simdgroup;\n    uint r0 = threadgroup_position_in_grid.x * BM;\n    uint c0 = threadgroup_position_in_grid.y * BN;\n    uint wm = sg / WN, wn = sg % WN;\n    const uint qid_load = lane / 4;\n    const uint fm_load = (qid_load & 4) + ((lane / 2) % 4);\n    const uint fn_load = (qid_load & 2) * 2 + (lane % 2) * 2;\n    metal::simdgroup_float8x8 acc[TM][TN];\n    #pragma clang loop unroll(full)\n    for (uint m = 0; m < TM; ++m)\n        #pragma clang loop unroll(full)\n        for (uint n = 0; n < TN; ++n)\n            acc[m][n] = metal::simdgroup_float8x8(0);\n    for (uint f0 = 0; f0 < D; f0 += BK) {\n        for (uint i = tid; i < BM * BK; i += THREADS) {\n            uint r = i / BK, f = i % BK;\n            xs[r * LD + f] = r0 + r < N && f0 + f < D ? T(x[(r0 + r) * D + f0 + f]) : T(0);\n        }\n        for (uint i = tid; i < BN * BK; i += THREADS) {\n            uint c = i / BK, f = i % BK;\n            cs[c * LD + f] = c0 + c < K && f0 + f < D ? T(centers[(c0 + c) * D + f0 + f]) : T(0);\n        }\n        threadgroup_barrier(mem_flags::mem_threadgroup);\n        #pragma clang loop unroll(full)\n        for (uint f = 0; f < BK; f += 8) {\n            metal::simdgroup_matrix<T,8,8> aa[TM], bb[TN];\n            #pragma clang loop unroll(full)\n            for (uint m = 0; m < TM; ++m) {\n                if constexpr (MANUAL) {\n                    uint offset = ((m * WM + wm) * 8 + fm_load) * LD + f + fn_load;\n                    reinterpret_cast<thread metal::vec<T,2>&>(aa[m].thread_elements()) = metal::vec<T,2>(xs[offset],xs[offset+1]);\n                } else {\n                    metal::simdgroup_load(aa[m], xs + (m * WM + wm) * 8 * LD + f, LD);\n                }\n            }\n            #pragma clang loop unroll(full)\n            for (uint n = 0; n < TN; ++n) {\n                if constexpr (MANUAL) {\n                    uint offset = ((n * WN + wn) * 8 + fn_load) * LD + f + fm_load;\n                    reinterpret_cast<thread metal::vec<T,2>&>(bb[n].thread_elements()) = metal::vec<T,2>(cs[offset],cs[offset+LD]);\n                } else {\n                    metal::simdgroup_load(bb[n], cs + (n * WN + wn) * 8 * LD + f, LD, ulong2(0,0), true);\n                }\n            }\n            #pragma clang loop unroll(full)\n            for (uint m = 0; m < TM; ++m)\n                #pragma clang loop unroll(full)\n                for (uint n = 0; n < TN; ++n)\n                    metal::simdgroup_multiply_accumulate(acc[m][n], aa[m], bb[n], acc[m][n]);\n        }\n        threadgroup_barrier(mem_flags::mem_threadgroup);\n    }\n\"\"\"\n\n_REGISTER_EPILOGUE = r\"\"\"\n    threadgroup float row_scores[WN * BM];\n    threadgroup uint row_indices[WN * BM];\n    const uint qid = lane / 4;\n    const uint fm = (qid & 4) + ((lane / 2) % 4);\n    const uint fn = (qid & 2) * 2 + (lane % 2) * 2;\n    #pragma clang loop unroll(full)\n    for (uint m = 0; m < TM; ++m) {\n        float best = INFINITY;\n        uint index = c0;\n        #pragma clang loop unroll(full)\n        for (uint n = 0; n < TN; ++n) {\n            const uint col = c0 + (n * WN + wn) * 8 + fn;\n            const auto values = reinterpret_cast<thread float2&>(acc[m][n].thread_elements());\n            #pragma clang loop unroll(full)\n            for (uint q = 0; q < 2; ++q) {\n                float value = col + q < K ? norms[col + q] - 2.0f * values[q] : INFINITY;\n                if (value < best || (value == best && col + q < index)) {\n                    best = value; index = col + q;\n                }\n            }\n        }\n        // The four lanes with the same row differ only in lane bits 0 and 3.\n        float other = metal::simd_shuffle_xor(best, 1);\n        uint other_index = metal::simd_shuffle_xor(index, 1);\n        if (other < best || (other == best && other_index < index)) {\n            best = other; index = other_index;\n        }\n        other = metal::simd_shuffle_xor(best, 8);\n        other_index = metal::simd_shuffle_xor(index, 8);\n        if (other < best || (other == best && other_index < index)) {\n            best = other; index = other_index;\n        }\n        if (fn == 0) {\n            uint row = (m * WM + wm) * 8 + fm;\n            row_scores[wn * BM + row] = best;\n            row_indices[wn * BM + row] = index;\n        }\n    }\n    threadgroup_barrier(mem_flags::mem_threadgroup);\n    for (uint row = tid; row < BM; row += THREADS) {\n        if (r0 + row >= N) continue;\n        float best = INFINITY;\n        uint index = c0;\n        #pragma clang loop unroll(full)\n        for (uint j = 0; j < WN; ++j) {\n            float value = row_scores[j * BM + row];\n            uint candidate = row_indices[j * BM + row];\n            if (value < best || (value == best && candidate < index)) {\n                best = value; index = candidate;\n            }\n        }\n        partial_scores[(r0 + row) * PARTS + threadgroup_position_in_grid.y] = best;\n        partial_indices[(r0 + row) * PARTS + threadgroup_position_in_grid.y] = index;\n    }\n\"\"\"\n\n_SPILL_EPILOGUE = r\"\"\"\n    threadgroup float dots[BM * BN];\n    #pragma clang loop unroll(full)\n    for (uint m = 0; m < TM; ++m)\n        #pragma clang loop unroll(full)\n        for (uint n = 0; n < TN; ++n)\n            metal::simdgroup_store(acc[m][n], dots + (m * WM + wm) * 8 * BN + (n * WN + wn) * 8, BN);\n    threadgroup_barrier(mem_flags::mem_threadgroup);\n    for (uint row = sg; row < BM; row += WM * WN) {\n        if (r0 + row >= N) continue;\n        float best = INFINITY;\n        uint index = c0;\n        for (uint col = lane; col < BN; col += 32) {\n            float value = c0 + col < K ? norms[c0 + col] - 2.0f * dots[row * BN + col] : INFINITY;\n            if (value < best || (value == best && c0 + col < index)) {\n                best = value; index = c0 + col;\n            }\n        }\n        float value = metal::simd_min(best);\n        uint winner = metal::simd_min(best == value ? index : 0xffffffff);\n        if (lane == 0) {\n            partial_scores[(r0 + row) * PARTS + threadgroup_position_in_grid.y] = value;\n            partial_indices[(r0 + row) * PARTS + threadgroup_position_in_grid.y] = winner;\n        }\n    }\n\"\"\"\n\n\n@lru_cache(None)\ndef _assignment_kernel(config):\n    config.validate()\n    return mx.fast.metal_kernel(\n        name=\"emeans_exp_bf16_tiled\", input_names=[\"x\", \"centers\", \"norms\"],\n        output_names=[\"partial_scores\", \"partial_indices\"],\n        source=_PREFIX + (_REGISTER_EPILOGUE if config.register_argmin else _SPILL_EPILOGUE),\n        header=\"#include <metal_simdgroup_matrix>\\n\",\n    )\n\n\n@lru_cache(None)\ndef _aux_kernel(name):\n    if name == \"norms\":\n        return mx.fast.metal_kernel(\n            name=\"emeans_exp_bf16_norms\", input_names=[\"centers\"], output_names=[\"norms\"],\n            source=r\"\"\"\n            uint row = thread_position_in_grid.x / 32;\n            uint lane = thread_index_in_simdgroup;\n            if (row >= K) return;\n            float sum = 0;\n            for (uint f = lane; f < D; f += 32) {\n                float v = float(centers[row * D + f]);\n                sum += v * v;\n            }\n            sum = metal::simd_sum(sum);\n            if (lane == 0) norms[row] = sum;\n            \"\"\",\n        )\n    if name == \"merge\":\n        return mx.fast.metal_kernel(\n            name=\"emeans_exp_bf16_merge\", input_names=[\"scores\", \"indices\"],\n            output_names=[\"labels\", \"best_scores\"], source=r\"\"\"\n            uint row = thread_position_in_grid.x / 32;\n            uint lane = thread_index_in_simdgroup;\n            if (row >= N) return;\n            float best = INFINITY;\n            uint index = 0;\n            for (uint part = lane; part < PARTS; part += 32) {\n                float score = scores[row * PARTS + part];\n                uint candidate = indices[row * PARTS + part];\n                if (score < best || (score == best && candidate < index)) {\n                    best = score; index = candidate;\n                }\n            }\n            float value = metal::simd_min(best);\n            uint winner = metal::simd_min(best == value ? index : 0xffffffff);\n            if (lane == 0) {labels[row] = winner; best_scores[row] = value;}\n            \"\"\",\n        )\n    if name == \"atomic_stats\":\n        return mx.fast.metal_kernel(\n            name=\"emeans_exp_atomic_stats\", input_names=[\"x\", \"labels\"],\n            output_names=[\"sums\", \"counts\"], atomic_outputs=True, source=r\"\"\"\n            uint task = thread_position_in_grid.x;\n            constexpr uint FEATURES = (D + VEC - 1) / VEC;\n            uint row = task / FEATURES, first = (task % FEATURES) * VEC;\n            if (row >= N) return;\n            uint cluster = labels[row];\n            #pragma clang loop unroll(full)\n            for (uint j = 0; j < VEC; ++j) {\n                if (first + j < D)\n                    atomic_fetch_add_explicit(&sums[cluster * D + first + j], float(x[row * D + first + j]), memory_order_relaxed);\n            }\n            if (first == 0) atomic_fetch_add_explicit(&counts[cluster], 1.0f, memory_order_relaxed);\n            \"\"\",\n        )\n    if name == \"linked_bins\":\n        return mx.fast.metal_kernel(\n            name=\"emeans_exp_linked_bins\", input_names=[\"labels\"],\n            output_names=[\"heads\", \"next\"], atomic_outputs=True, source=r\"\"\"\n            uint row = thread_position_in_grid.x;\n            if (row >= N) return;\n            uint previous = atomic_exchange_explicit(&heads[labels[row]], row + 1, memory_order_relaxed);\n            atomic_store_explicit(&next[row], previous, memory_order_relaxed);\n            \"\"\",\n        )\n    if name == \"linked_reduce\":\n        return mx.fast.metal_kernel(\n            name=\"emeans_exp_linked_reduce\", input_names=[\"x\", \"heads\", \"next\"],\n            output_names=[\"sums\", \"counts\"], source=r\"\"\"\n            uint i = thread_position_in_grid.x;\n            if (i >= K * D) return;\n            uint cluster = i / D, feature = i % D;\n            uint cursor = heads[cluster], count = 0;\n            float sum = 0;\n            while (cursor != 0) {\n                uint row = cursor - 1;\n                sum += float(x[row * D + feature]);\n                cursor = next[row];\n                ++count;\n            }\n            sums[i] = sum;\n            if (feature == 0) counts[cluster] = float(count);\n            \"\"\",\n        )\n    raise ValueError(name)\n\n\ndef prepare_centers(centers):\n    \"\"\"Return BF16 mirror and FP32 norms of that same represented mirror.\"\"\"\n    represented = centers.astype(mx.bfloat16)\n    k, d = centers.shape\n    norms = _aux_kernel(\"norms\")(\n        inputs=[represented], template=[(\"K\", k), (\"D\", d)],\n        grid=(k * 32, 1, 1), threadgroup=(256, 1, 1),\n        output_shapes=[(k,)], output_dtypes=[mx.float32], stream=mx.gpu,\n    )[0]\n    return represented, norms\n\n\ndef assign_bf16(x, centers, *, config=None, norms=None):\n    \"\"\"Return labels and FP32 ``norm(center_BF16)^2 - 2*dot_BF16`` scores.\n\n    Scores deliberately omit the row-constant input norm, matching the\n    reference assignment objective. Inputs are BF16 rounded without centering.\n    Passing a prepared BF16 center table and norms amortizes their preparation.\n    \"\"\"\n    config = config or BF16Config()\n    threads = config.validate()\n    n, d = x.shape\n    k = centers.shape[0]\n    if k < 1 or centers.shape[1] != d or n < 1 or d < 1:\n        raise ValueError(\"nonempty compatible matrices are required\")\n    if norms is None:\n        centers, norms = prepare_centers(centers)\n    elif centers.dtype != mx.bfloat16:\n        raise ValueError(\"supplied norms require explicitly BF16 represented centers\")\n    represented_x = x.astype(mx.bfloat16)\n    parts = (k + config.cols - 1) // config.cols\n    scores, indices = _assignment_kernel(config)(\n        inputs=[represented_x, centers, norms],\n        template=[(\"T\", mx.bfloat16 if config.native_bf16 else mx.float32),\n                  (\"N\", n), (\"K\", k), (\"D\", d), (\"BM\", config.rows),\n                  (\"BN\", config.cols), (\"BK\", config.depth), (\"WM\", config.warps_m),\n                  (\"WN\", config.warps_n), (\"PAD\", config.padding), (\"PARTS\", parts),\n                  (\"MANUAL\", config.manual_fragments)],\n        grid=(((n + config.rows - 1) // config.rows) * threads, parts, 1),\n        threadgroup=(threads, 1, 1), output_shapes=[(n, parts), (n, parts)],\n        output_dtypes=[mx.float32, mx.uint32], stream=mx.gpu,\n    )\n    return tuple(_aux_kernel(\"merge\")(\n        inputs=[scores, indices], template=[(\"N\", n), (\"PARTS\", parts)],\n        grid=(n * 32, 1, 1), threadgroup=(256, 1, 1),\n        output_shapes=[(n,), (n,)], output_dtypes=[mx.uint32, mx.float32], stream=mx.gpu,\n    ))\n\n\ndef stats_atomic(x, labels, k, *, vector_width=4):\n    \"\"\"FP32 atomic statistics with several contiguous features per thread.\"\"\"\n    n, d = x.shape\n    features = (d + vector_width - 1) // vector_width\n    return tuple(_aux_kernel(\"atomic_stats\")(\n        inputs=[x, labels], template=[(\"N\", n), (\"D\", d), (\"VEC\", vector_width)],\n        grid=(n * features, 1, 1), threadgroup=(256, 1, 1),\n        output_shapes=[(k, d), (k,)], output_dtypes=[mx.float32, mx.float32],\n        init_value=0, stream=mx.gpu,\n    ))\n\n\ndef stats_linked(x, labels, k):\n    \"\"\"Build atomic integer lists, then reduce each center without float atomics.\"\"\"\n    n, d = x.shape\n    heads, next_rows = _aux_kernel(\"linked_bins\")(\n        inputs=[labels], template=[(\"N\", n)], grid=(n, 1, 1), threadgroup=(256, 1, 1),\n        output_shapes=[(k,), (n,)], output_dtypes=[mx.uint32, mx.uint32],\n        init_value=0, stream=mx.gpu,\n    )\n    return tuple(_aux_kernel(\"linked_reduce\")(\n        inputs=[x, heads, next_rows], template=[(\"K\", k), (\"D\", d)],\n        grid=(k * d, 1, 1), threadgroup=(256, 1, 1),\n        output_shapes=[(k, d), (k,)], output_dtypes=[mx.float32, mx.float32], stream=mx.gpu,\n    ))\n",
+  "protocol": "resident seeded normal/sqrt(d) BF16 matrices; precomputed BF16 norms; one warmup,three synchronized repetitions",
+  "seed": 4,
+  "records": [
+    {
+      "n": 16384,
+      "k": 16384,
+      "d": 96,
+      "method": "promoted_fp32_gemm",
+      "config": null,
+      "seconds": [
+        0.0069574578665196896,
+        0.0067980410531163216,
+        0.006717415992170572
+      ],
+      "median_seconds": 0.0067980410531163216,
+      "oracle_label_mismatches_first9": 0
+    },
+    {
+      "n": 16384,
+      "k": 16384,
+      "d": 96,
+      "method": "bf16_manual",
+      "config": {
+        "rows": 32,
+        "cols": 64,
+        "depth": 16,
+        "warps_m": 2,
+        "warps_n": 2,
+        "native_bf16": true,
+        "register_argmin": true,
+        "padding": 8,
+        "manual_fragments": true
+      },
+      "seconds": [
+        0.007727958261966705,
+        0.007696584332734346,
+        0.007012915797531605
+      ],
+      "median_seconds": 0.007696584332734346,
+      "oracle_label_mismatches_first9": 0
+    },
+    {
+      "n": 16384,
+      "k": 16384,
+      "d": 96,
+      "method": "bf16_manual",
+      "config": {
+        "rows": 32,
+        "cols": 64,
+        "depth": 16,
+        "warps_m": 2,
+        "warps_n": 2,
+        "native_bf16": false,
+        "register_argmin": true,
+        "padding": 4,
+        "manual_fragments": true
+      },
+      "seconds": [
+        0.007686999626457691,
+        0.00798966595903039,
+        0.007604124955832958
+      ],
+      "median_seconds": 0.007686999626457691,
+      "oracle_label_mismatches_first9": 0
+    },
+    {
+      "n": 16384,
+      "k": 16384,
+      "d": 96,
+      "method": "bf16_manual",
+      "config": {
+        "rows": 32,
+        "cols": 64,
+        "depth": 32,
+        "warps_m": 2,
+        "warps_n": 2,
+        "native_bf16": true,
+        "register_argmin": true,
+        "padding": 8,
+        "manual_fragments": true
+      },
+      "seconds": [
+        0.0071779172867536545,
+        0.006801458075642586,
+        0.006790207698941231
+      ],
+      "median_seconds": 0.006801458075642586,
+      "oracle_label_mismatches_first9": 0
+    },
+    {
+      "n": 16384,
+      "k": 16384,
+      "d": 96,
+      "method": "bf16_manual",
+      "config": {
+        "rows": 32,
+        "cols": 64,
+        "depth": 32,
+        "warps_m": 2,
+        "warps_n": 2,
+        "native_bf16": false,
+        "register_argmin": true,
+        "padding": 4,
+        "manual_fragments": true
+      },
+      "seconds": [
+        0.010877832770347595,
+        0.009830375202000141,
+        0.010118166916072369
+      ],
+      "median_seconds": 0.010118166916072369,
+      "oracle_label_mismatches_first9": 0
+    },
+    {
+      "n": 16384,
+      "k": 16384,
+      "d": 96,
+      "method": "bf16_manual",
+      "config": {
+        "rows": 32,
+        "cols": 128,
+        "depth": 32,
+        "warps_m": 2,
+        "warps_n": 2,
+        "native_bf16": true,
+        "register_argmin": true,
+        "padding": 8,
+        "manual_fragments": true
+      },
+      "seconds": [
+        0.007675374858081341,
+        0.00784091604873538,
+        0.007546416949480772
+      ],
+      "median_seconds": 0.007675374858081341,
+      "oracle_label_mismatches_first9": 0
+    },
+    {
+      "n": 16384,
+      "k": 16384,
+      "d": 96,
+      "method": "bf16_manual",
+      "config": {
+        "rows": 32,
+        "cols": 128,
+        "depth": 32,
+        "warps_m": 2,
+        "warps_n": 2,
+        "native_bf16": false,
+        "register_argmin": true,
+        "padding": 4,
+        "manual_fragments": true
+      },
+      "seconds": [
+        0.013828750234097242,
+        0.013674124609678984,
+        0.01339954137802124
+      ],
+      "median_seconds": 0.013674124609678984,
+      "oracle_label_mismatches_first9": 0
+    },
+    {
+      "n": 16384,
+      "k": 16384,
+      "d": 96,
+      "method": "bf16_manual",
+      "config": {
+        "rows": 64,
+        "cols": 64,
+        "depth": 16,
+        "warps_m": 2,
+        "warps_n": 2,
+        "native_bf16": true,
+        "register_argmin": true,
+        "padding": 8,
+        "manual_fragments": true
+      },
+      "seconds": [
+        0.0065354169346392155,
+        0.006438166834414005,
+        0.006787416059523821
+      ],
+      "median_seconds": 0.0065354169346392155,
+      "oracle_label_mismatches_first9": 0
+    },
+    {
+      "n": 16384,
+      "k": 16384,
+      "d": 96,
+      "method": "bf16_manual",
+      "config": {
+        "rows": 64,
+        "cols": 64,
+        "depth": 16,
+        "warps_m": 2,
+        "warps_n": 2,
+        "native_bf16": false,
+        "register_argmin": true,
+        "padding": 4,
+        "manual_fragments": true
+      },
+      "seconds": [
+        0.007032375317066908,
+        0.006810999941080809,
+        0.007119833957403898
+      ],
+      "median_seconds": 0.007032375317066908,
+      "oracle_label_mismatches_first9": 0
+    },
+    {
+      "n": 16384,
+      "k": 16384,
+      "d": 96,
+      "method": "bf16_manual",
+      "config": {
+        "rows": 64,
+        "cols": 64,
+        "depth": 32,
+        "warps_m": 2,
+        "warps_n": 2,
+        "native_bf16": true,
+        "register_argmin": true,
+        "padding": 8,
+        "manual_fragments": true
+      },
+      "seconds": [
+        0.007295167073607445,
+        0.0068738749250769615,
+        0.006928542163223028
+      ],
+      "median_seconds": 0.006928542163223028,
+      "oracle_label_mismatches_first9": 0
+    },
+    {
+      "n": 16384,
+      "k": 16384,
+      "d": 96,
+      "method": "bf16_manual",
+      "config": {
+        "rows": 64,
+        "cols": 64,
+        "depth": 32,
+        "warps_m": 2,
+        "warps_n": 2,
+        "native_bf16": false,
+        "register_argmin": true,
+        "padding": 4,
+        "manual_fragments": true
+      },
+      "seconds": [
+        0.009908667299896479,
+        0.010047958698123693,
+        0.010558499954640865
+      ],
+      "median_seconds": 0.010047958698123693,
+      "oracle_label_mismatches_first9": 0
+    },
+    {
+      "n": 16384,
+      "k": 16384,
+      "d": 96,
+      "method": "bf16_manual",
+      "config": {
+        "rows": 64,
+        "cols": 128,
+        "depth": 16,
+        "warps_m": 2,
+        "warps_n": 4,
+        "native_bf16": true,
+        "register_argmin": true,
+        "padding": 8,
+        "manual_fragments": true
+      },
+      "seconds": [
+        0.0073494999669492245,
+        0.007141957990825176,
+        0.007063416764140129
+      ],
+      "median_seconds": 0.007141957990825176,
+      "oracle_label_mismatches_first9": 0
+    },
+    {
+      "n": 16384,
+      "k": 16384,
+      "d": 96,
+      "method": "bf16_manual",
+      "config": {
+        "rows": 64,
+        "cols": 128,
+        "depth": 16,
+        "warps_m": 2,
+        "warps_n": 4,
+        "native_bf16": false,
+        "register_argmin": true,
+        "padding": 4,
+        "manual_fragments": true
+      },
+      "seconds": [
+        0.007506499998271465,
+        0.0078577920794487,
+        0.007486583199352026
+      ],
+      "median_seconds": 0.007506499998271465,
+      "oracle_label_mismatches_first9": 0
+    },
+    {
+      "n": 16384,
+      "k": 16384,
+      "d": 96,
+      "method": "bf16_manual",
+      "config": {
+        "rows": 64,
+        "cols": 128,
+        "depth": 32,
+        "warps_m": 2,
+        "warps_n": 4,
+        "native_bf16": true,
+        "register_argmin": true,
+        "padding": 8,
+        "manual_fragments": true
+      },
+      "seconds": [
+        0.007654250133782625,
+        0.006797041743993759,
+        0.006276124622672796
+      ],
+      "median_seconds": 0.006797041743993759,
+      "oracle_label_mismatches_first9": 0
+    },
+    {
+      "n": 16384,
+      "k": 16384,
+      "d": 96,
+      "method": "bf16_manual",
+      "config": {
+        "rows": 64,
+        "cols": 128,
+        "depth": 32,
+        "warps_m": 2,
+        "warps_n": 4,
+        "native_bf16": false,
+        "register_argmin": true,
+        "padding": 4,
+        "manual_fragments": true
+      },
+      "seconds": [
+        0.010641375090926886,
+        0.00861208327114582,
+        0.008370332885533571
+      ],
+      "median_seconds": 0.00861208327114582,
+      "oracle_label_mismatches_first9": 0
+    },
+    {
+      "n": 16384,
+      "k": 16384,
+      "d": 96,
+      "method": "bf16_manual",
+      "config": {
+        "rows": 64,
+        "cols": 128,
+        "depth": 32,
+        "warps_m": 4,
+        "warps_n": 2,
+        "native_bf16": true,
+        "register_argmin": true,
+        "padding": 8,
+        "manual_fragments": true
+      },
+      "seconds": [
+        0.008220000192523003,
+        0.008382041938602924,
+        0.007583333179354668
+      ],
+      "median_seconds": 0.008220000192523003,
+      "oracle_label_mismatches_first9": 0
+    },
+    {
+      "n": 16384,
+      "k": 16384,
+      "d": 96,
+      "method": "bf16_manual",
+      "config": {
+        "rows": 64,
+        "cols": 128,
+        "depth": 32,
+        "warps_m": 4,
+        "warps_n": 2,
+        "native_bf16": false,
+        "register_argmin": true,
+        "padding": 4,
+        "manual_fragments": true
+      },
+      "seconds": [
+        0.011343417223542929,
+        0.009146624710410833,
+        0.008467457722872496
+      ],
+      "median_seconds": 0.009146624710410833,
+      "oracle_label_mismatches_first9": 0
+    },
+    {
+      "n": 16384,
+      "k": 16384,
+      "d": 96,
+      "method": "bf16_manual",
+      "config": {
+        "rows": 32,
+        "cols": 128,
+        "depth": 32,
+        "warps_m": 1,
+        "warps_n": 4,
+        "native_bf16": true,
+        "register_argmin": true,
+        "padding": 8,
+        "manual_fragments": true
+      },
+      "seconds": [
+        0.00988245802000165,
+        0.008834791835397482,
+        0.008572499733418226
+      ],
+      "median_seconds": 0.008834791835397482,
+      "oracle_label_mismatches_first9": 0
+    },
+    {
+      "n": 16384,
+      "k": 16384,
+      "d": 96,
+      "method": "bf16_manual",
+      "config": {
+        "rows": 32,
+        "cols": 128,
+        "depth": 32,
+        "warps_m": 1,
+        "warps_n": 4,
+        "native_bf16": false,
+        "register_argmin": true,
+        "padding": 4,
+        "manual_fragments": true
+      },
+      "seconds": [
+        0.013866500463336706,
+        0.013856333214789629,
+        0.013286459259688854
+      ],
+      "median_seconds": 0.013856333214789629,
+      "oracle_label_mismatches_first9": 0
+    },
+    {
+      "n": 16384,
+      "k": 16384,
+      "d": 96,
+      "method": "bf16_manual",
+      "config": {
+        "rows": 128,
+        "cols": 64,
+        "depth": 32,
+        "warps_m": 4,
+        "warps_n": 2,
+        "native_bf16": true,
+        "register_argmin": true,
+        "padding": 8,
+        "manual_fragments": true
+      },
+      "seconds": [
+        0.006587875075638294,
+        0.0064978329464793205,
+        0.006727875210344791
+      ],
+      "median_seconds": 0.006587875075638294,
+      "oracle_label_mismatches_first9": 0
+    },
+    {
+      "n": 16384,
+      "k": 16384,
+      "d": 96,
+      "method": "bf16_manual",
+      "config": {
+        "rows": 128,
+        "cols": 64,
+        "depth": 32,
+        "warps_m": 4,
+        "warps_n": 2,
+        "native_bf16": false,
+        "register_argmin": true,
+        "padding": 4,
+        "manual_fragments": true
+      },
+      "seconds": [
+        0.008313124999403954,
+        0.008474042173475027,
+        0.008294415660202503
+      ],
+      "median_seconds": 0.008313124999403954,
+      "oracle_label_mismatches_first9": 0
+    },
+    {
+      "n": 16384,
+      "k": 16384,
+      "d": 96,
+      "method": "bf16_manual",
+      "config": {
+        "rows": 128,
+        "cols": 128,
+        "depth": 16,
+        "warps_m": 4,
+        "warps_n": 2,
+        "native_bf16": true,
+        "register_argmin": true,
+        "padding": 8,
+        "manual_fragments": true
+      },
+      "seconds": [
+        0.008498916868120432,
+        0.007838333956897259,
+        0.007912875153124332
+      ],
+      "median_seconds": 0.007912875153124332,
+      "oracle_label_mismatches_first9": 0
+    },
+    {
+      "n": 16384,
+      "k": 16384,
+      "d": 96,
+      "method": "bf16_manual",
+      "config": {
+        "rows": 128,
+        "cols": 128,
+        "depth": 16,
+        "warps_m": 4,
+        "warps_n": 2,
+        "native_bf16": false,
+        "register_argmin": true,
+        "padding": 4,
+        "manual_fragments": true
+      },
+      "seconds": [
+        0.0083467080257833,
+        0.008300917223095894,
+        0.008017499931156635
+      ],
+      "median_seconds": 0.008300917223095894,
+      "oracle_label_mismatches_first9": 0
+    },
+    {
+      "n": 16384,
+      "k": 16384,
+      "d": 1024,
+      "method": "promoted_fp32_gemm",
+      "config": null,
+      "seconds": [
+        0.04501579236239195,
+        0.044766792096197605,
+        0.04495804198086262
+      ],
+      "median_seconds": 0.04495804198086262,
+      "oracle_label_mismatches_first9": 0
+    },
+    {
+      "n": 16384,
+      "k": 16384,
+      "d": 1024,
+      "method": "bf16_manual",
+      "config": {
+        "rows": 32,
+        "cols": 64,
+        "depth": 16,
+        "warps_m": 2,
+        "warps_n": 2,
+        "native_bf16": true,
+        "register_argmin": true,
+        "padding": 8,
+        "manual_fragments": true
+      },
+      "seconds": [
+        0.08666149992495775,
+        0.08664858294650912,
+        0.08730991603806615
+      ],
+      "median_seconds": 0.08666149992495775,
+      "oracle_label_mismatches_first9": 0
+    },
+    {
+      "n": 16384,
+      "k": 16384,
+      "d": 1024,
+      "method": "bf16_manual",
+      "config": {
+        "rows": 32,
+        "cols": 64,
+        "depth": 16,
+        "warps_m": 2,
+        "warps_n": 2,
+        "native_bf16": false,
+        "register_argmin": true,
+        "padding": 4,
+        "manual_fragments": true
+      },
+      "seconds": [
+        0.0837879590690136,
+        0.08355966582894325,
+        0.08303349977359176
+      ],
+      "median_seconds": 0.08355966582894325,
+      "oracle_label_mismatches_first9": 0
+    },
+    {
+      "n": 16384,
+      "k": 16384,
+      "d": 1024,
+      "method": "bf16_manual",
+      "config": {
+        "rows": 32,
+        "cols": 64,
+        "depth": 32,
+        "warps_m": 2,
+        "warps_n": 2,
+        "native_bf16": true,
+        "register_argmin": true,
+        "padding": 8,
+        "manual_fragments": true
+      },
+      "seconds": [
+        0.09237829223275185,
+        0.0921497498638928,
+        0.09236350003629923
+      ],
+      "median_seconds": 0.09236350003629923,
+      "oracle_label_mismatches_first9": 0
+    },
+    {
+      "n": 16384,
+      "k": 16384,
+      "d": 1024,
+      "method": "bf16_manual",
+      "config": {
+        "rows": 32,
+        "cols": 64,
+        "depth": 32,
+        "warps_m": 2,
+        "warps_n": 2,
+        "native_bf16": false,
+        "register_argmin": true,
+        "padding": 4,
+        "manual_fragments": true
+      },
+      "seconds": [
+        0.1324592917226255,
+        0.13289349991828203,
+        0.13287420896813273
+      ],
+      "median_seconds": 0.13287420896813273,
+      "oracle_label_mismatches_first9": 0
+    },
+    {
+      "n": 16384,
+      "k": 16384,
+      "d": 1024,
+      "method": "bf16_manual",
+      "config": {
+        "rows": 32,
+        "cols": 128,
+        "depth": 32,
+        "warps_m": 2,
+        "warps_n": 2,
+        "native_bf16": true,
+        "register_argmin": true,
+        "padding": 8,
+        "manual_fragments": true
+      },
+      "seconds": [
+        0.09850012511014938,
+        0.09823504090309143,
+        0.09851945796981454
+      ],
+      "median_seconds": 0.09850012511014938,
+      "oracle_label_mismatches_first9": 0
+    },
+    {
+      "n": 16384,
+      "k": 16384,
+      "d": 1024,
+      "method": "bf16_manual",
+      "config": {
+        "rows": 32,
+        "cols": 128,
+        "depth": 32,
+        "warps_m": 2,
+        "warps_n": 2,
+        "native_bf16": false,
+        "register_argmin": true,
+        "padding": 4,
+        "manual_fragments": true
+      },
+      "seconds": [
+        0.19163408409804106,
+        0.19106941623613238,
+        0.1915366668254137
+      ],
+      "median_seconds": 0.1915366668254137,
+      "oracle_label_mismatches_first9": 0
+    },
+    {
+      "n": 16384,
+      "k": 16384,
+      "d": 1024,
+      "method": "bf16_manual",
+      "config": {
+        "rows": 64,
+        "cols": 64,
+        "depth": 16,
+        "warps_m": 2,
+        "warps_n": 2,
+        "native_bf16": true,
+        "register_argmin": true,
+        "padding": 8,
+        "manual_fragments": true
+      },
+      "seconds": [
+        0.06658545834943652,
+        0.06608875002712011,
+        0.06564895808696747
+      ],
+      "median_seconds": 0.06608875002712011,
+      "oracle_label_mismatches_first9": 0
+    },
+    {
+      "n": 16384,
+      "k": 16384,
+      "d": 1024,
+      "method": "bf16_manual",
+      "config": {
+        "rows": 64,
+        "cols": 64,
+        "depth": 16,
+        "warps_m": 2,
+        "warps_n": 2,
+        "native_bf16": false,
+        "register_argmin": true,
+        "padding": 4,
+        "manual_fragments": true
+      },
+      "seconds": [
+        0.06862666690722108,
+        0.06844641687348485,
+        0.06962583307176828
+      ],
+      "median_seconds": 0.06862666690722108,
+      "oracle_label_mismatches_first9": 0
+    },
+    {
+      "n": 16384,
+      "k": 16384,
+      "d": 1024,
+      "method": "bf16_manual",
+      "config": {
+        "rows": 64,
+        "cols": 64,
+        "depth": 32,
+        "warps_m": 2,
+        "warps_n": 2,
+        "native_bf16": true,
+        "register_argmin": true,
+        "padding": 8,
+        "manual_fragments": true
+      },
+      "seconds": [
+        0.07279254170134664,
+        0.0731501248665154,
+        0.07267733290791512
+      ],
+      "median_seconds": 0.07279254170134664,
+      "oracle_label_mismatches_first9": 0
+    },
+    {
+      "n": 16384,
+      "k": 16384,
+      "d": 1024,
+      "method": "bf16_manual",
+      "config": {
+        "rows": 64,
+        "cols": 64,
+        "depth": 32,
+        "warps_m": 2,
+        "warps_n": 2,
+        "native_bf16": false,
+        "register_argmin": true,
+        "padding": 4,
+        "manual_fragments": true
+      },
+      "seconds": [
+        0.1041252501308918,
+        0.10431362502276897,
+        0.10386499995365739
+      ],
+      "median_seconds": 0.1041252501308918,
+      "oracle_label_mismatches_first9": 0
+    },
+    {
+      "n": 16384,
+      "k": 16384,
+      "d": 1024,
+      "method": "bf16_manual",
+      "config": {
+        "rows": 64,
+        "cols": 128,
+        "depth": 16,
+        "warps_m": 2,
+        "warps_n": 4,
+        "native_bf16": true,
+        "register_argmin": true,
+        "padding": 8,
+        "manual_fragments": true
+      },
+      "seconds": [
+        0.067479541990906,
+        0.0672101667150855,
+        0.06692412495613098
+      ],
+      "median_seconds": 0.0672101667150855,
+      "oracle_label_mismatches_first9": 0
+    },
+    {
+      "n": 16384,
+      "k": 16384,
+      "d": 1024,
+      "method": "bf16_manual",
+      "config": {
+        "rows": 64,
+        "cols": 128,
+        "depth": 16,
+        "warps_m": 2,
+        "warps_n": 4,
+        "native_bf16": false,
+        "register_argmin": true,
+        "padding": 4,
+        "manual_fragments": true
+      },
+      "seconds": [
+        0.07027466734871268,
+        0.07026041718199849,
+        0.07041491707786918
+      ],
+      "median_seconds": 0.07027466734871268,
+      "oracle_label_mismatches_first9": 0
+    },
+    {
+      "n": 16384,
+      "k": 16384,
+      "d": 1024,
+      "method": "bf16_manual",
+      "config": {
+        "rows": 64,
+        "cols": 128,
+        "depth": 32,
+        "warps_m": 2,
+        "warps_n": 4,
+        "native_bf16": true,
+        "register_argmin": true,
+        "padding": 8,
+        "manual_fragments": true
+      },
+      "seconds": [
+        0.07254366623237729,
+        0.072479291819036,
+        0.07308924989774823
+      ],
+      "median_seconds": 0.07254366623237729,
+      "oracle_label_mismatches_first9": 0
+    },
+    {
+      "n": 16384,
+      "k": 16384,
+      "d": 1024,
+      "method": "bf16_manual",
+      "config": {
+        "rows": 64,
+        "cols": 128,
+        "depth": 32,
+        "warps_m": 2,
+        "warps_n": 4,
+        "native_bf16": false,
+        "register_argmin": true,
+        "padding": 4,
+        "manual_fragments": true
+      },
+      "seconds": [
+        0.10529170790687203,
+        0.10441979207098484,
+        0.10449354210868478
+      ],
+      "median_seconds": 0.10449354210868478,
+      "oracle_label_mismatches_first9": 0
+    },
+    {
+      "n": 16384,
+      "k": 16384,
+      "d": 1024,
+      "method": "bf16_manual",
+      "config": {
+        "rows": 64,
+        "cols": 128,
+        "depth": 32,
+        "warps_m": 4,
+        "warps_n": 2,
+        "native_bf16": true,
+        "register_argmin": true,
+        "padding": 8,
+        "manual_fragments": true
+      },
+      "seconds": [
+        0.0750899170525372,
+        0.07510733278468251,
+        0.07483133394271135
+      ],
+      "median_seconds": 0.0750899170525372,
+      "oracle_label_mismatches_first9": 0
+    },
+    {
+      "n": 16384,
+      "k": 16384,
+      "d": 1024,
+      "method": "bf16_manual",
+      "config": {
+        "rows": 64,
+        "cols": 128,
+        "depth": 32,
+        "warps_m": 4,
+        "warps_n": 2,
+        "native_bf16": false,
+        "register_argmin": true,
+        "padding": 4,
+        "manual_fragments": true
+      },
+      "seconds": [
+        0.1080131670460105,
+        0.10770754190161824,
+        0.10705741681158543
+      ],
+      "median_seconds": 0.10770754190161824,
+      "oracle_label_mismatches_first9": 0
+    },
+    {
+      "n": 16384,
+      "k": 16384,
+      "d": 1024,
+      "method": "bf16_manual",
+      "config": {
+        "rows": 32,
+        "cols": 128,
+        "depth": 32,
+        "warps_m": 1,
+        "warps_n": 4,
+        "native_bf16": true,
+        "register_argmin": true,
+        "padding": 8,
+        "manual_fragments": true
+      },
+      "seconds": [
+        0.11540262494236231,
+        0.11453716596588492,
+        0.11446858383715153
+      ],
+      "median_seconds": 0.11453716596588492,
+      "oracle_label_mismatches_first9": 0
+    },
+    {
+      "n": 16384,
+      "k": 16384,
+      "d": 1024,
+      "method": "bf16_manual",
+      "config": {
+        "rows": 32,
+        "cols": 128,
+        "depth": 32,
+        "warps_m": 1,
+        "warps_n": 4,
+        "native_bf16": false,
+        "register_argmin": true,
+        "padding": 4,
+        "manual_fragments": true
+      },
+      "seconds": [
+        0.1851557088084519,
+        0.18540479196235538,
+        0.18610366713255644
+      ],
+      "median_seconds": 0.18540479196235538,
+      "oracle_label_mismatches_first9": 0
+    },
+    {
+      "n": 16384,
+      "k": 16384,
+      "d": 1024,
+      "method": "bf16_manual",
+      "config": {
+        "rows": 128,
+        "cols": 64,
+        "depth": 32,
+        "warps_m": 4,
+        "warps_n": 2,
+        "native_bf16": true,
+        "register_argmin": true,
+        "padding": 8,
+        "manual_fragments": true
+      },
+      "seconds": [
+        0.06517233420163393,
+        0.06486816704273224,
+        0.06499750027433038
+      ],
+      "median_seconds": 0.06499750027433038,
+      "oracle_label_mismatches_first9": 0
+    },
+    {
+      "n": 16384,
+      "k": 16384,
+      "d": 1024,
+      "method": "bf16_manual",
+      "config": {
+        "rows": 128,
+        "cols": 64,
+        "depth": 32,
+        "warps_m": 4,
+        "warps_n": 2,
+        "native_bf16": false,
+        "register_argmin": true,
+        "padding": 4,
+        "manual_fragments": true
+      },
+      "seconds": [
+        0.09029533434659243,
+        0.09027533326297998,
+        0.09021183289587498
+      ],
+      "median_seconds": 0.09027533326297998,
+      "oracle_label_mismatches_first9": 0
+    },
+    {
+      "n": 16384,
+      "k": 16384,
+      "d": 1024,
+      "method": "bf16_manual",
+      "config": {
+        "rows": 128,
+        "cols": 128,
+        "depth": 16,
+        "warps_m": 4,
+        "warps_n": 2,
+        "native_bf16": true,
+        "register_argmin": true,
+        "padding": 8,
+        "manual_fragments": true
+      },
+      "seconds": [
+        0.059503667056560516,
+        0.06056399969384074,
+        0.060354458168148994
+      ],
+      "median_seconds": 0.060354458168148994,
+      "oracle_label_mismatches_first9": 0
+    },
+    {
+      "n": 16384,
+      "k": 16384,
+      "d": 1024,
+      "method": "bf16_manual",
+      "config": {
+        "rows": 128,
+        "cols": 128,
+        "depth": 16,
+        "warps_m": 4,
+        "warps_n": 2,
+        "native_bf16": false,
+        "register_argmin": true,
+        "padding": 4,
+        "manual_fragments": true
+      },
+      "seconds": [
+        0.07690437510609627,
+        0.07664154237136245,
+        0.0767463343217969
+      ],
+      "median_seconds": 0.0767463343217969,
+      "oracle_label_mismatches_first9": 0
+    }
+  ]
+}

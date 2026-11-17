@@ -1,0 +1,151 @@
+{
+  "status": "completed",
+  "config": {
+    "dataset": "sift1b-1M-div512",
+    "seed": 10,
+    "method": "metal",
+    "epochs": 3.0,
+    "lloyd_iters": 25,
+    "k": null,
+    "rows": null,
+    "threads": 8,
+    "precision": "float32",
+    "recipe": "paper",
+    "finalization": "last_epoch",
+    "assignment": "auto",
+    "batch_size": null,
+    "batch_law": "auto",
+    "repeats": 3,
+    "warmup": true,
+    "train_score_rows": 10000,
+    "cache": "/Users/tunguz/.cache/mlxlearn/e_means",
+    "faiss_source": "/Users/tunguz/Programming/mlxlearn/tmp/e_means/faiss",
+    "expected_source_sha256": {
+      "benchmarks/e_means/run.py": "ba5cde5b87e306ce902fb398bd04750bea0ab7506c9fd0567fa6d201729be399",
+      "benchmarks/e_means/vibe_manifest.json": "175cdf9c60208be8204eed0c60d7361ea4ccd26caf1a057519062a499213d63d",
+      "src/mlxlearn/cluster/__init__.py": "d392c1bfb85290a278128af698108dd59c1ae6f2d225ffe9eeb4f8944812fb79",
+      "src/mlxlearn/cluster/_e_means.py": "4b614a8349711a7afcb3310aa65ad2e2515e990cca4f02b59dffa1a6dd303964",
+      "src/mlxlearn/cluster/_recipe.py": "a384fb14e9fd904b2d07b77f63a5e7c85da5160e73b4e842dd0c44de5ca1c468",
+      "src/mlxlearn/_kernels/e_means.py": "3df3c15a2086ef9f2807ae7a35e3d3ee6588d7162659c832818dfcfce0f0b178"
+    },
+    "expected_versions": {
+      "python": "3.14.2",
+      "numpy": "2.5.4",
+      "scipy": "1.18.1",
+      "mlx": "0.32.4",
+      "scikit-learn": "1.9.1",
+      "faiss-cpu": "1.16.0",
+      "h5py": "3.16.0"
+    },
+    "expected_host": {
+      "machine": "arm64",
+      "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+      "cpu": "Apple M4 Max",
+      "ram_bytes": 137438953472
+    },
+    "output": "/Users/tunguz/Programming/mlxlearn/benchmarks/e_means/results/core1m/sift1b-1M-div512-metal-s10-20f29754087c.json"
+  },
+  "dataset": {
+    "paper_split_exact": false,
+    "split": "1M prefix with next 10,000 evaluation rows, seed1234 second half",
+    "normalization": "divide by 512 (exact power of two)",
+    "note": "same SIFT corpus/protocol; upstream has no SIFT1M fingerprints",
+    "train_rows_used": 1000000,
+    "test_rows_used": 5000,
+    "dimension": 128,
+    "requested_row_limit": null,
+    "train_sample_sha256": "303394e8b1288e5ce6a38b1848a90dcff6ed608e8a28d551ac6ed74f1ca667e0",
+    "test_sha256": "18547427b92169841b11943bab5e5139e39a4f57f60a48e3d68d8772bd1c029b"
+  },
+  "n": 1000000,
+  "d": 128,
+  "k": 16384,
+  "train_seconds": 3.034972249995917,
+  "train_seconds_samples": [
+    3.1878096251748502,
+    2.9733742917887866,
+    3.034972249995917
+  ],
+  "test_mse": 0.19376460052169217,
+  "train_sample_mse": 0.1925492130909193,
+  "train_score_rows": 10000,
+  "initial_centroids_sha256": "b76093954a9aca47de15013f8c1395003fa1db5e7c33d4ad9ae036471b19378b",
+  "final_centroids_sha256": "eb4ec1f4a2c874ec26b9fe9ffd919662c3e539dc7c33938a53fcd76c7feb4144",
+  "recipe_resolved": {
+    "name": "paper",
+    "batch_law": "throughput",
+    "batch_law_requested": "auto",
+    "batch_law_reason": "paper: n <= 2M",
+    "batch_size": 65536,
+    "alpha0": 0.36277941752068105,
+    "nepochs": 3.0,
+    "epoch_rows": [
+      1000000,
+      1000000,
+      1000000
+    ],
+    "epoch_steps": [
+      16,
+      16,
+      16
+    ],
+    "total_steps": 48,
+    "alpha_min_factor": 0.1,
+    "init_usage": 1e-10,
+    "split_epsilon": 0.0078125,
+    "unused_threshold": 0.1,
+    "check_unused_every": 5,
+    "tail_policy": "keep",
+    "fractional_policy": "full_closing_pass_when_T_ge_1",
+    "seed": 10,
+    "backend": "metal",
+    "precision": "float32",
+    "assignment": "auto",
+    "finalization": "last_epoch",
+    "spherical": false,
+    "slow_alpha": null,
+    "assignment_centering": "global_mean"
+  },
+  "algorithm_applied": {
+    "recipe": "paper",
+    "finalization": "last_epoch",
+    "precision": "float32"
+  },
+  "n_splits": 4701,
+  "timing_scope": "synchronized fit from NumPy input; includes fit validation/upload; excludes data load, init sampling, warmup, scoring",
+  "scoring": "Faiss IndexFlatL2 float32 assignment, residual recomputed by direct float64 difference",
+  "initialization": "NumPy RandomState(seed) permutation shared across methods; differs paper CUDA RNG",
+  "hardware": {
+    "machine": "arm64",
+    "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "cpu": "Apple M4 Max",
+    "ram_bytes": 137438953472,
+    "metal": {
+      "device_name": "Apple M4 Max",
+      "max_recommended_working_set_size": 115448725504,
+      "memory_size": 137438953472,
+      "architecture": "applegpu_g16s",
+      "max_buffer_length": 86586540032,
+      "resource_limit": 499000
+    }
+  },
+  "versions": {
+    "python": "3.14.2",
+    "numpy": "2.5.4",
+    "scipy": "1.18.1",
+    "mlx": "0.32.4",
+    "scikit-learn": "1.9.1",
+    "faiss-cpu": "1.16.0",
+    "h5py": "3.16.0"
+  },
+  "faiss_reference_revision": "ebab8f784c1d177129602269d5ad966c525fbdcb",
+  "source_sha256": {
+    "benchmarks/e_means/run.py": "ba5cde5b87e306ce902fb398bd04750bea0ab7506c9fd0567fa6d201729be399",
+    "benchmarks/e_means/vibe_manifest.json": "175cdf9c60208be8204eed0c60d7361ea4ccd26caf1a057519062a499213d63d",
+    "src/mlxlearn/cluster/__init__.py": "d392c1bfb85290a278128af698108dd59c1ae6f2d225ffe9eeb4f8944812fb79",
+    "src/mlxlearn/cluster/_e_means.py": "4b614a8349711a7afcb3310aa65ad2e2515e990cca4f02b59dffa1a6dd303964",
+    "src/mlxlearn/cluster/_recipe.py": "a384fb14e9fd904b2d07b77f63a5e7c85da5160e73b4e842dd0c44de5ca1c468",
+    "src/mlxlearn/_kernels/e_means.py": "3df3c15a2086ef9f2807ae7a35e3d3ee6588d7162659c832818dfcfce0f0b178"
+  },
+  "peak_gpu_memory_bytes": 1769625024
+}
