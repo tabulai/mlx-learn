@@ -33,6 +33,27 @@ CPU cache misses are evaluated as a batch. In a separate probe on the two CPU fi
 
 The full repository suite passed with 4,281 tests and eight environment-dependent skips. Seven skips require pandas and one requires Python framework headers. Ruff and the repository’s mechanical compliance checks passed.
 
+## Standard MNIST fit and inference
+
+This comparison uses the 60,000 standard MNIST training digits and all 10,000 test digits. The cache branch, main, and stock scikit-learn 1.9.1 received the same 784 float64 pixel values per image, scaled to [0, 1], and used RBF SVC with C=1 and gamma set to `scale`. The two mlxlearn builds ran on the M4 Max GPU. Scikit-learn ran on the CPU.
+
+| Cache (MiB) | Implementation | Fit (s) | First predict (ms) | Warm predict (ms) | OVO decision_function (ms) |
+|---:|---|---:|---:|---:|---:|
+| 200 | main | 9.091 | 105.5 | 88.7 | 84.2 |
+| 200 | cache branch | 3.590 | 105.2 | 88.2 | 82.4 |
+| 200 | scikit-learn | 115.169 | 26,180.5 | 26,324.3 | 26,358.0 |
+| 2,000 | main | 5.572 | 100.8 | 89.6 | 81.7 |
+| 2,000 | cache branch | 5.462 | 107.7 | 90.5 | 80.0 |
+| 2,000 | scikit-learn | 118.675 | 26,192.5 | 26,160.0 | 26,185.9 |
+
+At 200 MiB the cache branch fit 2.53× faster than main and 32.1× faster than scikit-learn. At 2,000 MiB both mlxlearn versions could hold each class pair's full Gram matrix. Warm prediction differed by less than 1 ms between branches at either budget, with each build winning some of the alternating calls.
+
+Inference times cover a single batch of 10,000 images. First prediction is the first call on a newly fitted model. For mlxlearn, fit, first prediction, and decision scores are medians of three fits after a warmup. Warm prediction is the median of 11 alternating calls per build using the last fitted models. Scikit-learn has one fit, one first prediction, two warm predictions, and one decision-function call per cache size. The decision function returns all 45 one-vs-one scores per image.
+
+All three models achieved 97.92% accuracy and predicted the same labels at each cache size. All 450,000 decision scores at each budget matched main exactly. The maximum absolute score difference against scikit-learn was 0.000886. The training cache is released after solving each subproblem. Inference uses the fitted support vectors and coefficients.
+
+With the standard `mnist.npz` in the same dataset cache, use `python -m benchmarks.svc_mnist_cache --baseline /path/to/built/main --output mnist-results.json` to reproduce the comparison. [Benchmark driver](../benchmarks/svc_mnist_cache.py) · [Individual timings and quality checks](../benchmarks/results/svc-mnist-cache-2026-11-17.json).
+
 ## Reproduce
 
 From the candidate checkout, use the project environment that contains the build and runtime dependencies. The image runs also require `fashion_mnist.npz` in the local [MNIST-family dataset cache](../benchmarks/experiments/mnist-family-2026-11-02/README.md).
