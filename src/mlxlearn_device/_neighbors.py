@@ -16,6 +16,8 @@ from operator import itemgetter
 
 import mlx.core as mx
 
+from mlxlearn_common._neighbors_plan import resolve_blocks
+
 __all__ = ["DeviceNeighborIndex", "fit_neighbors"]
 
 
@@ -277,6 +279,9 @@ class DeviceNeighborIndex:
         It masks each global identity before selection, including duplicate
         rows whose identity would otherwise lie outside the selected prefix.
         Results are evaluated by the caller, or by conversion to a host array.
+        General search uses the host interface's memory-aware tile policy, with
+        standalone defaults and ``MLXLEARN_*`` environment overrides. Host
+        wrappers supply their own scoped tuning through explicit planned sizes.
         """
         _matrix(Q, n_features=self.X.shape[1], allow_empty=True)
         if not isinstance(k, Integral) or isinstance(k, bool) or k < 1:
@@ -404,8 +409,22 @@ class DeviceNeighborIndex:
 
             from ._neighbors_general import cpu_neighbors, gpu_neighbors
 
-            rows = min(n_query, query_block_size or 256)
-            cols = min(n_train, train_block_size or max(k + 4, (32 << 20) // (rows * 16)))
+            if query_block_size is not None and train_block_size is not None:
+                # Host wrappers already planned both dimensions from scoped
+                # tuning. Do not reread standalone environment overrides here.
+                rows = min(n_query, query_block_size)
+                cols = min(n_train, train_block_size)
+            else:
+                plan = resolve_blocks(
+                    n_query, n_train, backend="mlx" if self.device == "gpu" else "cpu",
+                    k_search=min(n_train, k + 4), query_block_size=query_block_size,
+                    train_block_size=train_block_size,
+                )
+                rows, cols = plan.query_rows, plan.train_cols
+                if train_block_size is not None:
+                    # The direct API historically permits tiles shorter than k;
+                    # exact per-tile merging preserves that explicit user choice.
+                    cols = min(n_train, train_block_size)
             if self.device == "cpu":
                 squared, indices = cpu_neighbors(
                     self.X, Q, k, rows=rows, cols=cols, exclude_self=exclude_self,

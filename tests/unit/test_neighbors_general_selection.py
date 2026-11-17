@@ -262,13 +262,13 @@ def test_public_query_beyond_mlx_sort_width_is_exact(n_query, k, family, filtere
     train = rng.normal(size=(n_train, 4)).astype(np.float32)
     queries = rng.normal(size=(n_query, 4)).astype(np.float32)
     widths = []
-    original = general._gram_lower
+    original = general.gram_lower
 
-    def recording(query, train_tile, *args):
+    def recording(query, train_tile, *args, **kwargs):
         widths.append(int(train_tile.shape[0]))
-        return original(query, train_tile, *args)
+        return original(query, train_tile, *args, **kwargs)
 
-    monkeypatch.setattr(general, "_gram_lower", recording)
+    monkeypatch.setattr(general, "gram_lower", recording)
     plan = distance.resolve_blocks(n_query, n_train, backend="mlx", k_search=k + distance._OVERSELECT)
     assert plan.train_cols == n_train
     index = distance.build_index(train, backend="mlx")

@@ -11,6 +11,9 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from mlxlearn_common._neighbors_plan import BlockPlan, PlanSettings, distance_budget_bytes
+from mlxlearn_common._neighbors_plan import resolve_blocks as _resolve_blocks
+
 from .._common.arrays import INDEX_DTYPE, NUMPY_FLOAT
 from .._common.config import get_tuning
 from .._common.device import physical_memory_bytes, use_device
@@ -24,34 +27,20 @@ __all__ = ["NeighborIndex", "build_index", "resolve_blocks"]
 _OVERSELECT = 4
 
 
-@dataclass(frozen=True, slots=True)
-class BlockPlan:
-    """How a query is split into tiles."""
-
-    query_rows: int
-    train_cols: int
-
-    def __str__(self) -> str:  # pragma: no cover - display only
-        return f"query_rows={self.query_rows}, train_cols={self.train_cols}"
+def _plan_settings() -> PlanSettings:
+    tuning = get_tuning()
+    return PlanSettings(
+        distance_block_bytes=tuning.distance_block_bytes,
+        distance_block_bytes_max=tuning.distance_block_bytes_max,
+        query_block_rows=tuning.query_block_rows,
+        query_block_align=tuning.query_block_align,
+        cpu_distance_block_bytes=tuning.cpu_distance_block_bytes,
+        cpu_query_block_rows=tuning.cpu_query_block_rows,
+    )
 
 
 def _distance_budget_bytes(backend: str) -> int:
-    """Bytes to spend on one distance tile.
-
-    On unified memory a bigger tile means fewer, wider matmuls, which is what the
-    GPU wants. The budget is derived from installed memory and clamped, because a
-    fixed constant is wrong by an order of magnitude on both an 8 GB Air and a
-    128 GB Studio.
-    """
-    tuning = get_tuning()
-    if backend != "mlx":
-        return tuning.cpu_distance_block_bytes
-    total = physical_memory_bytes()
-    if total is None:
-        return tuning.distance_block_bytes
-    return int(
-        min(max(total // 32, tuning.distance_block_bytes), tuning.distance_block_bytes_max)
-    )
+    return distance_budget_bytes(backend, _plan_settings(), physical_memory_bytes())
 
 
 def resolve_blocks(
@@ -63,43 +52,12 @@ def resolve_blocks(
     query_block_size: int | None = None,
     train_block_size: int | None = None,
 ) -> BlockPlan:
-    """Choose tile sizes so a distance tile fits the budget.
-
-    Unlike the ancestor, the device kind is passed in rather than inferred from
-    whether the byte budget happens to exceed a GPU-ish constant — conflating a
-    memory budget with a device kind meant an explicit CPU budget above 256 MiB
-    silently switched on GPU alignment, and the CPU path could never shrink its
-    block no matter how wide the training set was.
-    """
-    if n_query <= 0 or n_train <= 0:
-        return BlockPlan(query_rows=0, train_cols=0)
-
-    tuning = get_tuning()
-    budget = _distance_budget_bytes(backend)
-    # Distance values, packed ordering keys and selection indices coexist.
-    itemsize = 16
-
-    if query_block_size is not None:
-        rows = max(1, min(int(query_block_size), n_query))
-    else:
-        rows = tuning.query_block_rows if backend == "mlx" else tuning.cpu_query_block_rows
-        # Keep a full-width tile inside the budget when the training set is small
-        # enough to be scanned in one pass; otherwise the train tiling handles it.
-        max_rows = budget // max(n_train * itemsize, 1)
-        if 0 < max_rows < rows:
-            align = tuning.query_block_align if backend == "mlx" else 1
-            aligned = (max_rows // align) * align if align > 1 else max_rows
-            rows = aligned if aligned > 0 else max_rows
-        rows = max(1, min(n_query, rows))
-
-    min_cols = min(k_search, n_train)
-    if train_block_size is not None:
-        cols = max(min_cols, min(int(train_block_size), n_train))
-    else:
-        cols = budget // max(rows * itemsize, 1)
-        cols = max(min_cols, min(n_train, int(cols)))
-
-    return BlockPlan(query_rows=int(rows), train_cols=int(cols))
+    """Use the shared planner with the current host interface's scoped tuning."""
+    return _resolve_blocks(
+        n_query, n_train, backend=backend, k_search=k_search,
+        query_block_size=query_block_size, train_block_size=train_block_size,
+        settings=_plan_settings(), budget_bytes=_distance_budget_bytes(backend),
+    )
 
 
 @dataclass(init=False, slots=True)
