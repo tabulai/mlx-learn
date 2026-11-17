@@ -187,6 +187,54 @@ _VALUE_SCAN = """
     }
 """
 
+_SCAN_LOOP = """    for (int col = begin + int(lane); col < end; col += 32) {
+        float distance = values[size_t(row) * width + col];
+        // Overflow in a Gram tile may produce NaN. Keep a real candidate
+        // index so the caller can recompute that candidate's direct distance.
+        if (metal::isnan(distance)) distance = INFINITY;
+"""
+
+# Filtered selection: ``limit`` bounds the row's k-th smallest value, so larger
+# values cannot be selected. Values below ``limit`` lie in fewer than k chunks
+# of the minima pass. Partition ``part`` owns the 32-column groups part,
+# part + parts, ...; with 4+ partitions a lane holds at most one column of
+# each 128-column chunk, so it inserts fewer than k such values in any column
+# order (values equal to ``limit`` insert only while its list has room).
+# Contiguous ranges would leave every such value to one partition when
+# columns arrive in descending order.
+_FILTERED_VALUE_SCAN = _VALUE_SCAN.replace(_SCAN_LOOP, """    const float limit = threshold[row];
+    for (int col = part * 32 + int(lane); col < width; col += 32 * parts) {
+        float distance = values[size_t(row) * width + col];
+        if (metal::isnan(distance)) distance = INFINITY;
+        if (distance > limit) continue;
+""")
+
+_CHUNK_MINIMA = """
+    const uint lane = thread_index_in_simdgroup;
+    const uint task = thread_position_in_grid.x / 32;
+    const int width = shape[0];
+    const int rows = shape[1];
+    const int chunks = shape[2];
+    const int chunk = shape[3];
+    const int groups = (chunks + GROUP_CHUNKS - 1) / GROUP_CHUNKS;
+    const int row = int(task / uint(groups));
+    if (row >= rows) return;
+    const int first = int(task % uint(groups)) * GROUP_CHUNKS;
+    const int last = min(first + GROUP_CHUNKS, chunks);
+    for (int item = first; item < last; ++item) {
+        const int begin = item * chunk;
+        const int end = min(begin + chunk, width);
+        float lowest = INFINITY;
+        for (int col = begin + int(lane); col < end; col += 32) {
+            // NaN counts as +inf, as in the selection scan.
+            const float value = values[size_t(row) * width + col];
+            lowest = metal::isnan(value) ? lowest : metal::min(lowest, value);
+        }
+        lowest = metal::simd_min(lowest);
+        if (lane == 0) out_minima[size_t(row) * chunks + item] = lowest;
+    }
+"""
+
 _REFINE = """
     #pragma clang fp contract(off)
     #pragma clang fp reassociate(off)
@@ -255,6 +303,29 @@ def _value_kernel():
         output_names=["out_distances", "out_indices"],
         source=_VALUE_SCAN,
         header=_HEADER,
+    )
+
+
+@lru_cache(maxsize=1)
+def _filtered_value_kernel():
+    if _FILTERED_VALUE_SCAN == _VALUE_SCAN:  # pragma: no cover - source drift guard
+        raise RuntimeError("filtered selection scan no longer matches the value scan source")
+    return mx.fast.metal_kernel(
+        name="mlxlearn_neighbor_filtered_value_select",
+        input_names=["values", "threshold", "shape"],
+        output_names=["out_distances", "out_indices"],
+        source=_FILTERED_VALUE_SCAN,
+        header=_HEADER,
+    )
+
+
+@lru_cache(maxsize=1)
+def _chunk_minima_kernel():
+    return mx.fast.metal_kernel(
+        name="mlxlearn_neighbor_chunk_minima",
+        input_names=["values", "shape"],
+        output_names=["out_minima"],
+        source=_CHUNK_MINIMA,
     )
 
 
@@ -334,12 +405,59 @@ def fused_neighbors(
     )
 
 
-def select_topk(values: mx.array, k: int, *, offset: int = 0) -> tuple[mx.array, mx.array]:
+#: Filtered selection: columns per chunk minimum, the most chunks per row (the
+#: limit sorts one row of chunk minima), chunks reduced per SIMD group, and the
+#: SIMD-group count its partitions target.
+_FILTER_CHUNK = 128
+_FILTER_MAX_CHUNKS = 2**16
+_FILTER_GROUP_CHUNKS = 8
+_FILTER_GROUPS = 2048
+
+
+def _filtered_partitions(rows: int, width: int) -> int:
+    return min(32, max(1, width // 512), max(1, (_FILTER_GROUPS + rows - 1) // rows))
+
+
+def _selection_limit(values: mx.array, k: int) -> mx.array | None:
+    """Return a value per row with at least ``k`` row entries at or below it.
+
+    The chunks are disjoint, so their minima are distinct entries and the k-th
+    smallest minimum has at least k entries at or below it; no larger entry
+    can be among the row's k smallest. NaN counts as +inf, as in selection.
+    Returns None when a row has fewer than ``k`` chunks.
+    """
+    rows, width = values.shape
+    chunk = max(_FILTER_CHUNK, 32 * -(-width // (32 * _FILTER_MAX_CHUNKS)))
+    chunks = -(-width // chunk)
+    if chunks < k:
+        return None
+    groups = rows * -(-chunks // _FILTER_GROUP_CHUNKS)
+    (minima,) = _chunk_minima_kernel()(
+        inputs=[values, mx.array([width, rows, chunks, chunk], mx.int32)],
+        template=[("GROUP_CHUNKS", _FILTER_GROUP_CHUNKS)],
+        grid=(((groups * 32 + 127) // 128) * 128, 1, 1),
+        threadgroup=(128, 1, 1),
+        output_shapes=[(rows, chunks)],
+        output_dtypes=[mx.float32],
+        stream=mx.gpu,
+    )
+    # At most 2**16 columns: well inside MLX's correct sort widths.
+    return mx.sort(minima, axis=1)[:, k - 1]
+
+
+def select_topk(
+    values: mx.array, k: int, *, offset: int = 0, filtered: bool = False,
+) -> tuple[mx.array, mx.array]:
     """Select sorted row minima without a full-shaped sort-index allocation.
 
     ``values`` is a float32 matrix; ``1 <= k <= 128``. Returned global column
     indices include ``offset`` and break equal-value ties. NaN entries are
     treated as positive infinity. Both result arrays remain on the GPU.
+
+    ``filtered`` first bounds each row's k-th smallest value with chunk minima
+    and skips every larger value, which keeps the scan's per-lane insertions
+    near k in any column order (descending columns otherwise insert every
+    value). It costs an extra pass over ``values``; results are identical.
     """
     if not isinstance(values, mx.array) or values.dtype != mx.float32:
         raise TypeError("values must be a float32 MLX array")
@@ -358,10 +476,16 @@ def select_topk(values: mx.array, k: int, *, offset: int = 0) -> tuple[mx.array,
     rows, width = values.shape
     if rows == 0:
         return mx.zeros((0, k), mx.float32), mx.zeros((0, k), mx.int32)
-    parts = _partitions(rows, width)
+    limit = _selection_limit(values, k) if filtered else None
+    if limit is None:
+        parts = _partitions(rows, width)
+        kernel, inputs = _value_kernel(), [values]
+    else:
+        parts = _filtered_partitions(rows, width)
+        kernel, inputs = _filtered_value_kernel(), [values, limit]
     task_count = rows * parts
-    partial_values, partial_indices = _value_kernel()(
-        inputs=[values, mx.array([width, rows, parts, offset], mx.int32)],
+    partial_values, partial_indices = kernel(
+        inputs=inputs + [mx.array([width, rows, parts, offset], mx.int32)],
         template=[("K", int(k))],
         grid=(((task_count * 32 + 127) // 128) * 128, 1, 1),
         threadgroup=(128, 1, 1),

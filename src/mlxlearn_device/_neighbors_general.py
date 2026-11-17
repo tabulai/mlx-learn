@@ -72,16 +72,64 @@ def _gpu_family():
     return int(match.group(1)) if match else None
 
 
-def _use_partial_select(rows, width, take):
-    """Choose ``select_topk`` over a full row sort for one Gram tile.
+#: Apple GPU generations where filtered selection was calibrated against the
+#: routes below: M1 Ultra (13), M4 Max (16) and M5 Ultra (17).
+_FILTERED_GPU_FAMILIES = frozenset({13, 16, 17})
 
-    Up to 16 candidates always use partial selection. Larger candidate sets
-    use it only on calibrated GPU generations, inside the regions of
-    ``_calibrated_partial_select``.
+
+def _selection(rows, width, take):
+    """Choose how one Gram tile selects its candidates.
+
+    Returns "filtered" or "partial" (``select_topk`` with or without its
+    chunk-minimum filter) or "sort" (a full row sort). Calibrated GPU
+    generations use filtered selection inside ``_filtered_select_wins``.
+    Otherwise up to 16 candidates use partial selection, as do larger sets
+    inside ``_calibrated_partial_select`` on its calibrated generations.
     """
+    family = _gpu_family()
+    if family in _FILTERED_GPU_FAMILIES and _filtered_select_wins(rows, width, take):
+        return "filtered"
+    if take <= 16 or (family in _CALIBRATED_GPU_FAMILIES
+                      and _calibrated_partial_select(rows, width, take)):
+        return "partial"
+    return "sort"
+
+
+def _filtered_select_wins(rows, width, take):
+    """Tile regions where filtered selection beat the route it replaces on M1, M4 and M5.
+
+    Measured on 1..1024-row tiles of 4096..2**20 columns, for 2..128 candidates
+    in random, descending and single-lane column orders; every region beat
+    partial selection (up to 16 candidates) or the full sort by at least 3% on
+    all three GPUs in all three orders. Filtered selection does about the same
+    work in any order, while the unfiltered scan inserts every value of a
+    descending row. Its two extra launches lose on small tiles, and long
+    candidate lists lose to a full sort unless the tile is wide. Single rows
+    were not measured beyond 2**20 columns and keep their routes.
+    """
+    area = rows * width
+    if rows < 2:
+        return False
     if take <= 16:
-        return True
-    return _gpu_family() in _CALIBRATED_GPU_FAMILIES and _calibrated_partial_select(rows, width, take)
+        # Partial selection is cheap for short lists; tall tiles keep it too.
+        if take <= 7:
+            return 16 <= rows <= 256 and area >= 2**22
+        if take <= 11:
+            return 16 <= rows <= 256 and area >= 2**21
+        if take <= 15:
+            return rows <= 256 and area >= 2**21
+        return rows <= 1024 and area >= 2**20
+    if take <= 32:
+        return rows <= 1024 and width >= 2**14 and area >= 2**20
+    if take <= 48:
+        return 4 <= rows <= 1024 and width >= 2**16 and area >= 2**20
+    if take <= 64:
+        return rows <= 1024 and width >= 2**16 and area >= 2**21
+    if take <= 96:
+        return rows <= 256 and width >= 2**17 and area >= 2**22
+    if take <= 128:
+        return rows <= 256 and width >= 2**18 and area >= 2**23
+    return False
 
 
 def _calibrated_partial_select(rows, width, take):
@@ -155,7 +203,7 @@ def gpu_neighbors(index, queries, k, *, rows, cols, exclude_self=False):
         certified = mx.ones((query.shape[0],), mx.bool_)
         own = mx.arange(start, start + query.shape[0])[:, None] if exclude_self else None
         block_cols = min(cols, n)
-        if not _use_partial_select(query.shape[0], block_cols, min(block_cols, carry + 1)):
+        if _selection(query.shape[0], block_cols, min(block_cols, carry + 1)) == "sort":
             block_cols = min(block_cols, _SORT_WIDTH_LIMIT)
         for offset in range(0, n, block_cols):
             stop = min(offset + block_cols, n)
@@ -166,12 +214,15 @@ def gpu_neighbors(index, queries, k, *, rows, cols, exclude_self=False):
                 lower = mx.where(ids == own, float("inf"), lower)
             width = stop - offset
             take = min(width, carry + 1)
-            if _use_partial_select(query.shape[0], width, take):
-                bounds, candidates = select_topk(lower, take, offset=offset)
+            method = _selection(query.shape[0], width, take)
+            if method == "sort" and width > _SORT_WIDTH_LIMIT:
+                # Only a final tile narrower than its block re-chooses; a full
+                # sort of it would be wrong, so select it instead.
+                method = "partial"
+            if method != "sort":
+                bounds, candidates = select_topk(lower, take, offset=offset,
+                                                 filtered=method == "filtered")
             else:
-                # A block that chose partial selection sorts only tiles narrower
-                # than 2**18 columns; any other block is limited above.
-                assert width <= _SORT_WIDTH_LIMIT
                 order = mx.argsort(lower, axis=1)[:, :take]
                 bounds = mx.take_along_axis(lower, order, axis=1)
                 candidates = mx.take_along_axis(ids, order, axis=1)
