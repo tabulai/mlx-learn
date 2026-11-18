@@ -38,7 +38,7 @@ stock inheritance. See the [compatibility details](docs/support_matrix.md).
 
 ## Status
 
-**`0.1.3` — alpha.** The API may change. See [CHANGELOG.md](CHANGELOG.md).
+**`0.1.4` — alpha.** The API may change. See [CHANGELOG.md](CHANGELOG.md).
 
 | Estimator | Status |
 |---|---|
@@ -109,7 +109,7 @@ CI tests only valid pairs — see [`docs/support_matrix.md`](docs/support_matrix
 pip install mlx-learn
 ```
 
-Version `0.1.3` provides Apple silicon wheels for Python 3.10–3.13 with Metal
+Version `0.1.4` provides Apple silicon wheels for Python 3.10–3.13 with Metal
 and C++ CPU extensions. Source builds can also include these optional extensions.
 The KNN CPU extension handles small workloads and is compiled at build time;
 fitting or querying never invokes the C++ compiler. A compatible wheel includes
@@ -411,7 +411,7 @@ distances, indices = index.query(mx.array([[0.2, 0.1]]), k=2)
 mx.eval(distances, indices)  # results remain MLX arrays
 ```
 
-The unreleased integration shares memory-budget query planning between this
+Version 0.1.4 shares memory-budget query planning between this
 resident API and the NumPy interface, adds filtered candidate selection and
 parallel exact fallback, and includes the M5 binary32 and wide-PCA correctness
 fixes. See the [combined tests and benchmarks](docs/knn-integration-2026-11-17.md).
