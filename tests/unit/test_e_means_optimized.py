@@ -85,6 +85,18 @@ def test_bf16_oracle_rounds_halfway_values_to_even_and_keeps_exponent_range():
     np.testing.assert_array_equal(_bf16(values).view(np.uint32), expected.view(np.uint32))
 
 
+def test_auto_fp32_keeps_gemm_on_mlx_without_safe_math_options(monkeypatch):
+    from mlxlearn._kernels import e_means as kernels
+
+    def unsupported():
+        raise TypeError("unexpected keyword argument 'compile_options'")
+
+    monkeypatch.setattr(kernels.mx, "device_info", lambda: {"device_name": "Apple M4 Max"},
+                        raising=False)
+    monkeypatch.setattr(kernels, "_tile_kernel", unsupported)
+    assert not kernels._streaming_fp32_device.__wrapped__()
+
+
 @pytest.mark.gpu
 @pytest.mark.parametrize("spherical", [False, True])
 def test_auto_fp32_matches_gemm_on_ragged_and_nearly_tied_tiles(metal, monkeypatch, spherical):

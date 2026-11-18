@@ -15,7 +15,7 @@ import mlx.core as mx
 
 from mlxlearn_device._binary32 import matmul
 
-from .e_means_bf16 import assign_bf16, prepare_centers, streaming_tile
+from .e_means_bf16 import _tile_kernel, assign_bf16, prepare_centers, streaming_tile
 
 _UINT32_MAX = 2**32 - 1
 
@@ -232,7 +232,14 @@ def _scratch_budget():
 @lru_cache(maxsize=1)
 def _streaming_fp32_device():
     info = mx.device_info() if hasattr(mx, "device_info") else mx.metal.device_info()
-    return info.get("device_name") == "Apple M4 Max"
+    if info.get("device_name") != "Apple M4 Max":
+        return False
+    try:
+        _tile_kernel()
+    except TypeError:
+        # Earlier supported MLX releases lack the safe-math compile option.
+        return False
+    return True
 
 
 def assign(x, centers, *, batch_size=None, spherical=False, method="auto", precision="float32"):

@@ -1,8 +1,9 @@
 """Dense FP32 Lloyd k-means on Metal, with bounded assignment/statistics tiles.
 
 The resident interface keeps input preparation outside a timed optimization.
-All centroid statistics and updates stay on the GPU. This module deliberately
-reuses the frozen e-means primitives without changing their implementation.
+All centroid statistics and updates stay on the GPU. Lloyd shares the dense
+assignment kernels with e-means and can certify previous labels against the
+current centers before issuing a dense search.
 """
 
 from __future__ import annotations
