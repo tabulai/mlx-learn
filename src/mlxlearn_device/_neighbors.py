@@ -271,7 +271,7 @@ class DeviceNeighborIndex:
     def query(
         self, Q, k, *, return_distance=True, exclude_self=False,
         query_block_size=None, train_block_size=None, _validated=False, _squared=False,
-        _auto_train_tiling=False,
+        _auto_train_tiling=False, _gram_tile=None,
     ):
         """Find neighbors, ordered by distance then training index.
 
@@ -310,7 +310,7 @@ class DeviceNeighborIndex:
             geometry = "ordinary"
             # The NumPy boundary supplies a memory-budget tile even when the
             # caller requested none. Only an explicit tile should force Gram;
-            # ordinary Gram queries still use that unchanged automatic plan.
+            # choose the general Gram tile only after this dispatch.
             automatic_tiling = train_block_size is None or _auto_train_tiling
             if (self.device == "gpu" and automatic_tiling
                     and _use_small_search(n_train, n_query, features, k)):
@@ -407,7 +407,7 @@ class DeviceNeighborIndex:
                 return (mx.concatenate(out_dist) if return_distance else None,
                         mx.concatenate(out_idx))
 
-            from ._neighbors_general import cpu_neighbors, gpu_neighbors
+            from ._neighbors_general import _gpu_family, cpu_neighbors, gpu_neighbors
 
             if query_block_size is not None and train_block_size is not None:
                 # Host wrappers already planned both dimensions from scoped
@@ -421,6 +421,7 @@ class DeviceNeighborIndex:
                     train_block_size=train_block_size,
                 )
                 rows, cols = plan.query_rows, plan.train_cols
+                _gram_tile = plan.tight_gram_tile
                 if train_block_size is not None:
                     # The direct API historically permits tiles shorter than k;
                     # exact per-tile merging preserves that explicit user choice.
@@ -430,8 +431,12 @@ class DeviceNeighborIndex:
                     self.X, Q, k, rows=rows, cols=cols, exclude_self=exclude_self,
                 )
             else:
+                bounded = _gram_tile is not None and 33 <= features <= 256 and _gpu_family() == 16
+                if bounded:
+                    rows, cols = _gram_tile
                 squared, indices = gpu_neighbors(
                     self, Q, k, rows=rows, cols=cols, exclude_self=exclude_self,
+                    evaluate_blocks=bounded,
                 )
             return (squared if _squared else mx.sqrt(squared)) if return_distance else None, indices
 

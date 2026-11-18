@@ -22,10 +22,11 @@ DEFAULTS = PlanSettings()
 
 @dataclass(frozen=True, slots=True)
 class BlockPlan:
-    """Logical query rows and training columns in one distance tile."""
+    """Default tile and optional taller tile for the calibrated GPU Gram search."""
 
     query_rows: int
     train_cols: int
+    tight_gram_tile: tuple[int, int] | None = None
 
     def __str__(self) -> str:  # pragma: no cover - display only
         return f"query_rows={self.query_rows}, train_cols={self.train_cols}"
@@ -110,4 +111,15 @@ def resolve_blocks(
         cols = max(min_cols, min(int(train_block_size), n_train))
     else:
         cols = max(min_cols, min(n_train, budget_bytes // (rows * itemsize)))
-    return BlockPlan(int(rows), int(cols))
+    gram_tile = None
+    if (backend == "mlx" and query_block_size is None and train_block_size is None
+            and n_query >= 32 and n_train >= 2**19 and k_search <= 32 + 4
+            and (64 << 20) <= budget_bytes <= (512 << 20)):
+        # A full-width tile leaves too few queries per matrix product. Trade
+        # columns for rows at the same 16 bytes/pair, keeping enough columns
+        # for efficient filtered selection even at k=32.
+        gram_rows = min(n_query, settings.query_block_rows, 128,
+                        budget_bytes // (itemsize * 2**16))
+        if gram_rows > rows:
+            gram_tile = (gram_rows, min(n_train, budget_bytes // (itemsize * gram_rows)))
+    return BlockPlan(int(rows), int(cols), gram_tile)

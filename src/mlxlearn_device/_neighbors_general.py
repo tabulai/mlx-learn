@@ -208,7 +208,7 @@ def gram_lower(query, train, center, train_sq, error_factor, floor, *, exact_pro
     )
 
 
-def gpu_neighbors(index, queries, k, *, rows, cols, exclude_self=False):
+def gpu_neighbors(index, queries, k, *, rows, cols, exclude_self=False, evaluate_blocks=False):
     """Use Gram values only when an omitted-candidate bound proves safety."""
     from ._binary32 import matmul_may_round_float32
     from ._neighbors_fused import certified_neighbors, precise_select_candidates, select_topk
@@ -289,6 +289,10 @@ def gpu_neighbors(index, queries, k, *, rows, cols, exclude_self=False):
             train, query, k, best_values, best_indices, certified,
             exclude_self=exclude_self, query_offset=start,
         )
+        if evaluate_blocks and start + rows < queries.shape[0]:
+            # Finish this block before queuing the next Gram matrix. Only the
+            # k results per query need to remain live for concatenation.
+            mx.eval(values, indices)
         out_values.append(values)
         out_indices.append(indices)
     return mx.concatenate(out_values), mx.concatenate(out_indices)
