@@ -77,7 +77,8 @@ def row_problem(row, protocol, entries, protocol_hash):
         return f"invalid measurement: {error}"
 
 
-def validate(rows, protocol, entries, protocol_hash):
+def accept(rows, protocol, entries, protocol_hash):
+    """Records that pass every check, at most one per dataset and arm, from a single campaign."""
     candidates, rejected = defaultdict(list), []
     for row in rows:
         issue = row_problem(row, protocol, entries, protocol_hash)
@@ -97,6 +98,11 @@ def validate(rows, protocol, entries, protocol_hash):
         rejected.extend({"path": str(row.get("_path", "")), "reason": "mixed source/environment/device campaigns"}
                         for row in accepted.values())
         accepted = {}
+    return accepted, rejected
+
+
+def validate(rows, protocol, entries, protocol_hash):
+    accepted, rejected = accept(rows, protocol, entries, protocol_hash)
     pairs = []
     for entry in entries:
         group = {mode: accepted[(entry["dataset"], mode)] for mode in MODES if (entry["dataset"], mode) in accepted}
@@ -154,6 +160,161 @@ def summarize(pairs):
     return rows
 
 
+def changed_sources(pair, earlier):
+    """Measured source files whose hashes differ between two campaigns' records."""
+    def hashes(row):
+        return {**row["source_sha256"], **row["config"]["addendum_source_sha256"]}
+
+    new, old = hashes(pair[LLOYD]), hashes(earlier[LLOYD])
+    return sorted(name for name in new.keys() | old.keys() if new.get(name) != old.get(name))
+
+
+def control_rows(rows, protocol, entries, protocol_hash):
+    """Same-session controls measured from an earlier campaign's sources, by (dataset, arm).
+
+    The e-means arm is cheap, so its control is a full addendum record. A Lloyd
+    control only has to time identical iterations: it may stop after a few, as
+    a diagnostic record the harness validator accepts on the full dataset.
+    """
+    controls, _ = accept([row for row in rows if row["config"]["mode"] == EMEANS], protocol, entries, protocol_hash)
+    for row in rows:
+        config = row["config"]
+        if config["mode"] != LLOYD or config.get("rows") is not None or config.get("k_override") is not None:
+            continue
+        try:
+            benchmark.validate_result(row, config, row.get("memory_samples", []))
+        except (KeyError, TypeError, ValueError, RuntimeError, AttributeError, IndexError):
+            continue
+        if row["iteration_history"] and all(common.positive(step.get("seconds")) for step in row["iteration_history"]):
+            controls[(config["dataset"], LLOYD)] = row
+    return controls
+
+
+def changes(pairs, earlier_pairs, replicate=None):
+    """Each dataset of this campaign against an earlier campaign.
+
+    ``replicate`` holds ``control_rows`` measured from the earlier campaign's
+    sources in this campaign's session. They separate the source change from
+    whatever else differs between two sessions on one machine.
+    """
+    earlier = {pair[LLOYD]["config"]["dataset"]: pair for pair in earlier_pairs}
+    rows = []
+    for pair, new in zip(pairs, summarize(pairs), strict=True):
+        before = earlier.get(new["dataset"])
+        if before is None:
+            continue
+        old = summarize([before])[0]
+        # A fit that stopped early has fewer states; compare the shared prefix and say so.
+        states = list(zip(lloyd_inertias(pair[LLOYD]), lloyd_inertias(before[LLOYD]), strict=False))
+        row = {"dataset": new["dataset"], "changed_sources": changed_sources(pair, before),
+               "lloyd_speedup": old["lloyd_seconds"] / new["lloyd_seconds"],
+               "emeans_speedup": old["emeans_seconds"] / new["emeans_seconds"],
+               "lloyd_iteration_speedup": old["lloyd_iteration_seconds_median"] / new["lloyd_iteration_seconds_median"],
+               # Both fits start from the same centers, so every Lloyd state is comparable.
+               "lloyd_inertia_states": len(states) if len(lloyd_inertias(pair[LLOYD])) == len(lloyd_inertias(before[LLOYD])) else None,
+               "lloyd_inertia_max_relative_difference": max(abs(a / b - 1) if b else float(a != b) for a, b in states),
+               "lloyd_reused_rows": sum(step.get("pruned_rows", 0) for step in pair[LLOYD]["iteration_history"]),
+               "replicate_emeans_seconds": None, "replicate_emeans_speedup": None, "replicate_reproduces_earlier": None,
+               "replicate_lloyd_iterations": None, "replicate_lloyd_iteration_seconds_median": None,
+               "replicate_lloyd_iteration_speedup": None, "replicate_lloyd_reproduces_earlier": None}
+        for key in ("lloyd_seconds", "emeans_seconds", "lloyd_iteration_seconds_median", "runtime_ratio", "training_ratio",
+                    "lloyd_test_mse", "emeans_test_mse", "lloyd_final_inertia", "emeans_final_inertia",
+                    "lloyd_peak_footprint_bytes", "emeans_peak_footprint_bytes"):
+            row[key], row[f"earlier_{key}"] = new[key], old[key]
+        # Only a replicate of exactly the earlier sources, data and start is a control.
+        control = {mode: (replicate or {}).get((new["dataset"], mode)) for mode in MODES}
+        control = {mode: found for mode, found in control.items() if found is not None
+                   and all(found[key] == before[mode][key] for key in (*GLOBAL_FIELDS, *PAIR_FIELDS))}
+        if EMEANS in control:
+            found = control[EMEANS]
+            row.update(replicate_emeans_seconds=found["train_seconds"],
+                       replicate_emeans_speedup=found["train_seconds"] / new["emeans_seconds"],
+                       replicate_reproduces_earlier=all(found[key] == before[EMEANS][key]
+                                                        for key in ("final_inertia", "test_mse", "train_sample_mse")))
+        if LLOYD in control:
+            steps = control[LLOYD]["iteration_history"]
+            seconds = median(step["seconds"] for step in steps)
+            row.update(replicate_lloyd_iterations=len(steps), replicate_lloyd_iteration_seconds_median=seconds,
+                       replicate_lloyd_iteration_speedup=seconds / new["lloyd_iteration_seconds_median"],
+                       replicate_lloyd_reproduces_earlier=[step["inertia_before_update"] for step in steps]
+                       == lloyd_inertias(before[LLOYD])[:len(steps)])
+        rows.append(row)
+    return rows
+
+
+def same(new, old, form):
+    """Render a quantity that the source change may or may not have altered."""
+    if new == old:
+        return f"{form(new)}, identical"
+    return f"{form(old)} → {form(new)} ({100 * (new / old - 1):+.2g}%)"
+
+
+def comparison_markdown(rows, earlier_folder, replicate_folder, link):
+    lines = ["## Change from the earlier campaign", "",
+             f"The {link(earlier_folder/'validation.json', 'earlier campaign')} used the same protocol, harness, data, "
+             "initial centers and machine. "]
+    sources = sorted({name for row in rows for name in row["changed_sources"]})
+    lines[-1] += (f"{len(sources)} measured source file{'s differ' if len(sources) != 1 else ' differs'} between the two: "
+                  + ", ".join(f"`{name}`" for name in sources) + ".")
+    lines += ["", "| Dataset | Lloyd-25 (s), earlier → now | Speedup | Lloyd s / iteration, earlier → now | Speedup | "
+              "E-means (s), earlier → now | Speedup | Lloyd / e-means, earlier → now |",
+              "|---|---:|---:|---:|---:|---:|---:|---:|"]
+    for row in rows:
+        lines.append(f"| {common.label(row['dataset'])} | {row['earlier_lloyd_seconds']:.1f} → {row['lloyd_seconds']:.1f} | "
+                     f"{row['lloyd_speedup']:.2f}× | {row['earlier_lloyd_iteration_seconds_median']:.2f} → "
+                     f"{row['lloyd_iteration_seconds_median']:.2f} | {row['lloyd_iteration_speedup']:.2f}× | "
+                     f"{row['earlier_emeans_seconds']:.1f} → {row['emeans_seconds']:.1f} | {row['emeans_speedup']:.2f}× | "
+                     f"{row['earlier_runtime_ratio']:.2f}× → {row['runtime_ratio']:.2f}× |")
+    lines += ["", "Each campaign is one timed fit per method, taken in a different session on the same machine, so these "
+              "speedups combine the source change with any difference in machine state."]
+    controls = [row for row in rows if row["replicate_emeans_seconds"] is not None
+                or row["replicate_lloyd_iteration_seconds_median"] is not None]
+    if controls:
+        def cells(row, earlier, control, now, speedup, form):
+            if row[control] is None:
+                return f"{form(row[earlier])} | not measured | {form(row[now])} | |"
+            return f"{form(row[earlier])} | {form(row[control])} | {form(row[now])} | {row[speedup]:.2f}× |"
+
+        def reproduced(row):
+            names = [name for name, key in (("e-means", "replicate_reproduces_earlier"),
+                                            ("Lloyd", "replicate_lloyd_reproduces_earlier")) if row[key]]
+            return " and ".join(names) if names else "neither"
+
+        lloyd_iterations = sorted({row["replicate_lloyd_iterations"] for row in controls} - {None})
+        lines += ["", f"The {link(replicate_folder, 'same-session control')} measures the earlier sources again in the "
+                  "session of this campaign: the full e-means fit"
+                  + (f", and a Lloyd fit stopped after {' or '.join(map(str, lloyd_iterations))} of its identical iterations"
+                     if lloyd_iterations else "") + ". Its speedups hold the machine state fixed.", "",
+                  "| Dataset | E-means (s), earlier record | Earlier sources, this session | This campaign | Speedup | "
+                  "Lloyd s / iteration, earlier record | Earlier sources, this session | This campaign | Speedup | "
+                  "Control reproduces the earlier result bit for bit |",
+                  "|---|---:|---:|---:|---:|---:|---:|---:|---:|---|"]
+        for row in controls:
+            lines.append(f"| {common.label(row['dataset'])} | "
+                         + cells(row, "earlier_emeans_seconds", "replicate_emeans_seconds", "emeans_seconds",
+                                 "replicate_emeans_speedup", "{:.1f}".format) + " "
+                         + cells(row, "earlier_lloyd_iteration_seconds_median", "replicate_lloyd_iteration_seconds_median",
+                                 "lloyd_iteration_seconds_median", "replicate_lloyd_iteration_speedup", "{:.2f}".format)
+                         + f" {reproduced(row)} |")
+        lines += ["", "The last column compares the control's e-means inertia and MSE, and the Lloyd inertia of each "
+                  "iteration it ran, with the earlier records."]
+    lines += ["", "| Dataset | Lloyd test MSE | Largest Lloyd training-inertia difference over the fit | Lloyd rows reused | "
+              "E-means test MSE | Fit footprint GiB, Lloyd | Fit footprint GiB, e-means |",
+              "|---|---|---:|---:|---|---:|---:|"]
+    for row in rows:
+        drift = row["lloyd_inertia_max_relative_difference"]
+        states = "different iteration counts" if row["lloyd_inertia_states"] is None else (
+            f"none in {row['lloyd_inertia_states']} states" if drift == 0 else f"{drift:.2g} relative")
+        lines.append(f"| {common.label(row['dataset'])} | {same(row['lloyd_test_mse'], row['earlier_lloyd_test_mse'], '{:.8f}'.format)} | "
+                     f"{states} | {row['lloyd_reused_rows']:,} | "
+                     f"{same(row['emeans_test_mse'], row['earlier_emeans_test_mse'], '{:.8f}'.format)} | "
+                     f"{row['earlier_lloyd_peak_footprint_bytes']/2**30:.3f} → {row['lloyd_peak_footprint_bytes']/2**30:.3f} | "
+                     f"{row['earlier_emeans_peak_footprint_bytes']/2**30:.3f} → {row['emeans_peak_footprint_bytes']/2**30:.3f} |")
+    lines += ["", "A Lloyd state is the full-training FP32 inertia before each update and after the last. Rows reused counts "
+              "training rows whose previous label was certified without a dense search, summed over the iterations.", ""]
+    return lines
+
+
 def headline(rows):
     if not rows:
         return "No paired dataset has both arms yet."
@@ -171,7 +332,7 @@ def headline(rows):
             f"Lloyd did not reach the e-means training inertia within its budget on {unreached}/{len(rows)}.")
 
 
-def markdown(rows, validation, protocol, report, folder, protocol_path):
+def markdown(rows, validation, protocol, report, folder, protocol_path, comparison=None):
     def link(path, title):
         return common.link(path, title, report)
 
@@ -223,8 +384,10 @@ def markdown(rows, validation, protocol, report, folder, protocol_path):
                      f"{row['lloyd_peak_footprint_bytes']/2**30:.3f} / {row['emeans_peak_footprint_bytes']/2**30:.3f} |")
     lines += ["", "Test and train-sample MSE use shared FP32 Faiss assignment and direct FP64 residuals on the test set and a fixed "
               "10,000-row training sample. The inertia column compares each method's own FP32 final inertia over all training rows; "
-              "a negative change means e-means fits the training set more tightly.", "",
-              "## Protocol and limits", "", protocol["budget"], "", protocol["inherits"], ""]
+              "a negative change means e-means fits the training set more tightly.", ""]
+    if comparison and comparison["rows"]:
+        lines += comparison_markdown(comparison["rows"], comparison["earlier"], comparison["replicate"], link)
+    lines += ["## Protocol and limits", "", protocol["budget"], "", protocol["inherits"], ""]
     lines += [f"- {item}" for item in protocol["limitations"]]
     lines += ["", "## Evidence", "",
               f"{link(protocol_path, 'Addendum protocol')}; {link(REPO/protocol['applies_to']['path'], 'frozen protocol')}; "
@@ -240,11 +403,15 @@ def markdown(rows, validation, protocol, report, folder, protocol_path):
     return "\n".join(lines) + "\n"
 
 
-def generate(folder, output, protocol_path, require_complete=False):
+def addendum_rows(folder):
+    loaded, parse_errors = frozen.load_rows(folder)
+    return [row for row in loaded if row.get("config", {}).get("addendum") == driver.KIND], parse_errors
+
+
+def generate(folder, output, protocol_path, require_complete=False, earlier=None, replicate=None):
     folder, output, protocol_path = Path(folder).resolve(), Path(output).resolve(), Path(protocol_path).resolve()
     protocol, entries = driver.load_protocol(protocol_path)
-    loaded, parse_errors = frozen.load_rows(folder)
-    rows = [row for row in loaded if row.get("config", {}).get("addendum") == driver.KIND]
+    rows, parse_errors = addendum_rows(folder)
     pairs, validation = validate(rows, protocol, entries, common.sha256(protocol_path))
     validation["rejected"].extend(parse_errors)
     validation["complete"] &= not validation["rejected"]
@@ -259,12 +426,26 @@ def generate(folder, output, protocol_path, require_complete=False):
     if require_complete and not validation["complete"]:
         raise ValueError("Incomplete or incompatible evidence; validation saved, report and CSV not written")
     summary = summarize(pairs)
+    comparison = None
+    if earlier is not None:
+        earlier = Path(earlier).resolve()
+        audit = (protocol, entries, common.sha256(protocol_path))
+        earlier_pairs, earlier_validation = validate(addendum_rows(earlier)[0], *audit)
+        controls = {}
+        if replicate is not None:
+            replicate = Path(replicate).resolve()
+            controls = control_rows(addendum_rows(replicate)[0], *audit)
+        comparison = {"earlier": earlier, "replicate": replicate, "rows": changes(pairs, earlier_pairs, controls)}
+        (folder/"comparison.json").write_text(json.dumps(
+            {"earlier": str(earlier), "earlier_accepted_records": earlier_validation["accepted_records"],
+             "replicate": str(replicate) if replicate else None, "replicate_accepted_records": len(controls),
+             "datasets": comparison["rows"]}, indent=2, sort_keys=True) + "\n")
     with (folder/"summary.csv").open("w", newline="") as stream:
         writer = csv.DictWriter(stream, fieldnames=CSV_FIELDS)
         writer.writeheader()
         writer.writerows(summary)
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(markdown(summary, validation, protocol, output, folder, protocol_path))
+    output.write_text(markdown(summary, validation, protocol, output, folder, protocol_path, comparison))
     return validation
 
 
@@ -274,9 +455,12 @@ def main():
     parser.add_argument("--output", "--report", type=Path, default=REPO/"docs/k-means-lloyd25-reference-2026-11-17.md")
     parser.add_argument("--protocol", type=Path, default=HERE/"kmeans_lloyd25_protocol.json")
     parser.add_argument("--require-complete", action="store_true")
+    parser.add_argument("--earlier", type=Path, help="results folder of an earlier campaign to compare against")
+    parser.add_argument("--replicate", type=Path,
+                        help="e-means records measured from the earlier campaign's sources in this session")
     args = parser.parse_args()
     try:
-        result = generate(args.input, args.output, args.protocol, args.require_complete)
+        result = generate(args.input, args.output, args.protocol, args.require_complete, args.earlier, args.replicate)
     except ValueError as error:
         parser.exit(1, f"{error}\n")
     print(json.dumps({key: result[key] for key in ("complete", "accepted_records", "expected_records")}))

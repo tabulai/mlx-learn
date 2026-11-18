@@ -205,3 +205,89 @@ def test_partial_report_is_written_but_refused_when_completeness_is_required(tmp
     with pytest.raises(ValueError, match="Incomplete"):
         report.generate(tmp_path, tmp_path / "final.md", PROTOCOL, require_complete=True)
     assert not (tmp_path / "final.md").exists()
+
+
+def rerun(seconds=5.0):
+    """The campaign again from changed sources: Lloyd and e-means both take half the time."""
+    rows, protocol, entries, digest = campaign()
+    for row in rows:
+        row["source_sha256"]["src/mlxlearn/cluster/_k_means.py"] = "7" * 64
+        if row["config"]["mode"] == LLOYD:
+            for step in row["iteration_history"]:
+                step.update(seconds=seconds, pruned_rows=3)
+            row.update(train_seconds=26 * seconds, train_seconds_samples=[26 * seconds])
+        else:
+            row.update(train_seconds=15.0, train_seconds_samples=[15.0])
+    return rows, protocol, entries, digest
+
+
+def controls(rows, seconds=24.0, lloyd_iterations=3):
+    """Earlier sources again: the e-means fit at 24 s and a Lloyd fit cut to three 8 s iterations."""
+    found = []
+    for row in rows:
+        config = row["config"]
+        if config["mode"] == EMEANS:
+            row.update(train_seconds=seconds, train_seconds_samples=[seconds])
+        else:
+            budget = {**config["protocol_config"], "epochs": lloyd_iterations}
+            config.update(epochs=lloyd_iterations, epochs_override=lloyd_iterations, protocol_config=budget,
+                          diagnostic_subset=True)
+            history = row["iteration_history"][:lloyd_iterations]
+            for step in history:
+                step["seconds"] = 8.0
+            seconds_total = 8.0 * (lloyd_iterations + 1)
+            row.update(actual_iterations=lloyd_iterations, iteration_history=history, train_seconds=seconds_total,
+                       train_seconds_samples=[seconds_total],
+                       final_inertia=row["n"] * (1.5 + 2.0**-lloyd_iterations))
+        found.append(row)
+    return found
+
+
+def test_changes_pair_a_rerun_with_the_earlier_campaign_and_its_same_session_control():
+    earlier, _ = report.validate(*campaign())
+    now, _ = report.validate(*rerun())
+    rows = report.changes(now, earlier, report.control_rows(controls(campaign()[0]), *campaign()[1:]))
+    first = rows[0]
+    assert len(rows) == 5 and first["changed_sources"] == ["src/mlxlearn/cluster/_k_means.py"]
+    assert (first["lloyd_speedup"], first["lloyd_iteration_speedup"], first["emeans_speedup"]) == (2.0, 2.0, 2.0)
+    assert (first["earlier_runtime_ratio"], first["runtime_ratio"]) == (260 / 30, 130 / 15)
+    assert first["lloyd_inertia_states"] == 26 and first["lloyd_inertia_max_relative_difference"] == 0
+    assert first["lloyd_reused_rows"] == 75
+    # The control ran the earlier sources at 24 s, so only 24/15 of the 2× is the source change.
+    assert first["replicate_emeans_speedup"] == 24 / 15 and first["replicate_reproduces_earlier"]
+    assert (first["replicate_lloyd_iterations"], first["replicate_lloyd_iteration_seconds_median"]) == (3, 8.0)
+    assert first["replicate_lloyd_iteration_speedup"] == 1.6 and first["replicate_lloyd_reproduces_earlier"]
+
+
+def test_changes_ignore_a_replicate_from_other_sources_and_report_inertia_drift():
+    earlier, _ = report.validate(*campaign())
+    changed = rerun()
+    changed[0][0]["final_inertia"] *= 1.01
+    now, _ = report.validate(*changed)
+    first = report.changes(now, earlier, report.control_rows(controls(rerun()[0]), *campaign()[1:]))[0]
+    assert first["replicate_emeans_seconds"] is None and first["replicate_reproduces_earlier"] is None
+    assert first["replicate_lloyd_iteration_seconds_median"] is None
+    assert first["lloyd_inertia_max_relative_difference"] == pytest.approx(0.01)
+
+
+def test_report_compares_with_an_earlier_campaign_only_when_asked(tmp_path):
+    folders = {name: tmp_path / name for name in ("earlier", "now", "control")}
+    records = {"earlier": campaign()[0], "now": rerun()[0], "control": controls(campaign()[0])}
+    for name, rows in records.items():
+        folders[name].mkdir()
+        for index, row in enumerate(rows):
+            (folders[name] / f"record{index}.json").write_text(json.dumps(row))
+    report.generate(folders["now"], tmp_path / "plain.md", PROTOCOL, require_complete=True)
+    assert "Change from the earlier campaign" not in (tmp_path / "plain.md").read_text()
+    report.generate(folders["now"], tmp_path / "compared.md", PROTOCOL, require_complete=True,
+                    earlier=folders["earlier"], replicate=folders["control"])
+    text = (tmp_path / "compared.md").read_text()
+    assert "## Change from the earlier campaign" in text
+    assert "1 measured source file differs between the two: `src/mlxlearn/cluster/_k_means.py`." in text
+    assert "| 260.0 → 130.0 | 2.00× | 10.00 → 5.00 | 2.00× | 30.0 → 15.0 | 2.00× | 8.67× → 8.67× |" in text
+    assert "a Lloyd fit stopped after 3 of its identical iterations" in text
+    assert "| 30.0 | 24.0 | 15.0 | 1.60× | 10.00 | 8.00 | 5.00 | 1.60× | e-means and Lloyd |" in text
+    assert "| none in 26 states | 75 |" in text and "0.99000000, identical" in text
+    saved = json.loads((folders["now"] / "comparison.json").read_text())
+    assert saved["earlier_accepted_records"] == 10 and saved["replicate_accepted_records"] == 10
+    assert len(saved["datasets"]) == 5
