@@ -137,21 +137,30 @@ def test_standalone_malformed_tuning_is_an_error(raw, monkeypatch):
 
 
 @pytest.mark.gpu
-@pytest.mark.parametrize("memory_gib,family,features,expected", [
-    (128, 16, 40, (64, 1048576, False)),
-    (8, 16, 40, (128, 131072, True)),
-    (8, 17, 40, (16, 1048576, False)),
-    (8, None, 40, (16, 1048576, False)),
-    (8, 16, 257, (16, 1048576, False)),
+@pytest.mark.parametrize("budget_mib,family,features,n_query,n_train,expected", [
+    (1024, 16, 40, 512, 2**20, (64, 2**20, False)),
+    (256, 16, 40, 512, 2**20, (128, 131072, True)),
+    (256, 17, 40, 512, 2**20, (16, 2**20, False)),
+    (256, None, 40, 512, 2**20, (16, 2**20, False)),
+    (256, 16, 257, 512, 2**20, (16, 2**20, False)),
+    # A single query row uses a full sort at k=10, forcing the old kernel to
+    # split a training tile wider than 2**20. Keep its per-tile certificates
+    # whether every old block has one row or just the final query remainder.
+    (64, 16, 40, 256, 2**21 + 1, (1, 2**21 + 1, False)),
+    (512, 16, 40, 257, 2**21, (16, 2**21, False)),
+    (512, 16, 40, 256, 2**21, (128, 262144, True)),
 ])
 def test_general_query_interfaces_use_the_same_large_training_plan(
-    monkeypatch, memory_gib, family, features, expected,
+    monkeypatch, budget_mib, family, features, n_query, n_train, expected,
 ):
     class ShapeOnlyTraining:
-        shape = (1048576, features)
+        shape = (n_train, features)
 
-    monkeypatch.setattr(planning, "physical_memory_bytes", lambda: memory_gib << 30)
-    monkeypatch.setattr(distance, "physical_memory_bytes", lambda: memory_gib << 30)
+    def fixed_budget(backend, settings, total_memory):
+        return budget_mib << 20
+
+    monkeypatch.setattr(planning, "distance_budget_bytes", fixed_budget)
+    monkeypatch.setattr(distance, "distance_budget_bytes", fixed_budget)
     monkeypatch.setattr(general, "_gpu_family", lambda: family)
     calls = []
 
@@ -163,7 +172,7 @@ def test_general_query_interfaces_use_the_same_large_training_plan(
     # No million-row input allocation is needed to test which actual query plan
     # reaches the kernel. Numerical equivalence is checked below on real data.
     direct = DeviceNeighborIndex(ShapeOnlyTraining())
-    queries = mx.zeros((512, features), mx.float32)
+    queries = mx.zeros((n_query, features), mx.float32)
     direct.query(queries, 10, _validated=True)
     host = distance.NeighborIndex(None, "mlx", _device_index=direct)
     host.query_device(queries, 10)

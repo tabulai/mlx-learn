@@ -407,7 +407,7 @@ class DeviceNeighborIndex:
                 return (mx.concatenate(out_dist) if return_distance else None,
                         mx.concatenate(out_idx))
 
-            from ._neighbors_general import _gpu_family, cpu_neighbors, gpu_neighbors
+            from ._neighbors_general import can_retile_gram, cpu_neighbors, gpu_neighbors
 
             if query_block_size is not None and train_block_size is not None:
                 # Host wrappers already planned both dimensions from scoped
@@ -431,7 +431,9 @@ class DeviceNeighborIndex:
                     self.X, Q, k, rows=rows, cols=cols, exclude_self=exclude_self,
                 )
             else:
-                bounded = _gram_tile is not None and 33 <= features <= 256 and _gpu_family() == 16
+                bounded = _gram_tile is not None and can_retile_gram(
+                    n_query, n_train, features, k, rows, cols,
+                )
                 if bounded:
                     rows, cols = _gram_tile
                 squared, indices = gpu_neighbors(

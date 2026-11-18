@@ -170,6 +170,21 @@ def _gram_block_rows(rows, n_query):
     return rows
 
 
+def can_retile_gram(n_query, n_train, features, k, rows, cols):
+    """Keep the original certificate when a full-width screen would be split."""
+    if not (33 <= features <= 256 and _gpu_family() == 16 and cols == n_train):
+        return False
+    if cols <= _SORT_WIDTH_LIMIT:
+        return True
+    # The legacy tile-local certificate can fall back on distant ties. Its
+    # exact scan and the certified shortlist can differ by one FP32 distance
+    # bit. Check both block heights before replacing a full-width screen.
+    rows = _gram_block_rows(rows, n_query)
+    take = k + (3 if k <= 8 else 9)
+    return all(_selection(height, cols, take) != "sort"
+               for height in {rows, n_query % rows or rows})
+
+
 @mx.compile
 def _gram_lower(query, train, center, train_sq, error_factor, floor):
     centered = query - center
