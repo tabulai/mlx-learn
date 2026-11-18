@@ -83,6 +83,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- Large FP32 Lloyd and e-means assignments on M4 Max reduce scores inside
+  GPU tiles. Lloyd also checks whether center separation proves that a point
+  keeps its previous label. See the [assignment and fit benchmarks](docs/clustering-assignment-2026-11-17.md).
 - On M4 GPUs, large exact kNN searches can use taller query tiles and shorter
   training tiles at workspace budgets of 64–512 MiB. The general GPU search
   finishes each intermediate query block before allocating the next block's
