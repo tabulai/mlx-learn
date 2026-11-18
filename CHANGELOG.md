@@ -6,6 +6,27 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `mlxlearn.cluster.OMeans`: e-means with a two-level nearest-centroid search,
+  after the o-means post and the `contrib/o_means` package of the
+  owlgebra-ai/faiss fork. Centroids are grouped into coarse cells kept sorted
+  in an assignment mirror; each training row is compared only with the
+  centroids of its nearest cells. Cells are re-filed every five batches in the
+  first pass and rebuilt every half pass afterwards, split links reach newly
+  created centroids, and fits shorter than two epochs end with a
+  recency-weighted mean. New Metal kernels bucket (row, cell) pairs with
+  integer atomics and scan each cell's contiguous centroid block with matrix
+  tiles; nothing is read back to the host between batches. Float32 and BF16
+  assignment are supported. `assignment="auto"` selects the two-level search
+  on M1 Ultra, M4 Max and M5 Ultra where the probes cover at most half of the
+  centroids, and returns to the full search when a fit's cells are too uneven
+  to save comparisons. Final labels, `predict` and `score` always use a full
+  search. See [docs/o-means.md](docs/o-means.md).
+- `benchmarks/e_means/two_level_bench.py`, `omeans_compare.py` and
+  `omeans_report.py`: kernel-level and fit-level comparisons of o-means with
+  e-means, with per-record source hashes.
+
 ## [0.1.4] — 2026-11-18
 
 ### Fixed

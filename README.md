@@ -50,6 +50,7 @@ stock inheritance. See the [compatibility details](docs/support_matrix.md).
 | `mlxlearn.decomposition.PCA` | 0.1.2 |
 | `mlxlearn.cluster.EMeans` | 0.1.3; Metal GPU, paper/Faiss recipes |
 | `mlxlearn.cluster.KMeans` | 0.1.3; Metal GPU, Lloyd clustering |
+| `mlxlearn.cluster.OMeans` | unreleased; Metal GPU, e-means with a two-level centroid search |
 | `LinearRegression`, `Ridge`, `DBSCAN`, `TSNE` | planned, 0.2.x |
 | `SVR`, `NuSVR`, `NuSVC` | deferred — will not ship until they implement the true objective |
 | tree ensembles | out of scope |
@@ -110,6 +111,23 @@ The [five-dataset 10M-vector comparison](docs/e-means-10m-comparison-2026-11-14.
 measures matched FP32 Metal and original Faiss CPU runs: Metal is 3.98–18.95×
 faster, with test-MSE differences within 0.061% in this single-seed campaign.
 `EMeans` is an explicit estimator; it does not replace sklearn's `KMeans` through patching.
+
+For many centroids, [`OMeans`](docs/o-means.md) trains e-means with a two-level
+search: each row is compared only with the centroids of a few nearby coarse
+cells, 10–21% of them on the measured embedding datasets. It follows the
+[o-means post](https://owlgebra.ai/blog/o-means/) with separate Metal kernels.
+
+```python
+from mlxlearn.cluster import OMeans
+
+model = OMeans(n_clusters=16384, max_iter=2, random_state=10).fit(X_train)
+```
+
+Final labels, `predict` and `score` use a full search. `assignment="auto"`
+uses the two-level search only where it was measured faster and returns to
+the full search when a fit's cells turn out too uneven to save comparisons.
+See the [implementation guide](docs/o-means.md) and the
+[benchmark report](docs/o-means-benchmarks-2026-11-18.md).
 
 For full-batch Lloyd clustering, [Metal `KMeans`](docs/k-means.md) is available
 through `from mlxlearn.cluster import KMeans`. It supports dense FP32 training,
