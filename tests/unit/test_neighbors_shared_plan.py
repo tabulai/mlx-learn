@@ -15,6 +15,7 @@ from mlxlearn._common.config import Tuning, tuning_context
 from mlxlearn._kernels import distance
 from mlxlearn_common import _neighbors_plan as planning
 from mlxlearn_device import DeviceNeighborIndex, fit_neighbors
+from mlxlearn_device import _neighbors_fused as fused
 from mlxlearn_device import _neighbors_general as general
 
 
@@ -62,6 +63,47 @@ def test_default_tiles_stay_within_workspace_budget(backend, budget, n_query, n_
     assert plan.query_rows * plan.train_cols * 16 <= budget
 
 
+@pytest.mark.parametrize("budget_mib,row_cap,expected", [
+    (64, 1024, (64, 65536)),
+    (256, 1024, (128, 131072)),
+    (512, 48, (48, (512 << 20) // (16 * 48))),
+])
+def test_tight_gram_tiles_preserve_budget_and_query_row_cap(budget_mib, row_cap, expected):
+    budget = budget_mib << 20
+    plan = planning.resolve_blocks(512, 2**20, backend="mlx", k_search=36,
+                                   budget_bytes=budget,
+                                   settings=planning.PlanSettings(query_block_rows=row_cap))
+    assert plan.tight_gram_tile == expected
+    rows, cols = expected
+    assert plan.query_rows < rows <= row_cap
+    assert 65536 <= cols < plan.train_cols
+    assert rows * cols * 16 <= budget
+
+
+@pytest.mark.parametrize("override", [
+    {"backend": "cpu"}, {"k_search": 37}, {"n_query": 31}, {"n_train": 2**19 - 1},
+    {"budget_bytes": (64 << 20) - 1}, {"budget_bytes": (512 << 20) + 1},
+    {"query_block_size": 23}, {"train_block_size": 123},
+    {"settings": planning.PlanSettings(query_block_rows=16)},
+])
+def test_tight_gram_tile_is_only_offered_for_eligible_automatic_search(override):
+    options = {"n_query": 512, "n_train": 2**20, "backend": "mlx", "k_search": 14,
+               "budget_bytes": 256 << 20, "settings": planning.DEFAULTS}
+    plan = planning.resolve_blocks(**(options | override))
+    assert plan.tight_gram_tile is None
+    if "query_block_size" in override:
+        assert plan.query_rows == override["query_block_size"]
+    if "train_block_size" in override:
+        assert plan.train_cols == override["train_block_size"]
+
+
+def test_custom_query_alignment_keeps_the_aligned_full_width_tile():
+    plan = planning.resolve_blocks(512, 2**20, backend="mlx", k_search=14,
+                                   budget_bytes=384 << 20,
+                                   settings=planning.PlanSettings(query_block_align=13))
+    assert plan == planning.BlockPlan(13, 2**20)
+
+
 def test_host_scoped_tuning_and_standalone_environment_share_the_plan(monkeypatch):
     settings = {"distance_block_bytes": 1 << 20, "distance_block_bytes_max": 1 << 20,
                 "query_block_rows": 73, "query_block_align": 8,
@@ -95,27 +137,104 @@ def test_standalone_malformed_tuning_is_an_error(raw, monkeypatch):
 
 
 @pytest.mark.gpu
-def test_general_query_interfaces_use_the_same_large_training_plan(monkeypatch):
+@pytest.mark.parametrize("memory_gib,family,features,expected", [
+    (128, 16, 40, (64, 1048576, False)),
+    (8, 16, 40, (128, 131072, True)),
+    (8, 17, 40, (16, 1048576, False)),
+    (8, None, 40, (16, 1048576, False)),
+    (8, 16, 257, (16, 1048576, False)),
+])
+def test_general_query_interfaces_use_the_same_large_training_plan(
+    monkeypatch, memory_gib, family, features, expected,
+):
     class ShapeOnlyTraining:
-        shape = (1048576, 40)
+        shape = (1048576, features)
 
-    monkeypatch.setattr(planning, "physical_memory_bytes", lambda: 128 << 30)
-    monkeypatch.setattr(distance, "physical_memory_bytes", lambda: 128 << 30)
+    monkeypatch.setattr(planning, "physical_memory_bytes", lambda: memory_gib << 30)
+    monkeypatch.setattr(distance, "physical_memory_bytes", lambda: memory_gib << 30)
+    monkeypatch.setattr(general, "_gpu_family", lambda: family)
     calls = []
 
-    def capture(index, query, k, *, rows, cols, **kwargs):
-        calls.append((rows, cols))
+    def capture(index, query, k, *, rows, cols, bounded_workspace=False, **kwargs):
+        calls.append((rows, cols, bounded_workspace))
         return mx.zeros((query.shape[0], k), mx.float32), mx.zeros((query.shape[0], k), mx.int32)
 
     monkeypatch.setattr(general, "gpu_neighbors", capture)
     # No million-row input allocation is needed to test which actual query plan
     # reaches the kernel. Numerical equivalence is checked below on real data.
     direct = DeviceNeighborIndex(ShapeOnlyTraining())
-    queries = mx.zeros((512, 40), mx.float32)
+    queries = mx.zeros((512, features), mx.float32)
     direct.query(queries, 10, _validated=True)
     host = distance.NeighborIndex(None, "mlx", _device_index=direct)
     host.query_device(queries, 10)
-    assert calls == [(64, 1048576), (64, 1048576)]
+    assert calls == [expected, expected]
+
+
+@pytest.mark.gpu
+def test_evaluating_gram_blocks_preserves_exact_distances_and_cross_tile_ties(monkeypatch):
+    rng = np.random.default_rng(728)
+    train = rng.integers(-5, 6, (65, 40)).astype(np.float32)
+    train[[31, 32, 64]] = train[0]
+    index = fit_neighbors(mx.array(train))
+    k = 10
+    values, indices = general.gpu_neighbors(index, index.X, k, rows=65, cols=65,
+                                            exclude_self=True)
+    # Squared integer distances are exactly representable. Stable sorting also
+    # checks the tie break on duplicates, including the singleton final tile.
+    squared = np.square(train[:, None, :] - train[None, :, :]).sum(axis=2)
+    np.fill_diagonal(squared, np.inf)
+    order = np.argsort(squared, axis=1, kind="stable")[:, :k]
+    expected_values = np.take_along_axis(squared, order, axis=1)
+    np.testing.assert_array_equal(np.asarray(indices), order)
+    np.testing.assert_array_equal(np.asarray(values), expected_values)
+
+    evaluated_shapes = []
+    original_eval = mx.eval
+
+    def trace_eval(*arrays):
+        if len(arrays) == 2 and arrays[0].shape == arrays[1].shape:
+            evaluated_shapes.append(arrays[0].shape)
+        return original_eval(*arrays)
+
+    monkeypatch.setattr(mx, "eval", trace_eval)
+    tiled_values, tiled_indices = general.gpu_neighbors(
+        index, index.X, k, rows=16, cols=32, exclude_self=True, bounded_workspace=True,
+    )
+    assert evaluated_shapes.count((16, k)) == 4
+    np.testing.assert_array_equal(np.asarray(tiled_indices), order)
+    np.testing.assert_array_equal(np.asarray(tiled_values).view(np.uint32),
+                                  expected_values.view(np.uint32))
+
+
+@pytest.mark.gpu
+@pytest.mark.parametrize("k", [5, 10])
+def test_distant_tied_training_tile_keeps_full_width_certificates_and_distance_bits(k, monkeypatch):
+    rng = np.random.default_rng(438)
+    train = rng.normal(size=(96, 40)).astype(np.float32)
+    # All 32 references in the middle tile tie beyond the global shortlist.
+    # A tile-local certificate would fail and send every query to fallback.
+    train[32:64] = rng.normal(loc=12.5, size=40).astype(np.float32)
+    queries = rng.normal(size=(13, 40)).astype(np.float32)
+    index = fit_neighbors(mx.array(train))
+    query_array = mx.array(queries)
+    certificates = []
+    original_certified = fused.certified_neighbors
+
+    def capture(train, query, k, values, indices, certificate, **kwargs):
+        certificates.extend(certificate.tolist())
+        return original_certified(train, query, k, values, indices, certificate, **kwargs)
+
+    monkeypatch.setattr(fused, "certified_neighbors", capture)
+    full_values, full_indices = general.gpu_neighbors(index, query_array, k, rows=13, cols=96)
+    assert certificates == [True] * len(queries)
+    certificates.clear()
+    tiled_values, tiled_indices = general.gpu_neighbors(
+        index, query_array, k, rows=4, cols=32, bounded_workspace=True,
+    )
+    assert certificates == [True] * len(queries)
+    np.testing.assert_array_equal(np.asarray(tiled_indices), np.asarray(full_indices))
+    np.testing.assert_array_equal(np.asarray(tiled_values).view(np.uint32),
+                                  np.asarray(full_values).view(np.uint32))
 
 
 @pytest.mark.gpu

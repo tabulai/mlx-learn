@@ -208,7 +208,7 @@ def gram_lower(query, train, center, train_sq, error_factor, floor, *, exact_pro
     )
 
 
-def gpu_neighbors(index, queries, k, *, rows, cols, exclude_self=False, evaluate_blocks=False):
+def gpu_neighbors(index, queries, k, *, rows, cols, exclude_self=False, bounded_workspace=False):
     """Use Gram values only when an omitted-candidate bound proves safety."""
     from ._binary32 import matmul_may_round_float32
     from ._neighbors_fused import certified_neighbors, precise_select_candidates, select_topk
@@ -230,6 +230,7 @@ def gpu_neighbors(index, queries, k, *, rows, cols, exclude_self=False, evaluate
     for start in range(0, queries.shape[0], rows):
         query = queries[start:start + rows]
         best_values = best_indices = None
+        screen_bounds = screen_indices = None
         certified = mx.ones((query.shape[0],), mx.bool_)
         own = mx.arange(start, start + query.shape[0])[:, None] if exclude_self else None
         block_cols = min(cols, n)
@@ -257,6 +258,21 @@ def gpu_neighbors(index, queries, k, *, rows, cols, exclude_self=False, evaluate
                 order = mx.argsort(lower, axis=1)[:, :take]
                 bounds = mx.take_along_axis(lower, order, axis=1)
                 candidates = mx.take_along_axis(ids, order, axis=1)
+            if bounded_workspace and block_cols < n:
+                # Reconstruct the full-width screen before refining. Distant
+                # ties in one tile cannot force an otherwise unnecessary exact
+                # scan. Stable selection keeps earlier IDs first on equal bounds.
+                if screen_bounds is not None:
+                    bounds = mx.concatenate([screen_bounds, bounds], axis=1)
+                    candidates = mx.concatenate([screen_indices, candidates], axis=1)
+                    order = mx.argsort(bounds, axis=1)[:, :carry + 1]
+                    bounds = mx.take_along_axis(bounds, order, axis=1)
+                    candidates = mx.take_along_axis(candidates, order, axis=1)
+                if stop < n:
+                    screen_bounds, screen_indices = bounds, candidates
+                    mx.eval(screen_bounds, screen_indices)
+                    continue
+                width = n
             barrier = bounds[:, -1] if width > carry else mx.full((query.shape[0],), float("inf"))
             candidates = candidates[:, :min(carry, width)]
             if exclude_self:
@@ -289,7 +305,7 @@ def gpu_neighbors(index, queries, k, *, rows, cols, exclude_self=False, evaluate
             train, query, k, best_values, best_indices, certified,
             exclude_self=exclude_self, query_offset=start,
         )
-        if evaluate_blocks and start + rows < queries.shape[0]:
+        if bounded_workspace and start + rows < queries.shape[0]:
             # Finish this block before queuing the next Gram matrix. Only the
             # k results per query need to remain live for concatenation.
             mx.eval(values, indices)

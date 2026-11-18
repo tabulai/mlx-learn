@@ -436,7 +436,7 @@ class DeviceNeighborIndex:
                     rows, cols = _gram_tile
                 squared, indices = gpu_neighbors(
                     self, Q, k, rows=rows, cols=cols, exclude_self=exclude_self,
-                    evaluate_blocks=bounded,
+                    bounded_workspace=bounded,
                 )
             return (squared if _squared else mx.sqrt(squared)) if return_distance else None, indices
 

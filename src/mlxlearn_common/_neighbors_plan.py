@@ -113,6 +113,7 @@ def resolve_blocks(
         cols = max(min_cols, min(n_train, budget_bytes // (rows * itemsize)))
     gram_tile = None
     if (backend == "mlx" and query_block_size is None and train_block_size is None
+            and settings.query_block_align == DEFAULTS.query_block_align
             and n_query >= 32 and n_train >= 2**19 and k_search <= 32 + 4
             and (64 << 20) <= budget_bytes <= (512 << 20)):
         # A full-width tile leaves too few queries per matrix product. Trade
