@@ -230,6 +230,7 @@ class NeighborIndex:
                 query_block_size=plan.query_rows or None, train_block_size=cols,
                 _validated=True, _squared=_squared,
                 _auto_train_tiling=train_block_size is None,
+                _gram_tile=plan.tight_gram_tile,
             )
 
     def query(

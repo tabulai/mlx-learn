@@ -129,6 +129,14 @@ def make_fixture(case, seed):
     rng = np.random.default_rng(seed)
     shape = (case.train_rows, case.features)
     query_shape = (case.query_rows, case.features)
+    if case.distribution == "rounding_guard":
+        # First neighbor's squared norm rounds differently under the two
+        # direct-refinement reductions. Cap-sized tiles must keep main's result.
+        train = np.zeros(shape, dtype=np.float32)
+        train[:, 0] = 20000
+        train[0, :2] = [513, 4099]
+        train[1:32, 0] = 5000 + 100 * np.arange(1, 32)
+        return train, np.zeros(query_shape, dtype=np.float32)
     if case.distribution == "integer":
         return (rng.integers(-2, 3, shape).astype(np.float32),
                 rng.integers(-2, 3, query_shape).astype(np.float32))
@@ -192,6 +200,35 @@ def worker_main(source):
             return out
         return index.query(query, case.k)
 
+    def probe_plan():
+        """Trace the public query's actual general-kernel call outside timed repetitions."""
+        from unittest.mock import patch
+
+        from mlxlearn_common import _neighbors_plan as shared
+        from mlxlearn_device import _neighbors_general as general
+
+        if api == "numpy":
+            from mlxlearn._kernels.distance import _distance_budget_bytes
+
+            budget = _distance_budget_bytes("mlx")
+        else:
+            budget = shared.distance_budget_bytes(
+                "mlx", shared.settings_from_env(), shared.physical_memory_bytes()
+            )
+        calls = []
+        original = general.gpu_neighbors
+
+        def trace(*args, **kwargs):
+            # Store dimensions only: a Mock's saved call arguments would keep
+            # the preceding case's fitted index and its device buffers alive.
+            calls.append({"query_rows": kwargs["rows"], "train_cols": kwargs["cols"],
+                          "bounded_workspace": kwargs.get("bounded_workspace", False)})
+            return original(*args, **kwargs)
+
+        with patch.object(general, "gpu_neighbors", trace):
+            outputs = evaluate()
+        return outputs, {"budget_bytes": budget, "general_calls": calls}
+
     for line in sys.stdin:
         try:
             request = json.loads(line)
@@ -224,7 +261,11 @@ def worker_main(source):
                 mx.reset_peak_memory()
                 active_before = mx.get_active_memory()
                 start = time.perf_counter()
-                output = evaluate()
+                plan = None
+                if request.get("probe_plan"):
+                    output, plan = probe_plan()
+                else:
+                    output = evaluate()
                 elapsed = 1000 * (time.perf_counter() - start)
                 peak_active = mx.get_peak_memory()
                 distances, indices = (np.asarray(a) for a in output)
@@ -239,6 +280,12 @@ def worker_main(source):
                           "audit": {"pass": bool(indices_ok and distances_ok),
                                     "indices_exact": bool(indices_ok),
                                     "distances_close": bool(distances_ok), "oracle_rows": count}}
+                if request.get("describe_outputs"):
+                    result["outputs"] = [[str(a.dtype), list(a.shape)] for a in (distances, indices)]
+                    # Each budgeted query starts without the preceding output.
+                    del output, distances, indices
+                if plan is not None:
+                    result["plan"] = plan
             elif operation == "integrity":
                 result = {"files": manifest(source), "loaded": loaded_sources(source)}
             elif operation == "close":
@@ -251,14 +298,14 @@ def worker_main(source):
 
 
 class Worker:
-    def __init__(self, source, timeout):
+    def __init__(self, source, timeout, *, environment=None):
         self.timeout = timeout
         # Isolated mode ignores PYTHONPATH and the current directory. The only
         # package path subsequently added is this worker's frozen source tree.
         self.process = subprocess.Popen(
             [sys.executable, "-I", "-B", str(Path(__file__).resolve()), "--worker", str(source)],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True,
-            env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+            env={**(os.environ if environment is None else environment), "PYTHONDONTWRITEBYTECODE": "1"},
         )
 
     def request(self, value):
