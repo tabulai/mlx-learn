@@ -1,0 +1,1946 @@
+{
+  "config": {
+    "baseline": "6d871ccd93bb8e6278e2683e8d449084c0c33c03",
+    "candidate": "0149c804251d83dc248b4fbb2b0c98e707665c2b",
+    "dataset": "sift1b-10M-div512",
+    "rows": 131072,
+    "centers": 8192,
+    "features": 128,
+    "operations": [
+      "assign",
+      "kmeans",
+      "emeans"
+    ],
+    "iterations": 5,
+    "repeats": 3,
+    "warmups": 1,
+    "seed": 10,
+    "timeout": 1800,
+    "cache": "/Users/tunguz/.cache/mlxlearn/e_means",
+    "faiss_source": "/Users/tunguz/Programming/mlxlearn/tmp/e_means/faiss",
+    "output": "/Users/tunguz/Programming/mlxlearn/benchmarks/results/clustering-assignment-2026-11-17/sift-prefix.json"
+  },
+  "environment": {
+    "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "python": "3.14.2 (main, Dec  9 2025, 19:29:30) [Clang 21.1.4 ]",
+    "numpy": "2.5.4"
+  },
+  "driver_sha256": "2c4425d4075ef30f7d8a4312eaee983dc9f4feed1846fd159031c3a02c7c5b7d",
+  "sources": {
+    "main": {
+      "commit": "6d871ccd93bb8e6278e2683e8d449084c0c33c03",
+      "sha256": "6af000653b8fffd85ce32b24e65195a55f5c1b8660ae5da41fd8b65cd16fc4a0",
+      "loaded": {
+        "mlxlearn._common.arrays": "src/mlxlearn/_common/arrays.py",
+        "mlxlearn.exceptions": "src/mlxlearn/exceptions.py",
+        "mlxlearn_common": "src/mlxlearn_common/__init__.py",
+        "mlxlearn_common._neighbors_plan": "src/mlxlearn_common/_neighbors_plan.py",
+        "mlxlearn._common.config": "src/mlxlearn/_common/config.py",
+        "mlxlearn._common.device": "src/mlxlearn/_common/device.py",
+        "mlxlearn._common.diagnostics": "src/mlxlearn/_common/diagnostics.py",
+        "mlxlearn._common.base": "src/mlxlearn/_common/base.py",
+        "mlxlearn._common.rng": "src/mlxlearn/_common/rng.py",
+        "mlxlearn._common": "src/mlxlearn/_common/__init__.py",
+        "mlxlearn.patching._registry": "src/mlxlearn/patching/_registry.py",
+        "mlxlearn.patching._patch": "src/mlxlearn/patching/_patch.py",
+        "mlxlearn.patching": "src/mlxlearn/patching/__init__.py",
+        "mlxlearn": "src/mlxlearn/__init__.py",
+        "mlxlearn._kernels.neighbors_cpu": "src/mlxlearn/_kernels/neighbors_cpu.py",
+        "mlxlearn._kernels.distance": "src/mlxlearn/_kernels/distance.py",
+        "mlxlearn._kernels": "src/mlxlearn/_kernels/__init__.py",
+        "mlxlearn_device._neighbors": "src/mlxlearn_device/_neighbors.py",
+        "mlxlearn_device": "src/mlxlearn_device/__init__.py",
+        "mlxlearn_device._binary32": "src/mlxlearn_device/_binary32.py",
+        "mlxlearn._kernels.e_means_bf16": "src/mlxlearn/_kernels/e_means_bf16.py",
+        "mlxlearn._kernels.e_means": "src/mlxlearn/_kernels/e_means.py",
+        "mlxlearn.cluster._recipe": "src/mlxlearn/cluster/_recipe.py",
+        "mlxlearn.cluster._e_means": "src/mlxlearn/cluster/_e_means.py",
+        "mlxlearn.cluster._k_means": "src/mlxlearn/cluster/_k_means.py",
+        "mlxlearn.cluster": "src/mlxlearn/cluster/__init__.py"
+      }
+    },
+    "candidate": {
+      "commit": "0149c804251d83dc248b4fbb2b0c98e707665c2b",
+      "sha256": "2a24c31f720eab4a225e55e2ccdd0a7a99c9b53363edcef25816de9fb745fb25",
+      "loaded": {
+        "mlxlearn._common.arrays": "src/mlxlearn/_common/arrays.py",
+        "mlxlearn.exceptions": "src/mlxlearn/exceptions.py",
+        "mlxlearn_common": "src/mlxlearn_common/__init__.py",
+        "mlxlearn_common._neighbors_plan": "src/mlxlearn_common/_neighbors_plan.py",
+        "mlxlearn._common.config": "src/mlxlearn/_common/config.py",
+        "mlxlearn._common.device": "src/mlxlearn/_common/device.py",
+        "mlxlearn._common.diagnostics": "src/mlxlearn/_common/diagnostics.py",
+        "mlxlearn._common.base": "src/mlxlearn/_common/base.py",
+        "mlxlearn._common.rng": "src/mlxlearn/_common/rng.py",
+        "mlxlearn._common": "src/mlxlearn/_common/__init__.py",
+        "mlxlearn.patching._registry": "src/mlxlearn/patching/_registry.py",
+        "mlxlearn.patching._patch": "src/mlxlearn/patching/_patch.py",
+        "mlxlearn.patching": "src/mlxlearn/patching/__init__.py",
+        "mlxlearn": "src/mlxlearn/__init__.py",
+        "mlxlearn._kernels.neighbors_cpu": "src/mlxlearn/_kernels/neighbors_cpu.py",
+        "mlxlearn._kernels.distance": "src/mlxlearn/_kernels/distance.py",
+        "mlxlearn._kernels": "src/mlxlearn/_kernels/__init__.py",
+        "mlxlearn_device._neighbors": "src/mlxlearn_device/_neighbors.py",
+        "mlxlearn_device": "src/mlxlearn_device/__init__.py",
+        "mlxlearn_device._binary32": "src/mlxlearn_device/_binary32.py",
+        "mlxlearn._kernels.e_means_bf16": "src/mlxlearn/_kernels/e_means_bf16.py",
+        "mlxlearn._kernels.e_means": "src/mlxlearn/_kernels/e_means.py",
+        "mlxlearn.cluster._recipe": "src/mlxlearn/cluster/_recipe.py",
+        "mlxlearn.cluster._e_means": "src/mlxlearn/cluster/_e_means.py",
+        "mlxlearn._kernels.lloyd_bounds": "src/mlxlearn/_kernels/lloyd_bounds.py",
+        "mlxlearn.cluster._k_means": "src/mlxlearn/cluster/_k_means.py",
+        "mlxlearn.cluster": "src/mlxlearn/cluster/__init__.py"
+      }
+    }
+  },
+  "operations": {
+    "assign": {
+      "pairs": [
+        {
+          "order": [
+            "candidate",
+            "main"
+          ],
+          "samples": {
+            "candidate": {
+              "seconds": 0.024438124615699053,
+              "mlx_active_before": 71303168,
+              "mlx_peak_active": 109477888,
+              "device": {
+                "device_name": "Apple M4 Max",
+                "architecture": "applegpu_g16s",
+                "memory_size": 137438953472
+              },
+              "mlx": "0.32.4",
+              "direct_float64": {
+                "rows": [
+                  0,
+                  18724,
+                  37448,
+                  56173,
+                  74897,
+                  93622,
+                  112346,
+                  131071
+                ],
+                "expected": [
+                  291,
+                  6540,
+                  1,
+                  6004,
+                  4463,
+                  3288,
+                  5400,
+                  6337
+                ],
+                "observed": [
+                  291,
+                  6540,
+                  1,
+                  6004,
+                  4463,
+                  3288,
+                  5400,
+                  6337
+                ]
+              },
+              "hashes": {
+                "labels": "4bb4e06027e9601955cb8834b7d688d7de31519f09f0a55264573963ee79f601",
+                "squared_distances": "10a15c32e5d22b6eb202803f97d247f131c3261e86dc0c515837a289cf987182"
+              }
+            },
+            "main": {
+              "seconds": 0.03311304189264774,
+              "mlx_active_before": 71303168,
+              "mlx_peak_active": 1149534208,
+              "device": {
+                "device_name": "Apple M4 Max",
+                "architecture": "applegpu_g16s",
+                "memory_size": 137438953472
+              },
+              "mlx": "0.32.4",
+              "direct_float64": {
+                "rows": [
+                  0,
+                  18724,
+                  37448,
+                  56173,
+                  74897,
+                  93622,
+                  112346,
+                  131071
+                ],
+                "expected": [
+                  291,
+                  6540,
+                  1,
+                  6004,
+                  4463,
+                  3288,
+                  5400,
+                  6337
+                ],
+                "observed": [
+                  291,
+                  6540,
+                  1,
+                  6004,
+                  4463,
+                  3288,
+                  5400,
+                  6337
+                ]
+              },
+              "hashes": {
+                "labels": "4bb4e06027e9601955cb8834b7d688d7de31519f09f0a55264573963ee79f601",
+                "squared_distances": "10a15c32e5d22b6eb202803f97d247f131c3261e86dc0c515837a289cf987182"
+              }
+            }
+          },
+          "comparison": {
+            "labels": {
+              "bit_exact": true,
+              "different": 0,
+              "elements": 131072
+            },
+            "squared_distances": {
+              "bit_exact": true,
+              "different": 0,
+              "elements": 131072,
+              "max_abs_difference": 0.0
+            }
+          }
+        },
+        {
+          "order": [
+            "main",
+            "candidate"
+          ],
+          "samples": {
+            "main": {
+              "seconds": 0.03276762505993247,
+              "mlx_active_before": 71303168,
+              "mlx_peak_active": 1149534208,
+              "device": {
+                "device_name": "Apple M4 Max",
+                "architecture": "applegpu_g16s",
+                "memory_size": 137438953472
+              },
+              "mlx": "0.32.4",
+              "direct_float64": {
+                "rows": [
+                  0,
+                  18724,
+                  37448,
+                  56173,
+                  74897,
+                  93622,
+                  112346,
+                  131071
+                ],
+                "expected": [
+                  291,
+                  6540,
+                  1,
+                  6004,
+                  4463,
+                  3288,
+                  5400,
+                  6337
+                ],
+                "observed": [
+                  291,
+                  6540,
+                  1,
+                  6004,
+                  4463,
+                  3288,
+                  5400,
+                  6337
+                ]
+              },
+              "hashes": {
+                "labels": "4bb4e06027e9601955cb8834b7d688d7de31519f09f0a55264573963ee79f601",
+                "squared_distances": "10a15c32e5d22b6eb202803f97d247f131c3261e86dc0c515837a289cf987182"
+              }
+            },
+            "candidate": {
+              "seconds": 0.02483445918187499,
+              "mlx_active_before": 71303168,
+              "mlx_peak_active": 109477888,
+              "device": {
+                "device_name": "Apple M4 Max",
+                "architecture": "applegpu_g16s",
+                "memory_size": 137438953472
+              },
+              "mlx": "0.32.4",
+              "direct_float64": {
+                "rows": [
+                  0,
+                  18724,
+                  37448,
+                  56173,
+                  74897,
+                  93622,
+                  112346,
+                  131071
+                ],
+                "expected": [
+                  291,
+                  6540,
+                  1,
+                  6004,
+                  4463,
+                  3288,
+                  5400,
+                  6337
+                ],
+                "observed": [
+                  291,
+                  6540,
+                  1,
+                  6004,
+                  4463,
+                  3288,
+                  5400,
+                  6337
+                ]
+              },
+              "hashes": {
+                "labels": "4bb4e06027e9601955cb8834b7d688d7de31519f09f0a55264573963ee79f601",
+                "squared_distances": "10a15c32e5d22b6eb202803f97d247f131c3261e86dc0c515837a289cf987182"
+              }
+            }
+          },
+          "comparison": {
+            "labels": {
+              "bit_exact": true,
+              "different": 0,
+              "elements": 131072
+            },
+            "squared_distances": {
+              "bit_exact": true,
+              "different": 0,
+              "elements": 131072,
+              "max_abs_difference": 0.0
+            }
+          },
+          "main_repeat_comparison": {
+            "labels": {
+              "bit_exact": true,
+              "different": 0,
+              "elements": 131072
+            },
+            "squared_distances": {
+              "bit_exact": true,
+              "different": 0,
+              "elements": 131072,
+              "max_abs_difference": 0.0
+            }
+          }
+        },
+        {
+          "order": [
+            "candidate",
+            "main"
+          ],
+          "samples": {
+            "candidate": {
+              "seconds": 0.025719749741256237,
+              "mlx_active_before": 71303168,
+              "mlx_peak_active": 109477888,
+              "device": {
+                "device_name": "Apple M4 Max",
+                "architecture": "applegpu_g16s",
+                "memory_size": 137438953472
+              },
+              "mlx": "0.32.4",
+              "direct_float64": {
+                "rows": [
+                  0,
+                  18724,
+                  37448,
+                  56173,
+                  74897,
+                  93622,
+                  112346,
+                  131071
+                ],
+                "expected": [
+                  291,
+                  6540,
+                  1,
+                  6004,
+                  4463,
+                  3288,
+                  5400,
+                  6337
+                ],
+                "observed": [
+                  291,
+                  6540,
+                  1,
+                  6004,
+                  4463,
+                  3288,
+                  5400,
+                  6337
+                ]
+              },
+              "hashes": {
+                "labels": "4bb4e06027e9601955cb8834b7d688d7de31519f09f0a55264573963ee79f601",
+                "squared_distances": "10a15c32e5d22b6eb202803f97d247f131c3261e86dc0c515837a289cf987182"
+              }
+            },
+            "main": {
+              "seconds": 0.032306792214512825,
+              "mlx_active_before": 71303168,
+              "mlx_peak_active": 1149534208,
+              "device": {
+                "device_name": "Apple M4 Max",
+                "architecture": "applegpu_g16s",
+                "memory_size": 137438953472
+              },
+              "mlx": "0.32.4",
+              "direct_float64": {
+                "rows": [
+                  0,
+                  18724,
+                  37448,
+                  56173,
+                  74897,
+                  93622,
+                  112346,
+                  131071
+                ],
+                "expected": [
+                  291,
+                  6540,
+                  1,
+                  6004,
+                  4463,
+                  3288,
+                  5400,
+                  6337
+                ],
+                "observed": [
+                  291,
+                  6540,
+                  1,
+                  6004,
+                  4463,
+                  3288,
+                  5400,
+                  6337
+                ]
+              },
+              "hashes": {
+                "labels": "4bb4e06027e9601955cb8834b7d688d7de31519f09f0a55264573963ee79f601",
+                "squared_distances": "10a15c32e5d22b6eb202803f97d247f131c3261e86dc0c515837a289cf987182"
+              }
+            }
+          },
+          "comparison": {
+            "labels": {
+              "bit_exact": true,
+              "different": 0,
+              "elements": 131072
+            },
+            "squared_distances": {
+              "bit_exact": true,
+              "different": 0,
+              "elements": 131072,
+              "max_abs_difference": 0.0
+            }
+          },
+          "main_repeat_comparison": {
+            "labels": {
+              "bit_exact": true,
+              "different": 0,
+              "elements": 131072
+            },
+            "squared_distances": {
+              "bit_exact": true,
+              "different": 0,
+              "elements": 131072,
+              "max_abs_difference": 0.0
+            }
+          }
+        }
+      ],
+      "main_median_seconds": 0.03276762505993247,
+      "candidate_median_seconds": 0.02483445918187499,
+      "speedup": 1.3194418618081833
+    },
+    "kmeans": {
+      "pairs": [
+        {
+          "order": [
+            "candidate",
+            "main"
+          ],
+          "samples": {
+            "candidate": {
+              "seconds": 0.16685533383861184,
+              "mlx_active_before": 0,
+              "mlx_peak_active": 161415692,
+              "device": {
+                "device_name": "Apple M4 Max",
+                "architecture": "applegpu_g16s",
+                "memory_size": 137438953472
+              },
+              "mlx": "0.32.4",
+              "direct_float64_holdout": {
+                "rows": [
+                  0,
+                  73,
+                  146,
+                  219,
+                  292,
+                  365,
+                  438,
+                  511
+                ],
+                "expected": [
+                  924,
+                  2105,
+                  5425,
+                  442,
+                  645,
+                  3225,
+                  2323,
+                  2612
+                ],
+                "observed": [
+                  924,
+                  2105,
+                  5425,
+                  442,
+                  645,
+                  3225,
+                  2323,
+                  2612
+                ]
+              },
+              "inertia": 25116.361328125,
+              "iterations": 5,
+              "history": [
+                {
+                  "iteration": 1,
+                  "rows": 131072,
+                  "inertia_before_update": 37438.078125,
+                  "center_shift_squared": 725.6694946289062,
+                  "empty_clusters": 0,
+                  "pruned_rows": 0,
+                  "seconds": 0.026607540901750326
+                },
+                {
+                  "iteration": 2,
+                  "rows": 131072,
+                  "inertia_before_update": 26600.599609375,
+                  "center_shift_squared": 52.389225006103516,
+                  "empty_clusters": 0,
+                  "pruned_rows": 0,
+                  "seconds": 0.02696804190054536
+                },
+                {
+                  "iteration": 3,
+                  "rows": 131072,
+                  "inertia_before_update": 25730.6015625,
+                  "center_shift_squared": 20.606433868408203,
+                  "empty_clusters": 0,
+                  "pruned_rows": 0,
+                  "seconds": 0.027050459291785955
+                },
+                {
+                  "iteration": 4,
+                  "rows": 131072,
+                  "inertia_before_update": 25389.21875,
+                  "center_shift_squared": 10.48672103881836,
+                  "empty_clusters": 0,
+                  "pruned_rows": 0,
+                  "seconds": 0.02694204216822982
+                },
+                {
+                  "iteration": 5,
+                  "rows": 131072,
+                  "inertia_before_update": 25213.86328125,
+                  "center_shift_squared": 5.737926006317139,
+                  "empty_clusters": 0,
+                  "pruned_rows": 0,
+                  "seconds": 0.027269999962300062
+                }
+              ],
+              "holdout_mse": 0.24250627023887183,
+              "convergence_reason": "max_iter",
+              "hashes": {
+                "labels": "917c8a56b91257f972ed5234e7b4356f9d495728735450e31a5969d93d58ea83",
+                "centers": "42c6aa932e4c48a3754e43dec6c2f5162b1cfa72528bbd63497efa1b4005cc5a",
+                "holdout_labels": "0fe7efd9723cbb201df12d238ec7762585bb114bc01e692d6e63fc2e5a8a8ffb"
+              }
+            },
+            "main": {
+              "seconds": 0.21747858310118318,
+              "mlx_active_before": 0,
+              "mlx_peak_active": 1201472012,
+              "device": {
+                "device_name": "Apple M4 Max",
+                "architecture": "applegpu_g16s",
+                "memory_size": 137438953472
+              },
+              "mlx": "0.32.4",
+              "direct_float64_holdout": {
+                "rows": [
+                  0,
+                  73,
+                  146,
+                  219,
+                  292,
+                  365,
+                  438,
+                  511
+                ],
+                "expected": [
+                  924,
+                  2105,
+                  5425,
+                  442,
+                  645,
+                  3225,
+                  2323,
+                  2612
+                ],
+                "observed": [
+                  924,
+                  2105,
+                  5425,
+                  442,
+                  645,
+                  3225,
+                  2323,
+                  2612
+                ]
+              },
+              "inertia": 25116.361328125,
+              "iterations": 5,
+              "history": [
+                {
+                  "iteration": 1,
+                  "rows": 131072,
+                  "inertia_before_update": 37438.078125,
+                  "center_shift_squared": 725.6694946289062,
+                  "empty_clusters": 0,
+                  "seconds": 0.03520662523806095
+                },
+                {
+                  "iteration": 2,
+                  "rows": 131072,
+                  "inertia_before_update": 26600.599609375,
+                  "center_shift_squared": 52.389225006103516,
+                  "empty_clusters": 0,
+                  "seconds": 0.03501062514260411
+                },
+                {
+                  "iteration": 3,
+                  "rows": 131072,
+                  "inertia_before_update": 25730.6015625,
+                  "center_shift_squared": 20.606433868408203,
+                  "empty_clusters": 0,
+                  "seconds": 0.03492579096928239
+                },
+                {
+                  "iteration": 4,
+                  "rows": 131072,
+                  "inertia_before_update": 25389.21875,
+                  "center_shift_squared": 10.48672103881836,
+                  "empty_clusters": 0,
+                  "seconds": 0.03514120914041996
+                },
+                {
+                  "iteration": 5,
+                  "rows": 131072,
+                  "inertia_before_update": 25213.86328125,
+                  "center_shift_squared": 5.737926006317139,
+                  "empty_clusters": 0,
+                  "seconds": 0.03621349995955825
+                }
+              ],
+              "holdout_mse": 0.24250627024969215,
+              "convergence_reason": "max_iter",
+              "hashes": {
+                "labels": "917c8a56b91257f972ed5234e7b4356f9d495728735450e31a5969d93d58ea83",
+                "centers": "79c585d81eedf7162fc8da2b9ac25e6d525ae49ecc2029856c45ee7c748e07ff",
+                "holdout_labels": "0fe7efd9723cbb201df12d238ec7762585bb114bc01e692d6e63fc2e5a8a8ffb"
+              }
+            }
+          },
+          "comparison": {
+            "labels": {
+              "bit_exact": true,
+              "different": 0,
+              "elements": 131072
+            },
+            "centers": {
+              "bit_exact": false,
+              "different": 1343,
+              "elements": 1048576,
+              "max_abs_difference": 5.960464477539063e-08
+            },
+            "holdout_labels": {
+              "bit_exact": true,
+              "different": 0,
+              "elements": 512
+            }
+          }
+        },
+        {
+          "order": [
+            "main",
+            "candidate"
+          ],
+          "samples": {
+            "main": {
+              "seconds": 0.21587579185143113,
+              "mlx_active_before": 0,
+              "mlx_peak_active": 1201472012,
+              "device": {
+                "device_name": "Apple M4 Max",
+                "architecture": "applegpu_g16s",
+                "memory_size": 137438953472
+              },
+              "mlx": "0.32.4",
+              "direct_float64_holdout": {
+                "rows": [
+                  0,
+                  73,
+                  146,
+                  219,
+                  292,
+                  365,
+                  438,
+                  511
+                ],
+                "expected": [
+                  924,
+                  2105,
+                  5425,
+                  442,
+                  645,
+                  3225,
+                  2323,
+                  2612
+                ],
+                "observed": [
+                  924,
+                  2105,
+                  5425,
+                  442,
+                  645,
+                  3225,
+                  2323,
+                  2612
+                ]
+              },
+              "inertia": 25116.361328125,
+              "iterations": 5,
+              "history": [
+                {
+                  "iteration": 1,
+                  "rows": 131072,
+                  "inertia_before_update": 37438.078125,
+                  "center_shift_squared": 725.6694946289062,
+                  "empty_clusters": 0,
+                  "seconds": 0.03474479215219617
+                },
+                {
+                  "iteration": 2,
+                  "rows": 131072,
+                  "inertia_before_update": 26600.599609375,
+                  "center_shift_squared": 52.389225006103516,
+                  "empty_clusters": 0,
+                  "seconds": 0.034901333041489124
+                },
+                {
+                  "iteration": 3,
+                  "rows": 131072,
+                  "inertia_before_update": 25730.6015625,
+                  "center_shift_squared": 20.606433868408203,
+                  "empty_clusters": 0,
+                  "seconds": 0.03470550011843443
+                },
+                {
+                  "iteration": 4,
+                  "rows": 131072,
+                  "inertia_before_update": 25389.21875,
+                  "center_shift_squared": 10.48672103881836,
+                  "empty_clusters": 0,
+                  "seconds": 0.03492295881733298
+                },
+                {
+                  "iteration": 5,
+                  "rows": 131072,
+                  "inertia_before_update": 25213.86328125,
+                  "center_shift_squared": 5.737926006317139,
+                  "empty_clusters": 0,
+                  "seconds": 0.035102833062410355
+                }
+              ],
+              "holdout_mse": 0.24250627023178842,
+              "convergence_reason": "max_iter",
+              "hashes": {
+                "labels": "917c8a56b91257f972ed5234e7b4356f9d495728735450e31a5969d93d58ea83",
+                "centers": "9aa98fec70391800d7077b2a44f81109307787561cc8d88a58b0a8f80deff5ce",
+                "holdout_labels": "0fe7efd9723cbb201df12d238ec7762585bb114bc01e692d6e63fc2e5a8a8ffb"
+              }
+            },
+            "candidate": {
+              "seconds": 0.16724520828574896,
+              "mlx_active_before": 0,
+              "mlx_peak_active": 161415692,
+              "device": {
+                "device_name": "Apple M4 Max",
+                "architecture": "applegpu_g16s",
+                "memory_size": 137438953472
+              },
+              "mlx": "0.32.4",
+              "direct_float64_holdout": {
+                "rows": [
+                  0,
+                  73,
+                  146,
+                  219,
+                  292,
+                  365,
+                  438,
+                  511
+                ],
+                "expected": [
+                  924,
+                  2105,
+                  5425,
+                  442,
+                  645,
+                  3225,
+                  2323,
+                  2612
+                ],
+                "observed": [
+                  924,
+                  2105,
+                  5425,
+                  442,
+                  645,
+                  3225,
+                  2323,
+                  2612
+                ]
+              },
+              "inertia": 25116.361328125,
+              "iterations": 5,
+              "history": [
+                {
+                  "iteration": 1,
+                  "rows": 131072,
+                  "inertia_before_update": 37438.078125,
+                  "center_shift_squared": 725.6694946289062,
+                  "empty_clusters": 0,
+                  "pruned_rows": 0,
+                  "seconds": 0.02660054201260209
+                },
+                {
+                  "iteration": 2,
+                  "rows": 131072,
+                  "inertia_before_update": 26600.599609375,
+                  "center_shift_squared": 52.389225006103516,
+                  "empty_clusters": 0,
+                  "pruned_rows": 0,
+                  "seconds": 0.0273327911272645
+                },
+                {
+                  "iteration": 3,
+                  "rows": 131072,
+                  "inertia_before_update": 25730.6015625,
+                  "center_shift_squared": 20.606433868408203,
+                  "empty_clusters": 0,
+                  "pruned_rows": 0,
+                  "seconds": 0.026948499958962202
+                },
+                {
+                  "iteration": 4,
+                  "rows": 131072,
+                  "inertia_before_update": 25389.21875,
+                  "center_shift_squared": 10.48672103881836,
+                  "empty_clusters": 0,
+                  "pruned_rows": 0,
+                  "seconds": 0.026990124955773354
+                },
+                {
+                  "iteration": 5,
+                  "rows": 131072,
+                  "inertia_before_update": 25213.86328125,
+                  "center_shift_squared": 5.737926006317139,
+                  "empty_clusters": 0,
+                  "pruned_rows": 0,
+                  "seconds": 0.02723754197359085
+                }
+              ],
+              "holdout_mse": 0.2425062702298983,
+              "convergence_reason": "max_iter",
+              "hashes": {
+                "labels": "917c8a56b91257f972ed5234e7b4356f9d495728735450e31a5969d93d58ea83",
+                "centers": "312ae8fa01e4363c0ea9a87adbcc3da1680028fdb5c9488f35708387bfcd3222",
+                "holdout_labels": "0fe7efd9723cbb201df12d238ec7762585bb114bc01e692d6e63fc2e5a8a8ffb"
+              }
+            }
+          },
+          "comparison": {
+            "labels": {
+              "bit_exact": true,
+              "different": 0,
+              "elements": 131072
+            },
+            "centers": {
+              "bit_exact": false,
+              "different": 1331,
+              "elements": 1048576,
+              "max_abs_difference": 2.9802322387695312e-08
+            },
+            "holdout_labels": {
+              "bit_exact": true,
+              "different": 0,
+              "elements": 512
+            }
+          },
+          "main_repeat_comparison": {
+            "labels": {
+              "bit_exact": true,
+              "different": 0,
+              "elements": 131072
+            },
+            "centers": {
+              "bit_exact": false,
+              "different": 1337,
+              "elements": 1048576,
+              "max_abs_difference": 2.9802322387695312e-08
+            },
+            "holdout_labels": {
+              "bit_exact": true,
+              "different": 0,
+              "elements": 512
+            }
+          }
+        },
+        {
+          "order": [
+            "candidate",
+            "main"
+          ],
+          "samples": {
+            "candidate": {
+              "seconds": 0.17394129186868668,
+              "mlx_active_before": 0,
+              "mlx_peak_active": 161415692,
+              "device": {
+                "device_name": "Apple M4 Max",
+                "architecture": "applegpu_g16s",
+                "memory_size": 137438953472
+              },
+              "mlx": "0.32.4",
+              "direct_float64_holdout": {
+                "rows": [
+                  0,
+                  73,
+                  146,
+                  219,
+                  292,
+                  365,
+                  438,
+                  511
+                ],
+                "expected": [
+                  924,
+                  2105,
+                  5425,
+                  442,
+                  645,
+                  3225,
+                  2323,
+                  2612
+                ],
+                "observed": [
+                  924,
+                  2105,
+                  5425,
+                  442,
+                  645,
+                  3225,
+                  2323,
+                  2612
+                ]
+              },
+              "inertia": 25116.361328125,
+              "iterations": 5,
+              "history": [
+                {
+                  "iteration": 1,
+                  "rows": 131072,
+                  "inertia_before_update": 37438.078125,
+                  "center_shift_squared": 725.6694946289062,
+                  "empty_clusters": 0,
+                  "pruned_rows": 0,
+                  "seconds": 0.026828375179320574
+                },
+                {
+                  "iteration": 2,
+                  "rows": 131072,
+                  "inertia_before_update": 26600.599609375,
+                  "center_shift_squared": 52.389225006103516,
+                  "empty_clusters": 0,
+                  "pruned_rows": 0,
+                  "seconds": 0.02793300012126565
+                },
+                {
+                  "iteration": 3,
+                  "rows": 131072,
+                  "inertia_before_update": 25730.6015625,
+                  "center_shift_squared": 20.606433868408203,
+                  "empty_clusters": 0,
+                  "pruned_rows": 0,
+                  "seconds": 0.027494708076119423
+                },
+                {
+                  "iteration": 4,
+                  "rows": 131072,
+                  "inertia_before_update": 25389.21875,
+                  "center_shift_squared": 10.48672103881836,
+                  "empty_clusters": 0,
+                  "pruned_rows": 0,
+                  "seconds": 0.02747841691598296
+                },
+                {
+                  "iteration": 5,
+                  "rows": 131072,
+                  "inertia_before_update": 25213.86328125,
+                  "center_shift_squared": 5.737926006317139,
+                  "empty_clusters": 0,
+                  "pruned_rows": 0,
+                  "seconds": 0.028413291554898024
+                }
+              ],
+              "holdout_mse": 0.2425062702440786,
+              "convergence_reason": "max_iter",
+              "hashes": {
+                "labels": "917c8a56b91257f972ed5234e7b4356f9d495728735450e31a5969d93d58ea83",
+                "centers": "e98b3f5ed4a736116ead0272dc9ddd0e08e98db4520ebc93f124a750c0ba2220",
+                "holdout_labels": "0fe7efd9723cbb201df12d238ec7762585bb114bc01e692d6e63fc2e5a8a8ffb"
+              }
+            },
+            "main": {
+              "seconds": 0.21589229116216302,
+              "mlx_active_before": 0,
+              "mlx_peak_active": 1201472012,
+              "device": {
+                "device_name": "Apple M4 Max",
+                "architecture": "applegpu_g16s",
+                "memory_size": 137438953472
+              },
+              "mlx": "0.32.4",
+              "direct_float64_holdout": {
+                "rows": [
+                  0,
+                  73,
+                  146,
+                  219,
+                  292,
+                  365,
+                  438,
+                  511
+                ],
+                "expected": [
+                  924,
+                  2105,
+                  5425,
+                  442,
+                  645,
+                  3225,
+                  2323,
+                  2612
+                ],
+                "observed": [
+                  924,
+                  2105,
+                  5425,
+                  442,
+                  645,
+                  3225,
+                  2323,
+                  2612
+                ]
+              },
+              "inertia": 25116.361328125,
+              "iterations": 5,
+              "history": [
+                {
+                  "iteration": 1,
+                  "rows": 131072,
+                  "inertia_before_update": 37438.078125,
+                  "center_shift_squared": 725.6694946289062,
+                  "empty_clusters": 0,
+                  "seconds": 0.03509883303195238
+                },
+                {
+                  "iteration": 2,
+                  "rows": 131072,
+                  "inertia_before_update": 26600.599609375,
+                  "center_shift_squared": 52.389225006103516,
+                  "empty_clusters": 0,
+                  "seconds": 0.03520608274266124
+                },
+                {
+                  "iteration": 3,
+                  "rows": 131072,
+                  "inertia_before_update": 25730.6015625,
+                  "center_shift_squared": 20.606433868408203,
+                  "empty_clusters": 0,
+                  "seconds": 0.0347820408642292
+                },
+                {
+                  "iteration": 4,
+                  "rows": 131072,
+                  "inertia_before_update": 25389.21875,
+                  "center_shift_squared": 10.48672103881836,
+                  "empty_clusters": 0,
+                  "seconds": 0.03568670805543661
+                },
+                {
+                  "iteration": 5,
+                  "rows": 131072,
+                  "inertia_before_update": 25213.86328125,
+                  "center_shift_squared": 5.737926006317139,
+                  "empty_clusters": 0,
+                  "seconds": 0.035028291400521994
+                }
+              ],
+              "holdout_mse": 0.24250627024360366,
+              "convergence_reason": "max_iter",
+              "hashes": {
+                "labels": "917c8a56b91257f972ed5234e7b4356f9d495728735450e31a5969d93d58ea83",
+                "centers": "37d8ab7b27d8057db3862679f0610110e79940b6beb21c1c3f70e440ebf470df",
+                "holdout_labels": "0fe7efd9723cbb201df12d238ec7762585bb114bc01e692d6e63fc2e5a8a8ffb"
+              }
+            }
+          },
+          "comparison": {
+            "labels": {
+              "bit_exact": true,
+              "different": 0,
+              "elements": 131072
+            },
+            "centers": {
+              "bit_exact": false,
+              "different": 1337,
+              "elements": 1048576,
+              "max_abs_difference": 2.9802322387695312e-08
+            },
+            "holdout_labels": {
+              "bit_exact": true,
+              "different": 0,
+              "elements": 512
+            }
+          },
+          "main_repeat_comparison": {
+            "labels": {
+              "bit_exact": true,
+              "different": 0,
+              "elements": 131072
+            },
+            "centers": {
+              "bit_exact": false,
+              "different": 1289,
+              "elements": 1048576,
+              "max_abs_difference": 5.960464477539063e-08
+            },
+            "holdout_labels": {
+              "bit_exact": true,
+              "different": 0,
+              "elements": 512
+            }
+          }
+        }
+      ],
+      "main_median_seconds": 0.21589229116216302,
+      "candidate_median_seconds": 0.16724520828574896,
+      "speedup": 1.2908728051167688
+    },
+    "emeans": {
+      "pairs": [
+        {
+          "order": [
+            "candidate",
+            "main"
+          ],
+          "samples": {
+            "candidate": {
+              "seconds": 0.2139321663416922,
+              "mlx_active_before": 0,
+              "mlx_peak_active": 1450721436,
+              "device": {
+                "device_name": "Apple M4 Max",
+                "architecture": "applegpu_g16s",
+                "memory_size": 137438953472
+              },
+              "mlx": "0.32.4",
+              "direct_float64_holdout": {
+                "rows": [
+                  0,
+                  73,
+                  146,
+                  219,
+                  292,
+                  365,
+                  438,
+                  511
+                ],
+                "expected": [
+                  2360,
+                  4669,
+                  3555,
+                  4420,
+                  2449,
+                  6282,
+                  5203,
+                  987
+                ],
+                "observed": [
+                  2360,
+                  4669,
+                  3555,
+                  4420,
+                  2449,
+                  6282,
+                  5203,
+                  987
+                ]
+              },
+              "inertia": 24149.447820109315,
+              "iterations": 5,
+              "history": [
+                {
+                  "epoch": 1,
+                  "rows": 131072,
+                  "steps": 64,
+                  "moving_objective": 31929.85546875,
+                  "moving_mse": 0.24360546469688416,
+                  "seconds": 0.03605824988335371,
+                  "cumulative_seconds": 0.03618920827284455,
+                  "splits": 8956
+                },
+                {
+                  "epoch": 2,
+                  "rows": 131072,
+                  "steps": 128,
+                  "moving_objective": 28350.890625,
+                  "moving_mse": 0.2163001298904419,
+                  "seconds": 0.036124457605183125,
+                  "cumulative_seconds": 0.07231858326122165,
+                  "splits": 9661
+                },
+                {
+                  "epoch": 3,
+                  "rows": 131072,
+                  "steps": 192,
+                  "moving_objective": 27102.32421875,
+                  "moving_mse": 0.20677432417869568,
+                  "seconds": 0.035968291107565165,
+                  "cumulative_seconds": 0.10829254100099206,
+                  "splits": 9886
+                },
+                {
+                  "epoch": 4,
+                  "rows": 131072,
+                  "steps": 256,
+                  "moving_objective": 25825.24609375,
+                  "moving_mse": 0.19703099131584167,
+                  "seconds": 0.035973666701465845,
+                  "cumulative_seconds": 0.14427129132673144,
+                  "splits": 9929
+                },
+                {
+                  "epoch": 5,
+                  "rows": 131072,
+                  "steps": 320,
+                  "moving_objective": 24901.25,
+                  "moving_mse": 0.18998146057128906,
+                  "seconds": 0.03704962506890297,
+                  "cumulative_seconds": 0.18132591620087624,
+                  "splits": 9931
+                }
+              ],
+              "holdout_mse": 0.24054739803559977,
+              "hashes": {
+                "labels": "b67822ddcf403710d2a15625b78b9bf9009ae591b5a402ce462d4c693d232673",
+                "centers": "ce23cf4233ef502d7ec4da35f9de4111440a52f9f7b73038be253b9e60083386",
+                "holdout_labels": "c549d9148d923a6b86850763618bf6b7c347d1711b2b0d74c1ddbe3958b59959"
+              }
+            },
+            "main": {
+              "seconds": 0.2824434591457248,
+              "mlx_active_before": 0,
+              "mlx_peak_active": 4958611244,
+              "device": {
+                "device_name": "Apple M4 Max",
+                "architecture": "applegpu_g16s",
+                "memory_size": 137438953472
+              },
+              "mlx": "0.32.4",
+              "direct_float64_holdout": {
+                "rows": [
+                  0,
+                  73,
+                  146,
+                  219,
+                  292,
+                  365,
+                  438,
+                  511
+                ],
+                "expected": [
+                  2360,
+                  4669,
+                  3555,
+                  4420,
+                  2449,
+                  6282,
+                  5203,
+                  987
+                ],
+                "observed": [
+                  2360,
+                  4669,
+                  3555,
+                  4420,
+                  2449,
+                  6282,
+                  5203,
+                  987
+                ]
+              },
+              "inertia": 24149.447820109315,
+              "iterations": 5,
+              "history": [
+                {
+                  "epoch": 1,
+                  "rows": 131072,
+                  "steps": 64,
+                  "moving_objective": 31929.85546875,
+                  "moving_mse": 0.24360546469688416,
+                  "seconds": 0.047488500364124775,
+                  "cumulative_seconds": 0.04758250014856458,
+                  "splits": 8956
+                },
+                {
+                  "epoch": 2,
+                  "rows": 131072,
+                  "steps": 128,
+                  "moving_objective": 28350.890625,
+                  "moving_mse": 0.2163001298904419,
+                  "seconds": 0.04886699980124831,
+                  "cumulative_seconds": 0.09645604202523828,
+                  "splits": 9661
+                },
+                {
+                  "epoch": 3,
+                  "rows": 131072,
+                  "steps": 192,
+                  "moving_objective": 27102.32421875,
+                  "moving_mse": 0.20677432417869568,
+                  "seconds": 0.048281083814799786,
+                  "cumulative_seconds": 0.14474520785734057,
+                  "splits": 9886
+                },
+                {
+                  "epoch": 4,
+                  "rows": 131072,
+                  "steps": 256,
+                  "moving_objective": 25825.24609375,
+                  "moving_mse": 0.19703099131584167,
+                  "seconds": 0.04802250023931265,
+                  "cumulative_seconds": 0.1927727498114109,
+                  "splits": 9929
+                },
+                {
+                  "epoch": 5,
+                  "rows": 131072,
+                  "steps": 320,
+                  "moving_objective": 24901.25,
+                  "moving_mse": 0.18998146057128906,
+                  "seconds": 0.04894937528297305,
+                  "cumulative_seconds": 0.24172891722992063,
+                  "splits": 9931
+                }
+              ],
+              "holdout_mse": 0.24054739803559977,
+              "hashes": {
+                "labels": "b67822ddcf403710d2a15625b78b9bf9009ae591b5a402ce462d4c693d232673",
+                "centers": "ce23cf4233ef502d7ec4da35f9de4111440a52f9f7b73038be253b9e60083386",
+                "holdout_labels": "c549d9148d923a6b86850763618bf6b7c347d1711b2b0d74c1ddbe3958b59959"
+              }
+            }
+          },
+          "comparison": {
+            "labels": {
+              "bit_exact": true,
+              "different": 0,
+              "elements": 131072
+            },
+            "centers": {
+              "bit_exact": true,
+              "different": 0,
+              "elements": 1048576,
+              "max_abs_difference": 0.0
+            },
+            "holdout_labels": {
+              "bit_exact": true,
+              "different": 0,
+              "elements": 512
+            }
+          }
+        },
+        {
+          "order": [
+            "main",
+            "candidate"
+          ],
+          "samples": {
+            "main": {
+              "seconds": 0.28141795797273517,
+              "mlx_active_before": 0,
+              "mlx_peak_active": 5052653244,
+              "device": {
+                "device_name": "Apple M4 Max",
+                "architecture": "applegpu_g16s",
+                "memory_size": 137438953472
+              },
+              "mlx": "0.32.4",
+              "direct_float64_holdout": {
+                "rows": [
+                  0,
+                  73,
+                  146,
+                  219,
+                  292,
+                  365,
+                  438,
+                  511
+                ],
+                "expected": [
+                  2360,
+                  4669,
+                  3555,
+                  4420,
+                  2449,
+                  6282,
+                  5203,
+                  987
+                ],
+                "observed": [
+                  2360,
+                  4669,
+                  3555,
+                  4420,
+                  2449,
+                  6282,
+                  5203,
+                  987
+                ]
+              },
+              "inertia": 24149.447820109315,
+              "iterations": 5,
+              "history": [
+                {
+                  "epoch": 1,
+                  "rows": 131072,
+                  "steps": 64,
+                  "moving_objective": 31929.85546875,
+                  "moving_mse": 0.24360546469688416,
+                  "seconds": 0.047205416951328516,
+                  "cumulative_seconds": 0.047304249834269285,
+                  "splits": 8956
+                },
+                {
+                  "epoch": 2,
+                  "rows": 131072,
+                  "steps": 128,
+                  "moving_objective": 28350.890625,
+                  "moving_mse": 0.2163001298904419,
+                  "seconds": 0.04800154082477093,
+                  "cumulative_seconds": 0.09531274996697903,
+                  "splits": 9661
+                },
+                {
+                  "epoch": 3,
+                  "rows": 131072,
+                  "steps": 192,
+                  "moving_objective": 27102.32421875,
+                  "moving_mse": 0.20677432417869568,
+                  "seconds": 0.047925000078976154,
+                  "cumulative_seconds": 0.14324487512931228,
+                  "splits": 9886
+                },
+                {
+                  "epoch": 4,
+                  "rows": 131072,
+                  "steps": 256,
+                  "moving_objective": 25825.24609375,
+                  "moving_mse": 0.19703099131584167,
+                  "seconds": 0.047653166111558676,
+                  "cumulative_seconds": 0.1909040417522192,
+                  "splits": 9929
+                },
+                {
+                  "epoch": 5,
+                  "rows": 131072,
+                  "steps": 320,
+                  "moving_objective": 24901.25,
+                  "moving_mse": 0.18998146057128906,
+                  "seconds": 0.04926083283498883,
+                  "cumulative_seconds": 0.24017000012099743,
+                  "splits": 9931
+                }
+              ],
+              "holdout_mse": 0.24054739803559977,
+              "hashes": {
+                "labels": "b67822ddcf403710d2a15625b78b9bf9009ae591b5a402ce462d4c693d232673",
+                "centers": "ce23cf4233ef502d7ec4da35f9de4111440a52f9f7b73038be253b9e60083386",
+                "holdout_labels": "c549d9148d923a6b86850763618bf6b7c347d1711b2b0d74c1ddbe3958b59959"
+              }
+            },
+            "candidate": {
+              "seconds": 0.21324166702106595,
+              "mlx_active_before": 0,
+              "mlx_peak_active": 1488103196,
+              "device": {
+                "device_name": "Apple M4 Max",
+                "architecture": "applegpu_g16s",
+                "memory_size": 137438953472
+              },
+              "mlx": "0.32.4",
+              "direct_float64_holdout": {
+                "rows": [
+                  0,
+                  73,
+                  146,
+                  219,
+                  292,
+                  365,
+                  438,
+                  511
+                ],
+                "expected": [
+                  2360,
+                  4669,
+                  3555,
+                  4420,
+                  2449,
+                  6282,
+                  5203,
+                  987
+                ],
+                "observed": [
+                  2360,
+                  4669,
+                  3555,
+                  4420,
+                  2449,
+                  6282,
+                  5203,
+                  987
+                ]
+              },
+              "inertia": 24149.447820109315,
+              "iterations": 5,
+              "history": [
+                {
+                  "epoch": 1,
+                  "rows": 131072,
+                  "steps": 64,
+                  "moving_objective": 31929.85546875,
+                  "moving_mse": 0.24360546469688416,
+                  "seconds": 0.035689250100404024,
+                  "cumulative_seconds": 0.035782374907284975,
+                  "splits": 8956
+                },
+                {
+                  "epoch": 2,
+                  "rows": 131072,
+                  "steps": 128,
+                  "moving_objective": 28350.890625,
+                  "moving_mse": 0.2163001298904419,
+                  "seconds": 0.036228999961167574,
+                  "cumulative_seconds": 0.07201858423650265,
+                  "splits": 9661
+                },
+                {
+                  "epoch": 3,
+                  "rows": 131072,
+                  "steps": 192,
+                  "moving_objective": 27102.32421875,
+                  "moving_mse": 0.20677432417869568,
+                  "seconds": 0.03590108314529061,
+                  "cumulative_seconds": 0.10792491724714637,
+                  "splits": 9886
+                },
+                {
+                  "epoch": 4,
+                  "rows": 131072,
+                  "steps": 256,
+                  "moving_objective": 25825.24609375,
+                  "moving_mse": 0.19703099131584167,
+                  "seconds": 0.03574000019580126,
+                  "cumulative_seconds": 0.1436691670678556,
+                  "splits": 9929
+                },
+                {
+                  "epoch": 5,
+                  "rows": 131072,
+                  "steps": 320,
+                  "moving_objective": 24901.25,
+                  "moving_mse": 0.18998146057128906,
+                  "seconds": 0.03686683299019933,
+                  "cumulative_seconds": 0.1805420839227736,
+                  "splits": 9931
+                }
+              ],
+              "holdout_mse": 0.24054739803559977,
+              "hashes": {
+                "labels": "b67822ddcf403710d2a15625b78b9bf9009ae591b5a402ce462d4c693d232673",
+                "centers": "ce23cf4233ef502d7ec4da35f9de4111440a52f9f7b73038be253b9e60083386",
+                "holdout_labels": "c549d9148d923a6b86850763618bf6b7c347d1711b2b0d74c1ddbe3958b59959"
+              }
+            }
+          },
+          "comparison": {
+            "labels": {
+              "bit_exact": true,
+              "different": 0,
+              "elements": 131072
+            },
+            "centers": {
+              "bit_exact": true,
+              "different": 0,
+              "elements": 1048576,
+              "max_abs_difference": 0.0
+            },
+            "holdout_labels": {
+              "bit_exact": true,
+              "different": 0,
+              "elements": 512
+            }
+          },
+          "main_repeat_comparison": {
+            "labels": {
+              "bit_exact": true,
+              "different": 0,
+              "elements": 131072
+            },
+            "centers": {
+              "bit_exact": true,
+              "different": 0,
+              "elements": 1048576,
+              "max_abs_difference": 0.0
+            },
+            "holdout_labels": {
+              "bit_exact": true,
+              "different": 0,
+              "elements": 512
+            }
+          }
+        },
+        {
+          "order": [
+            "candidate",
+            "main"
+          ],
+          "samples": {
+            "candidate": {
+              "seconds": 0.21303133433684707,
+              "mlx_active_before": 0,
+              "mlx_peak_active": 1488103196,
+              "device": {
+                "device_name": "Apple M4 Max",
+                "architecture": "applegpu_g16s",
+                "memory_size": 137438953472
+              },
+              "mlx": "0.32.4",
+              "direct_float64_holdout": {
+                "rows": [
+                  0,
+                  73,
+                  146,
+                  219,
+                  292,
+                  365,
+                  438,
+                  511
+                ],
+                "expected": [
+                  2360,
+                  4669,
+                  3555,
+                  4420,
+                  2449,
+                  6282,
+                  5203,
+                  987
+                ],
+                "observed": [
+                  2360,
+                  4669,
+                  3555,
+                  4420,
+                  2449,
+                  6282,
+                  5203,
+                  987
+                ]
+              },
+              "inertia": 24149.447820109315,
+              "iterations": 5,
+              "history": [
+                {
+                  "epoch": 1,
+                  "rows": 131072,
+                  "steps": 64,
+                  "moving_objective": 31929.85546875,
+                  "moving_mse": 0.24360546469688416,
+                  "seconds": 0.03570624999701977,
+                  "cumulative_seconds": 0.03581029223278165,
+                  "splits": 8956
+                },
+                {
+                  "epoch": 2,
+                  "rows": 131072,
+                  "steps": 128,
+                  "moving_objective": 28350.890625,
+                  "moving_mse": 0.2163001298904419,
+                  "seconds": 0.03694404195994139,
+                  "cumulative_seconds": 0.07276029232889414,
+                  "splits": 9661
+                },
+                {
+                  "epoch": 3,
+                  "rows": 131072,
+                  "steps": 192,
+                  "moving_objective": 27102.32421875,
+                  "moving_mse": 0.20677432417869568,
+                  "seconds": 0.035847625229507685,
+                  "cumulative_seconds": 0.10861387522891164,
+                  "splits": 9886
+                },
+                {
+                  "epoch": 4,
+                  "rows": 131072,
+                  "steps": 256,
+                  "moving_objective": 25825.24609375,
+                  "moving_mse": 0.19703099131584167,
+                  "seconds": 0.035837958101183176,
+                  "cumulative_seconds": 0.1444575833156705,
+                  "splits": 9929
+                },
+                {
+                  "epoch": 5,
+                  "rows": 131072,
+                  "steps": 320,
+                  "moving_objective": 24901.25,
+                  "moving_mse": 0.18998146057128906,
+                  "seconds": 0.03682745900005102,
+                  "cumulative_seconds": 0.18129116715863347,
+                  "splits": 9931
+                }
+              ],
+              "holdout_mse": 0.24054739803559977,
+              "hashes": {
+                "labels": "b67822ddcf403710d2a15625b78b9bf9009ae591b5a402ce462d4c693d232673",
+                "centers": "ce23cf4233ef502d7ec4da35f9de4111440a52f9f7b73038be253b9e60083386",
+                "holdout_labels": "c549d9148d923a6b86850763618bf6b7c347d1711b2b0d74c1ddbe3958b59959"
+              }
+            },
+            "main": {
+              "seconds": 0.2802538750693202,
+              "mlx_active_before": 0,
+              "mlx_peak_active": 5052653244,
+              "device": {
+                "device_name": "Apple M4 Max",
+                "architecture": "applegpu_g16s",
+                "memory_size": 137438953472
+              },
+              "mlx": "0.32.4",
+              "direct_float64_holdout": {
+                "rows": [
+                  0,
+                  73,
+                  146,
+                  219,
+                  292,
+                  365,
+                  438,
+                  511
+                ],
+                "expected": [
+                  2360,
+                  4669,
+                  3555,
+                  4420,
+                  2449,
+                  6282,
+                  5203,
+                  987
+                ],
+                "observed": [
+                  2360,
+                  4669,
+                  3555,
+                  4420,
+                  2449,
+                  6282,
+                  5203,
+                  987
+                ]
+              },
+              "inertia": 24149.447820109315,
+              "iterations": 5,
+              "history": [
+                {
+                  "epoch": 1,
+                  "rows": 131072,
+                  "steps": 64,
+                  "moving_objective": 31929.85546875,
+                  "moving_mse": 0.24360546469688416,
+                  "seconds": 0.04717495897784829,
+                  "cumulative_seconds": 0.047265041153877974,
+                  "splits": 8956
+                },
+                {
+                  "epoch": 2,
+                  "rows": 131072,
+                  "steps": 128,
+                  "moving_objective": 28350.890625,
+                  "moving_mse": 0.2163001298904419,
+                  "seconds": 0.047941249795258045,
+                  "cumulative_seconds": 0.09521854110062122,
+                  "splits": 9661
+                },
+                {
+                  "epoch": 3,
+                  "rows": 131072,
+                  "steps": 192,
+                  "moving_objective": 27102.32421875,
+                  "moving_mse": 0.20677432417869568,
+                  "seconds": 0.04762029089033604,
+                  "cumulative_seconds": 0.14284824999049306,
+                  "splits": 9886
+                },
+                {
+                  "epoch": 4,
+                  "rows": 131072,
+                  "steps": 256,
+                  "moving_objective": 25825.24609375,
+                  "moving_mse": 0.19703099131584167,
+                  "seconds": 0.04767458327114582,
+                  "cumulative_seconds": 0.19052908336743712,
+                  "splits": 9929
+                },
+                {
+                  "epoch": 5,
+                  "rows": 131072,
+                  "steps": 320,
+                  "moving_objective": 24901.25,
+                  "moving_mse": 0.18998146057128906,
+                  "seconds": 0.049004375003278255,
+                  "cumulative_seconds": 0.2395404581911862,
+                  "splits": 9931
+                }
+              ],
+              "holdout_mse": 0.24054739803559977,
+              "hashes": {
+                "labels": "b67822ddcf403710d2a15625b78b9bf9009ae591b5a402ce462d4c693d232673",
+                "centers": "ce23cf4233ef502d7ec4da35f9de4111440a52f9f7b73038be253b9e60083386",
+                "holdout_labels": "c549d9148d923a6b86850763618bf6b7c347d1711b2b0d74c1ddbe3958b59959"
+              }
+            }
+          },
+          "comparison": {
+            "labels": {
+              "bit_exact": true,
+              "different": 0,
+              "elements": 131072
+            },
+            "centers": {
+              "bit_exact": true,
+              "different": 0,
+              "elements": 1048576,
+              "max_abs_difference": 0.0
+            },
+            "holdout_labels": {
+              "bit_exact": true,
+              "different": 0,
+              "elements": 512
+            }
+          },
+          "main_repeat_comparison": {
+            "labels": {
+              "bit_exact": true,
+              "different": 0,
+              "elements": 131072
+            },
+            "centers": {
+              "bit_exact": true,
+              "different": 0,
+              "elements": 1048576,
+              "max_abs_difference": 0.0
+            },
+            "holdout_labels": {
+              "bit_exact": true,
+              "different": 0,
+              "elements": 512
+            }
+          }
+        }
+      ],
+      "main_median_seconds": 0.28141795797273517,
+      "candidate_median_seconds": 0.21324166702106595,
+      "speedup": 1.3197137403026125
+    }
+  },
+  "complete": true,
+  "fixture": {
+    "paper_split_exact": true,
+    "fingerprints": {
+      "kind": "shipped_queries",
+      "n_val": 5000,
+      "n_test": 5000,
+      "val_sha256": "37e40955c494ae50329980dd81a0b3ec715c671d3a41db9c112e31deb5a8d079",
+      "test_sha256": "d862fd984033eb81b634e6fe2d2fc1f0d3628bf54704c9cf569e11b58cfd918a",
+      "n_train": 10000000,
+      "dim": 128,
+      "train_rows_sha256": "a58015e513521c4c5e1dcf8840d0bbb8a1a83f662f2d89d7dbe20fd6168fe634",
+      "n_eval_rows_in_train": 0
+    },
+    "split": "official upstream paper_data.py + paper_splits fingerprints",
+    "train_rows_used": 131072,
+    "test_rows_used": 5000,
+    "dimension": 128,
+    "requested_row_limit": 131072,
+    "train_sample_sha256": "75a3bd2ff6a79dcb4601db5da9bf608895af572784d2d344f3cca79784f251a4",
+    "test_sha256": "d862fd984033eb81b634e6fe2d2fc1f0d3628bf54704c9cf569e11b58cfd918a",
+    "shape": [
+      131072,
+      128
+    ],
+    "centers": 8192,
+    "holdout_rows": 512,
+    "data_sha256": "411f05d40255086df125ae4c5be03d169702b201c191a3d0f5a8da0e987a7d60",
+    "initial_sha256": "138e6483910f7bb8c7fdb3b23ef8d45c589c0810d8ddb56105dd8ee31952128a",
+    "holdout_sha256": "81b7163dd69c8d2bac76c961bd5f624add5ad8fb6a6f0fc290b41e7465c42548"
+  }
+}
