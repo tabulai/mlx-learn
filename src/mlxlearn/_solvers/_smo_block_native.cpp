@@ -7,7 +7,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <cstring>
+#include <iterator>
+#include <list>
 #include <limits>
 #include <new>
 #include <numeric>
@@ -66,44 +67,48 @@ struct AllowThreads {
 };
 struct PythonError {};
 
-// A single owned W-by-n row cache. Retained working-set rows survive an outer
-// iteration; all missing rows are requested in one callback. The callback's
-// temporary M-by-n result is released immediately after copying (M <= W).
+// Owned kernel rows, least recently requested first. Only the current working
+// set's missing rows need a temporary callback buffer.
 class Rows {
     const float* gram_;
     PyObject* fetch_;
     Py_ssize_t n_, capacity_;
     AllowThreads& threads_;
-    std::vector<float> data_;
-    std::vector<Py_ssize_t> ids_;
-    std::unordered_map<Py_ssize_t, Py_ssize_t> lookup_;
+    struct Entry {
+        Py_ssize_t id;
+        std::vector<float> values;
+    };
+    std::list<Entry> lru_;
+    std::unordered_map<Py_ssize_t, std::list<Entry>::iterator> lookup_;
 public:
     Rows(const float* gram, PyObject* fetch, Py_ssize_t n, Py_ssize_t capacity, AllowThreads& threads)
-        : gram_(gram), fetch_(fetch), n_(n), capacity_(capacity), threads_(threads) {
-        if (!gram) {
-            data_.resize(static_cast<std::size_t>(capacity) * n);
-            ids_.assign(static_cast<std::size_t>(capacity), -1);
-        }
-    }
+        : gram_(gram), fetch_(fetch), n_(n), capacity_(capacity), threads_(threads) {}
     void prepare(const std::vector<Py_ssize_t>& requested) {
         if (gram_) return;
         if (requested.size() > static_cast<std::size_t>(capacity_))
             throw std::logic_error("working set exceeds row cache");
-        std::vector<unsigned char> keep(static_cast<std::size_t>(capacity_), 0);
         std::vector<Py_ssize_t> missing;
+        // Protect every hit before evicting anything: requested contains at
+        // most capacity_ distinct IDs, so the oldest entries evicted below
+        // cannot belong to this working set.
         for (auto id : requested) {
             auto hit = lookup_.find(id);
             if (hit == lookup_.end()) missing.push_back(id);
-            else keep[hit->second] = 1;
+            else lru_.splice(lru_.end(), lru_, hit->second);
         }
         if (missing.empty()) return;
-        std::vector<Py_ssize_t> free_slots;
-        for (Py_ssize_t slot = 0; slot < capacity_; ++slot) {
-            if (!keep[slot]) {
-                if (ids_[slot] != -1) lookup_.erase(ids_[slot]);
-                ids_[slot] = -1;
-                free_slots.push_back(slot);
+        std::vector<std::list<Entry>::iterator> destinations;
+        for (auto id : missing) {
+            if (static_cast<Py_ssize_t>(lru_.size()) == capacity_) {
+                lookup_.erase(lru_.front().id);
+                lru_.splice(lru_.end(), lru_, lru_.begin());
+                lru_.back().id = id;
+            } else {
+                lru_.push_back({id, {}});
             }
+            auto entry = std::prev(lru_.end());
+            lookup_.emplace(id, entry);
+            destinations.push_back(entry);
         }
         threads_.restore();
         {
@@ -126,26 +131,21 @@ public:
                 throw PythonError{};
             }
             const float* source = static_cast<const float*>(buffer.view.buf);
-            for (Py_ssize_t i = 0; i < static_cast<Py_ssize_t>(missing.size()); ++i) {
-                std::memcpy(data_.data() + free_slots[i] * n_, source + i * n_,
-                            static_cast<std::size_t>(n_) * sizeof(float));
+            for (auto entry : destinations) {
+                entry->values.assign(source, source + n_);
+                source += n_;
             }
         }
         threads_.release();
-        for (Py_ssize_t i = 0; i < static_cast<Py_ssize_t>(missing.size()); ++i) {
-            const auto slot = free_slots[i];
-            const float* data = data_.data() + slot * n_;
-            for (Py_ssize_t k = 0; k < n_; ++k)
-                if (!std::isfinite(data[k])) throw std::invalid_argument("kernel rows must be finite");
-            ids_[slot] = missing[i];
-            lookup_[missing[i]] = slot;
-        }
+        for (auto entry : destinations)
+            for (auto value : entry->values)
+                if (!std::isfinite(value)) throw std::invalid_argument("kernel rows must be finite");
     }
     const float* get(Py_ssize_t id) const {
         if (gram_) return gram_ + id * n_;
         auto hit = lookup_.find(id);
         if (hit == lookup_.end()) throw std::logic_error("unprepared kernel row");
-        return data_.data() + hit->second * n_;
+        return hit->second->values.data();
     }
 };
 
@@ -312,7 +312,7 @@ double calculate_rho(const double* alpha, const double* C, const double* y,
 struct Result { double rho, gap; Py_ssize_t n_iter; bool converged; };
 Result optimize(const double* y, const double* C, const double* diag, double* alpha,
                 Py_ssize_t n, const float* gram, PyObject* fetch, double tol,
-                Py_ssize_t budget, Py_ssize_t width, double tau, AllowThreads& threads) {
+                Py_ssize_t budget, Py_ssize_t width, double tau, Py_ssize_t retained_rows, AllowThreads& threads) {
     bool positive = false, negative = false;
     for (Py_ssize_t k = 0; k < n; ++k) {
         if ((y[k] != 1 && y[k] != -1) || !std::isfinite(C[k]) || C[k] < 0 || !std::isfinite(diag[k]))
@@ -325,7 +325,7 @@ Result optimize(const double* y, const double* C, const double* diag, double* al
             if (!std::isfinite(gram[k])) throw std::invalid_argument("Gram matrix must be finite");
     std::vector<double> g(static_cast<std::size_t>(n));
     for (Py_ssize_t k = 0; k < n; ++k) { alpha[k] = 0; g[k] = -y[k]; }
-    Rows rows(gram, fetch, n, width, threads);
+    Rows rows(gram, fetch, n, retained_rows, threads);
     std::vector<Py_ssize_t> previous;
     std::vector<double> previous_delta;
     Py_ssize_t iterations = 0, outer_steps = 0;
@@ -438,8 +438,9 @@ Result optimize(const double* y, const double* C, const double* diag, double* al
 PyObject* py_solve(PyObject*, PyObject* args) {
     PyObject *yo, *co, *dio, *ao, *go, *fetch;
     double tol, tau;
-    Py_ssize_t budget, width;
-    if (!PyArg_ParseTuple(args, "OOOOOOdnnd:solve", &yo, &co, &dio, &ao, &go, &fetch, &tol, &budget, &width, &tau))
+    Py_ssize_t budget, width, retained_rows = 0;
+    if (!PyArg_ParseTuple(args, "OOOOOOdnnd|n:solve", &yo, &co, &dio, &ao, &go, &fetch,
+                          &tol, &budget, &width, &tau, &retained_rows))
         return nullptr;
     if (!std::isfinite(tol) || tol <= 0 || !std::isfinite(tau) || tau <= 0 || budget < 0 || width < 2) {
         PyErr_SetString(PyExc_ValueError, "tol and tau must be positive and finite; max_iter >= 0; working_set_size >= 2");
@@ -453,8 +454,12 @@ PyObject* py_solve(PyObject*, PyObject* args) {
         PyErr_SetString(PyExc_ValueError, "y, C, k_diag and alpha must have the same length of at least two"); return nullptr;
     }
     width = std::min(width, n);
-    if (width > PY_SSIZE_T_MAX / n / static_cast<Py_ssize_t>(sizeof(float))) {
-        PyErr_SetString(PyExc_OverflowError, "working-set buffer is too large"); return nullptr;
+    if (PyTuple_GET_SIZE(args) == 10) retained_rows = width;
+    if (retained_rows < width || retained_rows > n) {
+        PyErr_SetString(PyExc_ValueError, "retained_rows must be between working-set width and n_samples"); return nullptr;
+    }
+    if (retained_rows > PY_SSIZE_T_MAX / n / static_cast<Py_ssize_t>(sizeof(float))) {
+        PyErr_SetString(PyExc_OverflowError, "kernel row cache is too large"); return nullptr;
     }
     if (go != Py_None) {
         if (!get_buffer(go, gram, false, "gram", 'f', 2)) return nullptr;
@@ -474,7 +479,7 @@ PyObject* py_solve(PyObject*, PyObject* args) {
             result = optimize(static_cast<const double*>(y.view.buf), static_cast<const double*>(C.view.buf),
                               static_cast<const double*>(diag.view.buf), static_cast<double*>(alpha.view.buf), n,
                               gram.acquired ? static_cast<const float*>(gram.view.buf) : nullptr,
-                              fetch, tol, budget, width, tau, threads);
+                              fetch, tol, budget, width, tau, retained_rows, threads);
         }
         return Py_BuildValue("dnOd", result.rho, result.n_iter, result.converged ? Py_True : Py_False, result.gap);
     } catch (const PythonError&) { return nullptr; }
@@ -487,4 +492,11 @@ PyMethodDef methods[] = {
 };
 PyModuleDef module = {PyModuleDef_HEAD_INIT, "_smo_block_native", nullptr, -1, methods};
 }  // namespace
-PyMODINIT_FUNC PyInit__smo_block_native() { return PyModule_Create(&module); }
+PyMODINIT_FUNC PyInit__smo_block_native() {
+    PyObject* m = PyModule_Create(&module);
+    if (m && PyModule_AddIntConstant(m, "SUPPORTS_ROW_CACHE", 1) < 0) {
+        Py_DECREF(m);
+        return nullptr;
+    }
+    return m;
+}

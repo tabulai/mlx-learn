@@ -286,8 +286,9 @@ CPU routines handle statistics, decision reductions and multiclass voting;
 NumPy remains at the validation and public-array boundary, with portable
 fallbacks if the optional extensions are unavailable. Automatic backend
 thresholds remain conservative. See the
-[working-set implementation and benchmarks](docs/svc-working-set-2026-10-31.md)
-and the [earlier native-loop acceleration](docs/svc-native-2026-10-31.md).
+[working-set implementation](docs/svc-working-set-2026-10-31.md),
+[kernel-row cache benchmarks](docs/svc-row-cache-2026-11-17.md), and
+[earlier native-loop acceleration](docs/svc-native-2026-10-31.md).
 
 KNN shares a NumPy-free GPU search core with `mlxlearn_device.fit_neighbors`.
 Small neighbor counts use fused Metal distance/selection kernels, and GPU

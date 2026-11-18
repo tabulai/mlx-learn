@@ -132,6 +132,12 @@ SIFT uses three. All four modes are measured anew with final assignments and
 inertia included. Earlier e-means measurements with different budgets or only
 online final-pass labels remain historical results.
 
+That report holds the pass budget equal, so the two Metal methods take the same
+time and differ only in MSE. The
+[Lloyd-25 addendum](k-means-lloyd25-reference-2026-11-17.md) instead runs KMeans
+for 25 iterations against EMeans at its two- or three-epoch budget, which is the
+comparison the e-means paper makes.
+
 The scikit-learn benchmark uses unmodified Lloyd KMeans with `n_init=1`,
 `tol=0` and `copy_x=False`. Scikit-learn centers and restores this input in place,
 which can change FP32 bits, so the benchmark reloads exact cached data outside

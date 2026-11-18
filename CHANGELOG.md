@@ -83,6 +83,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- SVC training reuses kernel rows across native working sets when the full
+  Gram matrix exceeds `cache_size`. Each binary subproblem keeps recently
+  requested rows within its existing kernel-row budget after reserving room
+  for the next fetch.
 - Exact kNN candidate selection uses GPU-specific partial-selection regions
   and a chunk-minimum threshold that safely rejects values outside the top-k.
   Uncertified Gram, fused, compact and integer-screen rows use partitioned
@@ -98,13 +102,21 @@ All notable changes to this project are documented here. The format follows
 
 ### Measured
 
+- On four 10M-vector datasets with 65,536 centers, Metal e-means at its two- or
+  three-epoch budget ran **6.50–9.27×** faster than 25-iteration Metal KMeans
+  with final labels in both timers, and **8.30–13.34×** faster on training
+  alone. Its test MSE relative to Lloyd at 25 ranged from **−0.27% to +0.18%**:
+  lower on SIFT and SimSearchNet++, higher on DEEP and SPACEV. The 0.1.3
+  comparison held the pass budget equal, which makes the two runtimes equal by
+  construction. These are single-seed, single-fit results and DINO was not
+  run; see the [Lloyd-25 addendum](docs/k-means-lloyd25-reference-2026-11-17.md).
 - Reran the MNIST, Fashion-MNIST and Kannada-MNIST benchmarks for
   LogisticRegression, KNeighborsClassifier, SVC and PCA on an M1 Ultra, an M4
   Max and an M5 Ultra, with an identical software stack, at `aa729e5`, before
-  the kNN selection changes above. Converged logistic regression fit
+  the SVC and kNN changes above. Converged logistic regression fit
   **15.4–20.7×**, **7.1–12.5×** and **9.5–14.4×** faster than scikit-learn.
-  KNN prediction was **14.3–15.7×**, **11.6–12.2×** and
-  **13.2–14.5×** faster, and SVC fits at the default cache were **18.2–23.6×**,
+  KNN prediction was **14.3–15.7×**, **11.6–12.2×** and **13.2–14.5×**
+  faster, and SVC fits at the default cache were **18.2–23.6×**,
   **13.0–17.4×** and **15.4–19.6×** faster. Every KNN neighbor set was exact on
   every machine, and SVC predictions agreed with scikit-learn's on 99.98–100% of
   rows. On the M5, binary32 PCA fits take about 1.3× as long as the earlier TF32
