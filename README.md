@@ -54,6 +54,32 @@ stock inheritance. See the [compatibility details](docs/support_matrix.md).
 | `SVR`, `NuSVR`, `NuSVC` | deferred — will not ship until they implement the true objective |
 | tree ensembles | out of scope |
 
+## 0.1.4 benchmark highlights
+
+- **E-means against Lloyd at 25 iterations.** The 0.1.3 benchmark gave both
+  methods the same two or three passes. The new comparison adopts the paper's
+  25-iteration Lloyd reference for held-out mean squared error. On four
+  datasets with 10 million vectors and 65,536 centers each, e-means ran
+  **6.58–9.49× as fast** in two or three epochs, with test MSE within 0.28%
+  of Lloyd. Both methods started from identical centers and timed final
+  labeling and inertia. The results use one seed and preset whole epochs on
+  M4 Max. [E-means paper](https://arxiv.org/abs/2611.09501) ·
+  [Full Lloyd-25 benchmark](docs/k-means-lloyd25-streaming-assignment-2026-11-17.md)
+- **Faster Metal clustering.** Streaming FP32 assignment on M4 Max cut
+  fixed-center assignment on 10 million DEEP vectors from **22.88 to 14.77 s**.
+  A two-update Lloyd fit with final labeling fell from **115.56 to 55.67 s**,
+  with identical labels and inertia. In the four-dataset comparison run in the
+  same session, e-means fits were **1.06–1.53× as fast** as with the previous
+  assignment kernel. Lloyd can also reuse labels that its center-separation
+  bound certifies. [Full clustering benchmark](docs/clustering-assignment-2026-11-17.md) ·
+  [Four-dataset kernel comparison](docs/k-means-lloyd25-streaming-assignment-2026-11-17.md#change-from-the-earlier-campaign)
+- **Faster RBF SVC fitting.** The native solver caches kernel rows across
+  working sets when the full Gram matrix exceeds `cache_size`. At **200 MiB**
+  on M4 Max, standard MNIST fit time fell from **9.09 to 3.59 s (2.53×)** and
+  Fashion-MNIST from **10.29 to 4.59 s (2.24×)** against the previous solver.
+  On standard MNIST, accuracy was **97.92%** and all 450,000 decision scores
+  matched the previous build. [Full SVC benchmark](docs/svc-row-cache-2026-11-17.md)
+
 ## E-means clustering
 
 Version 0.1.3 includes [e-means](https://arxiv.org/abs/2611.09501),
@@ -91,8 +117,9 @@ explicit, random or k-means++ initialization, multiple restarts, and final
 nearest-centroid labels and inertia. Use the direct estimator; it is not part
 of `patch_sklearn()`.
 
-The [four-method 10M-vector comparison](docs/k-means-10m-comparison-2026-11-15.md)
-reports runtime, peak fit memory, and test MSE on five datasets.
+The [0.1.3 equal-pass comparison](docs/k-means-10m-comparison-2026-11-15.md)
+reports runtime, peak fit memory, and test MSE for four methods on five
+10M-vector datasets.
 
 ## Requirements
 
@@ -428,7 +455,7 @@ What that means for the measured development build on an M4 Max:
 |---|---|
 | **Neighbor queries/inference** | Wins **625/648**, **648/648** and **648/648** medians against default brute, single-thread brute and auto sklearn on the [full panel](docs/knn-digits-benchmarks-2026-10-30.md). The ≥2× counts are **587**, **300** and **592**, respectively. |
 | Neighbor `fit` and startup | Owns training data and defers search preparation where appropriate. Fit-only, first fit-plus-query and total process startup are reported separately; query gains do not guarantee faster fit or startup. |
-| `SVC` | Native working sets improve measured linear and RBF fits; tiny-cache RBF still trails sklearn and prediction gains vary. See the [current results and limitations](docs/svc-working-set-2026-10-31.md). Patched routing remains conservative, and linear is excluded from automatic GPU selection. |
+| `SVC` | Native working sets improve measured linear and RBF fits; tiny-cache RBF still trails sklearn and prediction gains vary. See the [working-set results and limitations](docs/svc-working-set-2026-10-31.md) and the [0.1.4 cache benchmark](docs/svc-row-cache-2026-11-17.md). Patched routing remains conservative, and linear is excluded from automatic GPU selection. |
 | `LogisticRegression` | Faster than scikit-learn on large problems: **11.8×, 5.8× and 2.7×** for binary fits at 500,000 × 32, 500,000 × 128 and 60,000 × 1,024 ([fused-kernel rerun](docs/fused-narrow-kernel-2026-10-27.md)), and **6.4–12.8×** for converged 10-class fits at 60,000 × 784 ([MNIST family](#mnist-fashion-mnist-and-kannada-mnist)). Patched dispatch still hands small problems to scikit-learn, which was faster there when last measured. It uses MLX only from 20,000 samples and 2×10⁷ elements, or from 250,000 samples and 8×10⁶ elements. The [historical small-problem measurements](docs/benchmarks.md) explain the per-iteration overhead behind that threshold. |
 | `PCA` | At 1,000,000 × 256 and 1,000,000 × 1,024 with float64 input and 32 components, fits measured **5.24×** and **12.36×** faster than scikit-learn. Full-training transforms measured **2.42×** and **1.62×** faster. Short-query timings varied with memory pressure; the [PCA benchmark details](docs/benchmarks.md#pca-million-row-and-image-rerun) include the slower cases and raw samples. |
 
@@ -508,9 +535,10 @@ float64 input, its faster setting here.
   exact distance tie at the 5th neighbor differently.
 - **Fit:** fitting stores the training data and takes 8–13 ms in both libraries.
 
-**`SVC`** (RBF kernel, `C=1`, `gamma="scale"`). mlxlearn times are medians of 3 fits and
+**Earlier `SVC` benchmark** (RBF kernel, `C=1`, `gamma="scale"`). mlxlearn times are medians of 3 fits and
 scikit-learn times are single fits. Each fit speedup compares the two libraries at the same
-cache size.
+cache size. See the [0.1.4 cache benchmark](docs/svc-row-cache-2026-11-17.md) for the
+updated MNIST and Fashion-MNIST timings.
 
 | Dataset | mlxlearn fit, 200 MB / 2,000 MB cache | sklearn fit | Fit speedup, 200 MB / 2,000 MB | mlxlearn predict | sklearn predict | Predict speedup | Test accuracy, mlxlearn / sklearn | Support vectors, mlxlearn / sklearn |
 |---|---|---|---|---|---|---|---|---|
