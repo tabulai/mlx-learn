@@ -83,6 +83,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- On M4 GPUs, large exact kNN searches can use taller query tiles and shorter
+  training tiles at workspace budgets of 64–512 MiB. The general GPU search
+  finishes each intermediate query block before allocating the next block's
+  workspace. See the [timing and memory measurements](docs/knn-tight-budgets-2026-11-17.md).
 - SVC training reuses kernel rows across native working sets when the full
   Gram matrix exceeds `cache_size`. Each binary subproblem keeps recently
   requested rows within its existing kernel-row budget after reserving room
