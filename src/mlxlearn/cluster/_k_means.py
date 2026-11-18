@@ -142,20 +142,34 @@ def _relocate_empty(data, offset, labels, distances, sums, counts):
     return centers, empty_count
 
 
+def _compacted_rows(uncertain):
+    """Round a compacted batch up to one of four row counts per power of two.
+
+    The assignment kernels are specialized by row count. The first call at a
+    row count compiles them, which costs over 100 ms until Metal has cached
+    that shape, and the uncertain count differs in nearly every tile. This
+    ladder bounds the compiled sizes while adding fewer than a quarter more
+    rows. The 128-row floor keeps the batch on the streaming kernel.
+    """
+    rows = max(uncertain, 128)
+    step = 1 << ((rows - 1).bit_length() - 3)
+    return -(-rows // step) * step
+
+
 def _pruned_tile(x, centers, old, radii, max_norm):
     keep, distances = reusable_labels(x, centers, old, radii[old], max_norm)
     uncertain = len(x) - int(mx.sum(keep).item())
     if uncertain == 0:
         return old, distances, len(x)
     # Only compact rows on shapes with the streaming kernel's fixed dot order.
-    # Keep at least 128 rows in its call, including for a single ambiguous row.
-    if x.shape[1] > 512 or max(uncertain, 128) >= len(x):
+    rows = _compacted_rows(uncertain)
+    if x.shape[1] > 512 or rows >= len(x):
         labels, distances = assign(x, centers)
         return labels, distances, 0
     ids = mx.argsort(keep.astype(mx.int32))[:uncertain]
     work = x[ids]
-    if uncertain < 128:
-        work = mx.concatenate([work, mx.broadcast_to(work[:1], (128 - uncertain, x.shape[1]))])
+    if rows > uncertain:
+        work = mx.concatenate([work, mx.broadcast_to(work[:1], (rows - uncertain, x.shape[1]))])
     labels, updated = assign(work, centers)
     return (mx.put_along_axis(old, ids, labels[:uncertain], axis=0),
             mx.put_along_axis(distances, ids, updated[:uncertain], axis=0), len(x) - uncertain)

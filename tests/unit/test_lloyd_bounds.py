@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 from mlxlearn._kernels import lloyd_bounds
-from mlxlearn._kernels.e_means import assign, selected_distances
+from mlxlearn._kernels.e_means import _streaming_fp32_device, assign, selected_distances
 from mlxlearn.cluster import _k_means
 
 pytestmark = [pytest.mark.gpu, pytest.mark.skipif(not mx.metal.is_available(), reason="requires Metal")]
@@ -70,9 +70,9 @@ def test_roundoff_and_boundaries_fall_back_to_exhaustive_assignment(offset, delt
     assert not np.asarray(certain).any()
 
 
-@pytest.mark.parametrize("uncertain_count", [1, 139])
+@pytest.mark.parametrize("uncertain_count,rows", [(1, 128), (139, 160)])
 def test_pruned_tile_scatter_preserves_full_results_with_tied_uncertain_rows(
-    uncertain_count, monkeypatch,
+    uncertain_count, rows, monkeypatch,
 ):
     rng = np.random.default_rng(1446)
     c = rng.normal(size=(4096, 96)).astype(np.float32)
@@ -100,7 +100,7 @@ def test_pruned_tile_scatter_preserves_full_results_with_tied_uncertain_rows(
     monkeypatch.setattr(_k_means, "assign", trace_assign)
     labels, residual, saved = _k_means._pruned_tile(x, centers, incumbent, radii, maximum)
     assert saved == len(x) - uncertain_count
-    assert calls == [max(128, uncertain_count)]
+    assert calls == [rows]
     np.testing.assert_array_equal(np.asarray(labels), np.asarray(expected))
     np.testing.assert_array_equal(np.asarray(residual).view(np.uint32),
                                   np.asarray(expected_residual).view(np.uint32))
@@ -135,3 +135,41 @@ def test_final_pruned_assignment_scores_restored_coordinates(monkeypatch):
     assert float(direct[0].item()) > float(centered_residual[0].item())
     np.testing.assert_array_equal(np.asarray(labels), np.asarray(expected))
     np.testing.assert_array_equal(np.asarray(residual).view(np.uint32), np.asarray(direct).view(np.uint32))
+
+
+def test_mixed_reuse_matches_dense_assignment_on_a_bounded_set_of_batch_sizes(monkeypatch):
+    if not _streaming_fp32_device():
+        pytest.skip("label reuse is calibrated for the M4 Max streaming kernel")
+    rng = np.random.default_rng(2217)
+    k, d, tile = 4096, 64, 2048
+    n = 8 * k
+    truth = rng.normal(0, 4, (k, d))
+    # Rows of the wide clusters sit too close to a boundary to be certified,
+    # so every tile mixes reused and uncertain rows in a different proportion.
+    spread = np.where(rng.random(k) < 0.1, 2.6, 0.25)
+    owner = rng.permutation(n) % k
+    data = mx.array((truth[owner] + rng.normal(0, 1, (n, d)) * spread[owner][:, None]).astype(np.float32))
+    before = mx.array((truth + rng.normal(0, 0.3, (k, d))).astype(np.float32))
+    centers = before + mx.array(rng.normal(0, 0.02, (k, d)).astype(np.float32))
+    offset = mx.mean(data, axis=0)
+    previous, _ = assign(data - offset, before - offset)
+    expected, expected_residual = assign(data - offset, centers - offset)
+    calls = []
+
+    def trace_assign(points, centers, **kwargs):
+        calls.append(len(points))
+        return assign(points, centers, **kwargs)
+
+    monkeypatch.setattr(_k_means, "assign", trace_assign)
+    monkeypatch.setattr(_k_means, "_scratch_budget", lambda: 4 * k * tile)
+    labels, residual, saved = _k_means.KMeans(n_clusters=k)._assignment(
+        data, centers - offset, offset, previous=previous,
+    )
+    assert len(calls) == n // tile
+    assert 0 < saved < n
+    # Tiles differ in their uncertain count. Their batches are padded to a few sizes.
+    assert all(128 <= rows < tile and rows == _k_means._compacted_rows(rows) for rows in calls)
+    assert n - saved < sum(calls) < 1.25 * (n - saved)
+    np.testing.assert_array_equal(np.asarray(labels), np.asarray(expected))
+    np.testing.assert_array_equal(np.asarray(residual).view(np.uint32),
+                                  np.asarray(expected_residual).view(np.uint32))

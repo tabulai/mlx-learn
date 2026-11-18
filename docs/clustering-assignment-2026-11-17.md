@@ -30,8 +30,10 @@ fits with at least 4,096 centers, eight points per center, 64–1,024 features
 and automatic assignment batching. It uses current centers on each eligible
 pass, including after empty-center relocation and after restoring the final
 centers to the original coordinates. `iteration_stats_[i]["pruned_rows"]`
-counts original training points that bypassed a dense scan. Mixed tiles can
-pad a few fallback rows to preserve their dot-product reduction order.
+counts original training points that bypassed a dense scan. Mixed tiles pad
+their fallback rows to at least 128 to preserve the dot-product reduction
+order, and up to one of four batch sizes per power of two. The assignment
+kernels are compiled per row count, so this bounds the compilations.
 
 For exhaustive assignment, the shared kernel for Lloyd and e-means can keep
 FP32 dot products in registers. Each tile of 64 centers writes only its
