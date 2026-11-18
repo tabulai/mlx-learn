@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.4] — 2026-11-18
+
 ### Fixed
 
 - Large exact-neighbor queries no longer sort float32 Gram tiles wider than
@@ -86,6 +88,7 @@ All notable changes to this project are documented here. The format follows
 - Large FP32 Lloyd and e-means assignments on M4 Max reduce scores inside
   GPU tiles. Lloyd also checks whether center separation proves that a point
   keeps its previous label. See the [assignment and fit benchmarks](docs/clustering-assignment-2026-11-17.md).
+  Mixed Lloyd tiles respect the configured assignment batch size.
 - On M4 GPUs, large exact kNN searches can use taller query tiles and shorter
   training tiles at workspace budgets of 64–512 MiB. The general GPU search
   finishes each intermediate query block before allocating the next block's
@@ -109,6 +112,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Measured
 
+- The [Lloyd-25 rerun](docs/k-means-lloyd25-streaming-assignment-2026-11-17.md)
+  measures streaming assignment on four 10M-vector datasets and includes a
+  same-session control using the earlier GEMM implementation.
 - On four 10M-vector datasets with 65,536 centers, Metal e-means at its two- or
   three-epoch budget ran **6.50–9.27×** faster than 25-iteration Metal KMeans
   with final labels in both timers, and **8.30–13.34×** faster on training
@@ -700,7 +706,8 @@ Each of these is now covered by a regression test:
   shape, making `fit` a non-pure function of its arguments.
 - `except Exception:` around the accelerated path, rerunning silently on scikit-learn.
 
-[Unreleased]: https://github.com/tabulai/mlx-learn/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/tabulai/mlx-learn/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/tabulai/mlx-learn/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/tabulai/mlx-learn/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/tabulai/mlx-learn/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/tabulai/mlx-learn/compare/v0.1.0a2...v0.1.1
