@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "kind": "lloyd_reference_addendum_v1",
+  "date": "2026-11-17",
+  "applies_to": {
+    "path": "benchmarks/e_means/kmeans_protocol.json",
+    "sha256": "743d976b3b632dce060d2f5981cba70d61176774e47a2b30cda4d319f7391d70"
+  },
+  "purpose": "The frozen comparison caps Lloyd at the e-means pass budget, so it measures equal work, not the paper's claim. This addendum runs Lloyd to the paper's 25-iteration reference budget and re-measures e-means at its frozen budget from the same sources, so the two can be paired.",
+  "lloyd_iterations": 25,
+  "modes": [
+    "metal-kmeans",
+    "metal-emeans"
+  ],
+  "budget": "Metal KMeans: max_iter=25 with tol=0 and n_init=1; strict convergence can stop earlier and actual iterations are recorded. Metal e-means: the frozen protocol's integer epoch budgets 2,2,2,2,3 with the Faiss quality batch law.",
+  "inherits": "Datasets, identities, k, seed 10, explicit shared initialization, FP32 precision, full untimed warmup, timed final labels and inertia, memory sampling, thread settings and shared quality scoring are those of the frozen protocol and its unmodified harness (kmeans_compare.py).",
+  "scope": {
+    "changes_frozen_protocol": false,
+    "changes_frozen_measurements": false,
+    "changes_frozen_harness": false,
+    "results_folder": "benchmarks/e_means/results/kmeans_lloyd25",
+    "statement": "Records are new measurements from the sources hashed in each record. They are never mixed into the frozen 20-record campaign or its ratios."
+  },
+  "derived_metrics": {
+    "runtime_ratio": "Lloyd seconds divided by e-means seconds, with final labels and inertia inside both timers.",
+    "training_only_ratio": "Sum of Lloyd per-iteration seconds divided by e-means cumulative seconds at its last epoch; both exclude the final label pass.",
+    "inertia_crossing": "Smallest number of Lloyd updates whose full-training FP32 inertia is at or below the e-means final inertia. Inertia after u updates is the pre-update inertia of iteration u+1, or the final inertia once Lloyd stops. This is a training-inertia diagnostic, not the paper's per-seed test-MSE crossing search."
+  },
+  "limitations": [
+    "One seed and one timed fit per method; no confidence intervals.",
+    "The e-means budget is fixed in advance, not searched for the first budget that beats Lloyd at 25.",
+    "Lloyd here shares the e-means assignment and statistics kernels in FP32. It is a same-device control, not Flash-KMeans, Faiss GPU or an H100 measurement.",
+    "A 25-iteration fit runs for minutes to hours after an equally long warmup; thermal state can differ from the short e-means fit."
+  ]
+}

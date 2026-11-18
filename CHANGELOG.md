@@ -100,6 +100,17 @@ All notable changes to this project are documented here. The format follows
   See the [integration report](docs/knn-integration-2026-11-17.md) for the
   combined validation, benchmark protocol and performance limits.
 
+### Measured
+
+- On four 10M-vector datasets with 65,536 centers, Metal e-means at its two- or
+  three-epoch budget ran **6.50–9.27×** faster than 25-iteration Metal KMeans
+  with final labels in both timers, and **8.30–13.34×** faster on training
+  alone. Its test MSE relative to Lloyd at 25 ranged from **−0.27% to +0.18%**:
+  lower on SIFT and SimSearchNet++, higher on DEEP and SPACEV. The 0.1.3
+  comparison held the pass budget equal, which makes the two runtimes equal by
+  construction. These are single-seed, single-fit results and DINO was not
+  run; see the [Lloyd-25 addendum](docs/k-means-lloyd25-reference-2026-11-17.md).
+
 ## [0.1.3] — 2026-11-15
 
 ### Added

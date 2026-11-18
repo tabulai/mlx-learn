@@ -325,3 +325,30 @@ KMeans implementations can stop early on strict convergence even with `tol=0`.
 The report records actual passes and scores every result with the same held-out
 FP32 assignment / FP64 residual-MSE routine. See [the KMeans API guide](../../docs/k-means.md)
 for supported estimator parameters and resident training methods.
+
+## Lloyd at 25 iterations versus e-means on the 10M datasets
+
+The comparison above gives both algorithms the same number of passes. They share
+the assignment and statistics kernels, so their runtimes are equal by
+construction and only the MSE column can differ. The paper makes a different
+comparison: e-means at a few epochs against Lloyd at 25. The
+[Lloyd-25 addendum](../../docs/k-means-lloyd25-reference-2026-11-17.md) measures
+that on the same data. Metal KMeans runs 25 iterations, and Metal EMeans is
+measured again at its 2/2/2/2/3 budget from the same sources so the two pair.
+
+```sh
+caffeinate -i .venv/bin/python benchmarks/e_means/kmeans_lloyd25.py
+.venv/bin/python benchmarks/e_means/kmeans_lloyd25_report.py --require-complete
+```
+
+`kmeans_lloyd25_protocol.json` pins the frozen protocol by hash and changes only
+the Lloyd iteration cap. The driver reuses the worker, controller and validator
+of `kmeans_compare.py` unchanged. Records live in `results/kmeans_lloyd25` and
+never enter the frozen 20-record campaign or its ratios. `--datasets` selects
+datasets and runs them in the order given. Every fit follows an equally long
+untimed warmup, so the Lloyd arm costs about fifty passes per dataset.
+
+The report gives the runtime ratio with final labels in both timers, a
+training-only ratio from the per-pass history, and the number of Lloyd updates
+needed to reach the e-means full-training inertia. The spread of Lloyd's
+per-iteration times is reported as a check on thermal drift and other load.
