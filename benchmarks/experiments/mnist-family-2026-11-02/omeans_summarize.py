@@ -43,6 +43,7 @@ def aggregate(run):
             "fraction": statistics.fmean(fractions) if fractions else None,
             "search": sorted({r["search"] for r in records if r["search"]}),
             "fallbacks": sum(r["search_fallback_step"] is not None for r in records),
+            "seeds": len(records),
             "pressure": max((r["thermal_pressure"] or 0) for r in records),
         }
     return out
@@ -68,6 +69,8 @@ def training_table(runs):
         search = "/".join(sorted({s for o in auto for s in o["search"]})).replace("_", "-")
         if search == "two-level":
             faster_all += faster
+        if auto[1]["fallbacks"]:
+            search += f", full search in {auto[1]['fallbacks']} of {auto[1]['seeds']} seeds"
         print(f"| {NAMES[name]} | {k:,} | {search} | {auto[1]['fraction']:.0%} | "
               + " / ".join(f"{1e3 * e['seconds']:.0f}" for e in emeans) + " ms | "
               + " / ".join(f"{1e3 * o['seconds']:.0f}" for o in auto) + " ms | "

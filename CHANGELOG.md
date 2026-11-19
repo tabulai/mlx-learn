@@ -35,6 +35,10 @@ All notable changes to this project are documented here. The format follows
   (M5 Ultra) and
   [docs/o-means-benchmarks-m4-max-2026-11-19.md](docs/o-means-benchmarks-m4-max-2026-11-19.md)
   (M4 Max, interleaved).
+- `benchmarks/experiments/mnist-family-2026-11-02/omeans.py`: `OMeans` against
+  `EMeans`, mlxlearn's `KMeans` and scikit-learn's `KMeans` and
+  `MiniBatchKMeans` on MNIST, Fashion-MNIST and Kannada-MNIST at 1,024 to
+  8,192 centroids.
 
 ## [0.1.4] — 2026-11-18
 
