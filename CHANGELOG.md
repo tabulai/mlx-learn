@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- MNIST-family o-means results: `OMeans` against `EMeans`, mlxlearn's `KMeans`
+  and scikit-learn's `KMeans` and `MiniBatchKMeans` on MNIST, Fashion-MNIST and
+  Kannada-MNIST at 1,024 to 8,192 centroids, on an M4 Max and an M5 Ultra. The
+  README's MNIST section and the
+  [experiment notes](benchmarks/experiments/mnist-family-2026-11-02/README.md#o-means)
+  carry the tables, and the o-means guide lists the limit they found: little
+  gain on small data, and a one-epoch fit at 4,096 centroids that is slower
+  than e-means on M5 Ultra.
+
 ## [0.1.5] — 2026-11-19
 
 ### Added

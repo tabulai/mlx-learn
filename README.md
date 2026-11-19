@@ -55,6 +55,24 @@ stock inheritance. See the [compatibility details](docs/support_matrix.md).
 | `SVR`, `NuSVR`, `NuSVC` | deferred — will not ship until they implement the true objective |
 | tree ensembles | out of scope |
 
+## 0.1.5 benchmark highlights
+
+- **O-means against e-means.** Over 18 datasets and three seeds, `OMeans`
+  reached `EMeans`' held-out error **4.44× faster in float32 and 3.55× in
+  BF16** on an M5 Ultra, and **4.13× and 3.96×** on an M4 Max, as geometric
+  means. At ten million rows and 65,536 centroids it was **8.8×** faster in
+  float32 on the M5 Ultra. It compares each row with a median 11% of the
+  centroids, and its held-out error at the same epochs stays within −1.14%
+  to +0.36% of `EMeans`'.
+  [M5 Ultra report](docs/o-means-benchmarks-2026-11-18.md) ·
+  [M4 Max report](docs/o-means-benchmarks-m4-max-2026-11-19.md)
+- **O-means on the MNIST family.** On three 60,000 × 784 datasets, an
+  `OMeans` fit at 4,096 to 8,192 centroids takes **150–242 ms** on an M4 Max,
+  against 107–223 s for scikit-learn's `KMeans`, with held-out error within
+  1% of it. Against `EMeans` this small data gains 1.4× in training at 4,096
+  centroids and 2.0–2.3× at 8,192.
+  [MNIST-family results](#mnist-fashion-mnist-and-kannada-mnist)
+
 ## 0.1.4 benchmark highlights
 
 - **E-means against Lloyd at 25 iterations.** The 0.1.3 benchmark gave both
@@ -164,7 +182,8 @@ e-means' fit time divided by o-means'.
 
 See the [implementation guide](docs/o-means.md) and the benchmark reports for
 [M5 Ultra](docs/o-means-benchmarks-2026-11-18.md) and
-[M4 Max](docs/o-means-benchmarks-m4-max-2026-11-19.md).
+[M4 Max](docs/o-means-benchmarks-m4-max-2026-11-19.md). Results on the much
+smaller [MNIST family](#mnist-fashion-mnist-and-kannada-mnist) are below.
 
 ## Requirements
 
@@ -544,6 +563,30 @@ The PCA test for Kannada uses its 5,000-row unlabeled Kaggle test set. Its separ
 float64. The 24-case panel also covers 32 components and explicit randomized PCA.
 Held-out reconstruction RMSE agreed within 0.0013% across libraries. Timings are
 medians of nine interleaved rounds after two warmups. [Inputs, scripts and raw results](benchmarks/experiments/mnist-family-2026-11-02/README.md#pca)
+
+**`OMeans`**, measured on 2026-11-19 with seeds 10, 11 and 12. Each entry is the fit time
+followed by the held-out error relative to scikit-learn's `KMeans`. `OMeans` and `EMeans`
+run three epochs and include the final label pass; the scikit-learn fits use default
+settings.
+
+| Dataset | Centroids | `OMeans` | `EMeans` | scikit-learn `MiniBatchKMeans` | scikit-learn `KMeans` |
+|---|---:|---:|---:|---:|---:|
+| MNIST | 4,096 | **150 ms** (+0.25%) | 190 ms (+0.35%) | 23.9 s (+3.53%) | 109.4 s |
+| MNIST | 8,192 | **228 ms** (−0.06%) | 381 ms (−0.02%) | 90.0 s (+3.07%) | 218.0 s |
+| Fashion-MNIST | 4,096 | **156 ms** (−0.68%) | 194 ms (−0.73%) | 23.4 s (+3.88%) | 107.2 s |
+| Fashion-MNIST | 8,192 | **242 ms** (−0.82%) | 420 ms (−0.83%) | 89.4 s (+3.16%) | 217.7 s |
+| Kannada-MNIST | 4,096 | **163 ms** (−0.07%) | 197 ms (+0.02%) | 24.4 s (+2.74%) | 113.3 s |
+| Kannada-MNIST | 8,192 | **230 ms** (−0.93%) | 392 ms (−0.84%) | 93.1 s (+1.35%) | 223.4 s |
+
+- **Against scikit-learn:** across 1,024 to 8,192 centroids `OMeans` fits 445–971× faster
+  than `KMeans` with held-out error between −0.93% and +0.44% of it.
+- **Against `EMeans`:** 60,000 rows are few for the two-level search. Training alone is
+  1.4× faster at 4,096 centroids and 2.0–2.3× at 8,192 from two epochs. At 1,024 and
+  2,048 centroids `OMeans` uses the full search and matches `EMeans` (62–114 ms).
+- **Limits at this size:** a one-epoch fit at 4,096 centroids gains only 1.1× on the M4
+  Max and is 7–11% slower than `EMeans` on an M5 Ultra.
+
+[Tables for every centroid count, both machines and the method](benchmarks/experiments/mnist-family-2026-11-02/README.md#o-means)
 
 **`LogisticRegression`**, run to convergence (`max_iter=5000`, default `tol=1e-4`). Times
 are medians of 5 fits, with float32 input for mlxlearn and float64 for scikit-learn.
