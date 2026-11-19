@@ -13,12 +13,14 @@ import pytest
 BENCH = Path(__file__).resolve().parents[2] / "benchmarks/e_means"
 sys.path.insert(0, str(BENCH))
 import omeans_compare as bench  # noqa: E402
+import omeans_interleaved as interleaved  # noqa: E402
 import omeans_report as report  # noqa: E402
 
 
-def _fit(mode, epochs, seconds, error, fraction=1.0, n=1000, k=10):
+def _fit(mode, epochs, seconds, error, fraction=1.0, n=1000, k=10, pressure=0):
     return {"mode": mode, "epochs": epochs, "seconds": seconds, "test_mse": error,
-            "evaluated_fraction": fraction, "evaluated_distances": fraction * n * k * epochs}
+            "evaluated_fraction": fraction, "evaluated_distances": fraction * n * k * epochs,
+            "thermal_pressure": pressure}
 
 
 def _record(dataset="data", precision="float32", seed=10, fits=None, **changes):
@@ -92,7 +94,7 @@ def test_campaign_skips_measured_records_and_stops_on_a_failed_worker(tmp_path, 
     monkeypatch.setattr(bench.subprocess, "run", fake_run)
     args = SimpleNamespace(
         protocol=bench.DEFAULT_PROTOCOL, datasets=["spacev-1M"], modes=list(bench.MODES),
-        precision=["float32"], seeds=[10], rows=None, k=None, threads=8, timeout=10.0,
+        precision=["float32"], seeds=[10], rows=None, k=None, threads=8, timeout=10.0, settle=300.0,
         cache=tmp_path, faiss_source=tmp_path, out=tmp_path, force=False)
     (tmp_path / "spacev-1M-float32-s10.json").write_text(json.dumps({"sources": captured}))
     bench.run(args)
@@ -103,6 +105,7 @@ def test_campaign_skips_measured_records_and_stops_on_a_failed_worker(tmp_path, 
         bench.run(args)
     assert len(calls) == 1 and calls[0]["expected_sources"] == captured
     assert calls[0]["k"] == 16384 and calls[0]["modes"] == list(bench.MODES)
+    assert calls[0]["settle"] == 300.0
     with pytest.raises(SystemExit, match="Not in the protocol"):
         bench.run(SimpleNamespace(**{**vars(args), "datasets": ["unknown"]}))
 
@@ -134,7 +137,9 @@ def test_error_at_a_time_budget():
 
 
 def test_validation_rejects_mixed_campaigns_duplicates_and_subsets():
-    assert report.validate([_record(), _record(seed=11)]) == {"records": 2, "datasets": 1, "seeds": [10, 11]}
+    checked = report.validate([_record(), _record(seed=11)])
+    assert (checked["records"], checked["datasets"], checked["seeds"]) == (2, 1, [10, 11])
+    assert checked["timing"] == "sequential" and checked["thermal_calls"] == {"0": 12}
     with pytest.raises(ValueError, match="No o-means"):
         report.validate([])
     with pytest.raises(ValueError, match="mixed source"):
@@ -143,10 +148,65 @@ def test_validation_rejects_mixed_campaigns_duplicates_and_subsets():
         report.validate([_record(), _record(seed=11, device={"device_name": "Apple M5 Ultra"})])
     with pytest.raises(ValueError, match="duplicate"):
         report.validate([_record(), _record()])
+    unfinished = [_record(), _record(seed=11), _record(dataset="other")]
+    with pytest.raises(ValueError, match="incomplete campaign"):
+        report.validate(unfinished)
+    assert report.validate(unfinished, partial=True)["seeds"] == [10, 11]
     with pytest.raises(ValueError, match="diagnostic subset"):
         report.validate([_record(rows_limit=1000)])
     with pytest.raises(ValueError, match="invalid measurement"):
         report.validate([_record(fits=[_fit("metal-emeans", 1, 0.0, 1.0)])])
+    with pytest.raises(ValueError, match="under thermal pressure"):
+        report.validate([_record(fits=[_fit("metal-emeans", 1, 1.0, 1.0, pressure=1)])])
+    unrecorded = _fit("metal-emeans", 1, 1.0, 1.0)
+    del unrecorded["thermal_pressure"]
+    with pytest.raises(ValueError, match="no thermal pressure recorded"):
+        report.validate([_record(fits=[unrecorded])])
+    # A level that could not be read is not evidence of throttling.
+    assert report.validate([_record(fits=[_fit("metal-emeans", 1, 1.0, 1.0, pressure=None)])])["records"] == 1
+
+
+def test_interleaved_records_keep_thermal_pressure_and_are_not_mixed_with_sequential_ones():
+    hot = [_fit("metal-emeans", 1, 4.0, 10.0, pressure=2), _fit("metal-omeans", 1, 1.0, 10.0, 0.2, pressure=1)]
+    hot[0]["thermal_pressure_all"] = [0, 2, 2]
+    hot[1]["thermal_pressure_all"] = [1, 0, 0]
+    records = [_record(fits=hot, timing="interleaved"), _record(seed=11, fits=hot, timing="interleaved")]
+    checked = report.validate(records)
+    assert checked["timing"] == "interleaved"
+    assert checked["thermal_calls"] == {"0": 6, "1": 2, "2": 4}
+    with pytest.raises(ValueError, match="timing differs"):
+        report.validate([records[0], _record(seed=11)])
+    text = report.markdown(report.summarize(*report.aggregate(records)), checked,
+                           records[0]["device"], records[0]["versions"])
+    assert "interleaved" in text and "nominal 50.0%, moderate 16.7%, heavy 33.3%" in text
+    assert "Every timed call started and ended at nominal" not in text
+
+
+def test_interleaved_rounds_visit_every_configuration_in_fresh_orders():
+    orders = [interleaved.round_order(14, 10, index) for index in range(interleaved.ROUNDS)]
+    assert all(sorted(order) == list(range(14)) for order in orders)
+    assert len({tuple(order) for order in orders}) == interleaved.ROUNDS
+    assert orders[0] == interleaved.round_order(14, 10, 0) != interleaved.round_order(14, 11, 0)
+    # Long fits are timed once, short ones in every round.
+    assert [interleaved.timed_rounds(seconds) for seconds in (0.0, 1.9, 2.0, 40.0)] == [3, 3, 1, 1]
+    captured = interleaved.sources()
+    assert "benchmarks/e_means/omeans_interleaved.py" in captured
+    assert {name: digest for name, digest in captured.items()
+            if name != "benchmarks/e_means/omeans_interleaved.py"} == bench.sources()
+
+
+def test_timed_calls_wait_for_nominal_thermal_pressure():
+    levels = iter([2, 2, 1, 0])
+    slept = []
+    assert bench.settle(300.0, read=lambda: next(levels), sleep=slept.append) == (3.0, 0)
+    assert slept == [1.0, 1.0, 1.0]
+    # Nominal, or unreadable, pressure costs no wait; the wait is bounded.
+    assert bench.settle(300.0, read=lambda: 0, sleep=slept.append) == (0.0, 0)
+    assert bench.settle(300.0, read=lambda: None, sleep=slept.append) == (0.0, None)
+    assert bench.settle(2.0, read=lambda: 1, sleep=lambda seconds: None) == (2.0, 1)
+    assert bench.worst_pressure(0, None, 2) == 2 and bench.worst_pressure(None, None) is None
+    level = bench.thermal_pressure()
+    assert level is None or 0 <= level <= 4
 
 
 def test_summary_and_markdown_from_two_seeds(tmp_path):

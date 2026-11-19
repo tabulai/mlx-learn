@@ -24,7 +24,10 @@ import numpy as np
 
 try:
     from . import run as base
+    from .omeans_compare import settle, thermal_pressure, worst_pressure
 except ImportError:  # executed as a script
+    from omeans_compare import settle, thermal_pressure, worst_pressure
+
     import run as base
 
 from mlxlearn._kernels.e_means import assign
@@ -86,6 +89,9 @@ def measure(x, args, precision, tile):
     scores, positions = tiled_scan(batch, mirror, norms, probes, cells, tile=tile)
     mx.eval(centers, offset, batch, mirror, norms, probes, pairs, plan, scores, positions,
             *cells.arrays())
+    # The preparation fit loads the GPU for seconds; a laptop needs a pause
+    # before its timings are those of a rested machine.
+    time.sleep(args.rest)
 
     def dense():
         return assign(batch, search_centers, precision=precision)[:1]
@@ -105,8 +111,11 @@ def measure(x, args, precision, tile):
     }
     if args.scalar:
         stages["scalar_scan"] = lambda: scalar_scan(batch, mirror, norms, probes, cells)
-    record = {name: dict(zip(("median_ms", "min_ms"), timed(function, args.repeats), strict=True))
-              for name, function in stages.items()}
+    record, pressures = {}, []
+    for name, function in stages.items():
+        _, before = settle(args.settle)
+        record[name] = dict(zip(("median_ms", "min_ms"), timed(function, args.repeats), strict=True))
+        pressures.append(worst_pressure(before, thermal_pressure()))
 
     sizes = np.asarray(cells.sizes).astype(np.int64)
     probed = np.asarray(probes)
@@ -129,6 +138,7 @@ def measure(x, args, precision, tile):
         scan_useful_tflops=flops * useful / record["scan"]["median_ms"] / 1e9,
         scan_padded_tflops=flops * padded / record["scan"]["median_ms"] / 1e9,
         speedup=record["dense"]["median_ms"] / record["two_level"]["median_ms"],
+        thermal_pressure=worst_pressure(*pressures), rest_seconds=args.rest,
     )
     return record
 
@@ -147,6 +157,10 @@ def main():
                         help="BM,BK,PAD,BN tile shapes, or 'default' for the built-in shape")
     parser.add_argument("--fit-epochs", type=float, default=1.0)
     parser.add_argument("--repeats", type=int, default=7)
+    parser.add_argument("--rest", type=float, default=0.0,
+                        help="idle seconds between the preparation fit and the timings")
+    parser.add_argument("--settle", type=float, default=300.0,
+                        help="longest wait, in seconds, for nominal thermal pressure before a stage")
     parser.add_argument("--seed", type=int, default=10)
     parser.add_argument("--scalar", action="store_true", help="also time the scalar reference scan")
     parser.add_argument("--cache", type=Path, default=base.DEFAULT_CACHE)

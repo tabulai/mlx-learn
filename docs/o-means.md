@@ -3,7 +3,8 @@
 `mlxlearn.cluster.OMeans` is [e-means](e-means.md) with a two-level
 nearest-centroid search. E-means compares every training row with every
 centroid; o-means compares it with the centroids of a few nearby coarse cells
-only, 10–21% of them on the embedding datasets measured here. It follows the
+only: 10–25% of them at 8,192 to 16,384 centroids on the embedding datasets
+measured here, and 6% at 65,536. It follows the
 [o-means post](https://owlgebra.ai/blog/o-means/) and the `contrib/o_means`
 package of the owlgebra-ai/faiss fork (MIT). The Metal kernels are a separate
 implementation; the upstream CUDA kernels were not ported.
@@ -19,11 +20,12 @@ labels = model.labels_          # full search against the returned centers
 ```
 
 `OMeans` is for large `n_clusters`: thousands to 65,536 centroids on one Apple
-GPU, with the data resident there. Below about 4,200 centroids a row's probes
-cover more than half of the centroids and little is saved; `OMeans` then
-trains with the full search, exactly as e-means does. It requires a Metal GPU and never falls
-back to the CPU. It is an explicit estimator and is not part of
-`patch_sklearn()`.
+GPU, with the data resident there. With few centroids a row's probes cover
+more than half of them and little is saved; `OMeans` then trains with the
+full search, exactly as e-means does. With the default cells and probes that
+is below 4,224 centroids, or below 2,176 from 512 features up. It requires a
+Metal GPU and never falls back to the CPU. It is an explicit estimator and is
+not part of `patch_sklearn()`.
 
 ## What changes relative to e-means
 
@@ -55,8 +57,8 @@ centroid during the last pass. Below two epochs, o-means weights every batch
 of the run by `exp(-r / n_samples)`, where `r` is the number of rows processed
 after that batch. A split gives donor and child half of the donor's
 accumulated mass each. From two epochs up o-means uses e-means' last-pass
-mean. In the measurements below the recency-weighted mean lowered held-out
-error at one epoch by 0.3–1.1% with a full search.
+mean. With a full search, the recency-weighted mean lowered held-out error at
+one epoch by 0.24–1.20% across 18 datasets.
 
 `recipe_` records the resolved cells, probes, rebuild cadence, closing mean and
 the search that was used. `iteration_stats_` records, per pass, the share of
@@ -78,7 +80,9 @@ the full search's distances that were evaluated.
 `assignment="auto"` uses the two-level search when all of these hold, and the
 full search otherwise. `recipe_["search_reason"]` states which applied.
 
-- The probes are expected to cover at most half of the centroids.
+- The probes are expected to cover at most half of the centroids. With the
+  default cells and probes that is from 4,224 centroids, or from 2,176 from
+  512 features up.
 - `n_clusters` is at most 65,536 and `n_probe` at most 128.
 - The GPU is one on which whole fits were measured faster: M1 Ultra, M4 Max
   and M5 Ultra as of MLX 0.32.4. Other GPUs use the full search until they
@@ -135,22 +139,34 @@ padding where a cell does not end on a tile boundary.
 
 | GPU | Dataset | d | Precision | Full search | Two-level | Speed-up | Scan, useful TFLOP/s | Full search TFLOP/s |
 |---|---|---:|---|---:|---:|---:|---:|---:|
-| M4 Max | DEEP 1M | 96 | float32 | 9.93 ms | 2.60 ms | 3.82× | 7.20 | 10.38 |
-| M4 Max | SPACEV 1M | 100 | float32 | 11.04 ms | 3.09 ms | 3.57× | 6.54 | 9.73 |
-| M4 Max | ImageNet-CLIP | 512 | float32 | 45.65 ms | 7.65 ms | 5.97× | 9.04 | 12.04 |
-| M4 Max | GooAQ | 768 | float32 | 69.73 ms | 13.33 ms | 5.23× | 9.16 | 11.83 |
-| M4 Max | AG-News | 1,024 | float32 | 97.17 ms | 19.03 ms | 5.11× | 8.16 | 11.32 |
-| M4 Max | ImageNet-CLIP | 512 | bfloat16 | 40.23 ms | 6.87 ms | 5.86× | 10.09 | 13.67 |
+| M4 Max | DEEP 1M | 96 | float32 | 10.42 ms | 2.89 ms | 3.61× | 6.88 | 9.89 |
+| M4 Max | DEEP 1M | 96 | bfloat16 | 8.33 ms | 2.52 ms | 3.30× | 7.50 | 12.38 |
+| M4 Max | SPACEV 1M | 100 | float32 | 11.82 ms | 3.26 ms | 3.63× | 6.29 | 9.08 |
+| M4 Max | SPACEV 1M | 100 | bfloat16 | 11.44 ms | 3.03 ms | 3.78× | 6.85 | 9.39 |
+| M4 Max | ImageNet-CLIP | 512 | float32 | 46.67 ms | 7.59 ms | 6.15× | 9.16 | 11.78 |
+| M4 Max | ImageNet-CLIP | 512 | bfloat16 | 40.75 ms | 6.92 ms | 5.89× | 10.04 | 13.49 |
+| M4 Max | GooAQ | 768 | float32 | 69.51 ms | 12.55 ms | 5.54× | 8.90 | 11.86 |
+| M4 Max | GooAQ | 768 | bfloat16 | 59.15 ms | 10.86 ms | 5.45× | 10.31 | 13.94 |
+| M4 Max | AG-News | 1,024 | float32 | 90.13 ms | 17.37 ms | 5.19× | 8.90 | 12.20 |
+| M4 Max | AG-News | 1,024 | bfloat16 | 78.12 ms | 14.40 ms | 5.42× | 10.78 | 14.08 |
+| M1 Ultra | SPACEV 1M | 100 | float32 | 17.24 ms | 4.35 ms | 3.96× | 4.48 | 6.23 |
+| M1 Ultra | SPACEV 1M | 100 | bfloat16 | 12.76 ms | 4.10 ms | 3.11× | 4.70 | 8.42 |
+| M1 Ultra | ImageNet-CLIP | 512 | float32 | 42.34 ms | 9.05 ms | 4.68× | 7.33 | 12.98 |
+| M1 Ultra | ImageNet-CLIP | 512 | bfloat16 | 36.80 ms | 8.42 ms | 4.37× | 8.04 | 14.94 |
 | M5 Ultra | SPACEV 1M | 100 | float32 | 7.51 ms | 1.62 ms | 4.63× | 11.86 | 14.30 |
 | M5 Ultra | SPACEV 1M | 100 | bfloat16 | 4.62 ms | 1.59 ms | 2.90× | 12.07 | 23.26 |
 | M5 Ultra | ImageNet-CLIP | 512 | float32 | 22.04 ms | 3.63 ms | 6.07× | 18.40 | 24.95 |
 | M5 Ultra | ImageNet-CLIP | 512 | bfloat16 | 18.08 ms | 3.55 ms | 5.09× | 18.84 | 30.40 |
 
-The M4 Max rows were measured before the default tile shape was unified; the
-BF16 row used a 64 × 64 tile with depth 32. A sweep on M4 Max then found the
-64 × 64 tile with depth 16 fastest or within noise for both precisions at 100
-and 768 features. Narrower centroid tiles, and skipping half a tile on short
-cell tails, were slower. On M5 Ultra four tile shapes were within about 5%.
+All rows use the default tile: 64 rows by 64 centroids, depth 16, for both
+precisions. On useful distances the scan reaches 61–78% of the full search's
+throughput on M4 Max, 54–72% on M1 Ultra and 52–83% on M5 Ultra. A sweep on
+M4 Max found that tile fastest or within noise at 100 and 768 features;
+narrower centroid tiles, and skipping half a tile on short cell tails, were
+slower. On M5 Ultra four tile shapes were within about 5%. The M4 Max is a
+laptop: its rows were taken after a 20-second pause at nominal thermal
+pressure, because sustained load slows its full search (see the
+[benchmark report](o-means-benchmarks-2026-11-18.md)).
 
 Where a batch's time goes on M4 Max, net of one dispatch per stage:
 
@@ -168,38 +184,53 @@ Where a batch's time goes on M4 Max, net of one dispatch per stage:
 The scan is 62–76% of a batch. The largest remaining items are the padding
 inside the scan (about a fifth of its work) and, at low dimension, probing.
 
-## Quality
+## Fit speed and quality
 
-Held-out MSE relative to `EMeans(recipe="faiss")` at the same epochs, seed and
-starting centroids, with the reference scalar scan, on M4 Max. "Missed" is the
-share of rows whose two-level label differs from the full-search label on the
-final centroids.
+Three seeds on an M5 Ultra, 18 datasets, against `EMeans(recipe="faiss")`
+with the same batch law, seed and starting centroids, both from resident
+inputs. "Same epochs" divides e-means' fit time by o-means' at one and two
+epochs. "To e-means' error" divides e-means' time at one, two and three
+epochs by the time o-means needs to reach the same held-out error. Both are
+geometric means, with the range over datasets and budgets in parentheses.
 
-| Dataset | d | k | Distances evaluated | Missed | Error at 1 / 2 / 3 epochs |
-|---|---:|---:|---:|---:|---|
-| SPACEV 1M | 100 | 16,384 | 13.8% | 0.6–0.8% | −0.58% / +0.11% / +0.35% |
-| DEEP 1M | 96 | 16,384 | 13.2% | 0.4–0.5% | −0.21% / −0.26% / −0.20% |
-| ImageNet-CLIP | 512 | 16,384 | 11.5% | 0.2% | −0.65% / −0.10% / +0.06% |
-| GooAQ | 768 | 16,384 | 10.7% | 0.8–1.0% | −0.17% / −0.03% / −0.02% |
-| AG-News | 1,024 | 16,384 | 10.4% | 0.3–0.4% | −0.63% / +0.02% / −0.15% |
-| SimpleWiki | 3,072 | 8,192 | 21% | 0.1–0.2% | −1.11% / +0.13% / +0.01% |
-| GloVe-200 (as stored, not normalized) | 200 | 16,384 | 98–100% | 0.9–1.1% | −0.38% / +0.07% / −0.01% |
+| Datasets | Centroids compared | Same epochs, float32 | Same epochs, BF16 | To e-means' error, float32 | To e-means' error, BF16 |
+|---|---:|---:|---:|---:|---:|
+| 15 embedding sets, 0.18–1.5M rows, 8,192–16,384 centroids | 10–25% | 4.2× (1.6–5.6) | 3.3× (1.5–5.2) | 4.2× (1.8–6.1) | 3.5× (1.7–5.2) |
+| SPACEV and DEEP, 10M rows, 65,536 centroids | 6% | 9.6× (9.0–10.3) | 5.9× (5.2–6.6) | 8.8× (7.7–10.4) | 5.9× (5.0–6.6) |
+| All 18, GloVe included | 6–100% | 4.44× | 3.42× | 4.44× | 3.55× |
 
-With a full search (`assignment="dense"`), o-means matched e-means within
-0.04% from two epochs up on all seven datasets, as it should: the two then
-run the same algorithm.
+Held-out error at the same epochs was −1.14% to +0.10% of e-means' at one
+epoch, where the closing mean helps, and −0.17% to +0.36% at two. O-means
+needs more epochs than e-means to match its two- and three-epoch error, which
+is why the speed-up at equal error falls from 4.7× at one epoch to 4.1× at
+three in float32. With a full search (`assignment="dense"`), o-means matched
+e-means within 0.05% at two epochs and ran at its speed (0.96–1.03×), as it
+should: the two then run the same algorithm.
 
-Fit times, time to equal error and the comparison across seeds are in the
+On the final centroids of a one-epoch fit, 0.25–1.3% of rows receive a
+different centroid from the two-level search than from a full search
+(measured on DEEP 1M, SPACEV 1M, ImageNet-CLIP, GooAQ and AG-News).
+
+On a MacBook Pro M4 Max the same campaign, timed with the configurations
+taking turns because that laptop throttles, gave 4.13× (float32) and 3.96×
+(BF16) to e-means' error over the 18 datasets, 4.20× and 3.90× at the same
+epochs, and 7.3× and 7.0× to e-means' error at ten million rows and 65,536
+centroids: [M4 Max report](o-means-benchmarks-m4-max-2026-11-19.md). On M1
+Ultra, same epochs at 16,384 centroids: 2.8–4.1× on SPACEV 1M and
+ImageNet-CLIP. Per-dataset tables, the comparison at equal time, the sweep
+over the centroid count and the method are in the
 [benchmark report](o-means-benchmarks-2026-11-18.md).
 
 ## Limitations
 
-- **Uneven cells remove the saving.** On unnormalized GloVe-200 one cell
-  collects most of the centroids, every row probes it, and the search compares
-  98–100% of the centroids. Forced two-level fits were about 20% slower than
-  e-means there. `auto` detects this after the first batch and returns to the
-  full search; the fit then takes about as long as e-means. The upstream
-  package reports the same effect on synthetic high-dimensional mixtures.
+- **Uneven cells reduce or remove the saving.** On unnormalized GloVe-200
+  most cells hold one to four centroids and a few hold the rest. With two of
+  three seeds the search compared 42–45% of the centroids and fits were
+  1.7–2.6× faster than e-means on M5 Ultra. With the third it compared
+  99–100%, and a forced two-level fit ran at 0.82–1.27× of e-means' speed.
+  `auto` detects that case after the first batch and returns to the full
+  search; the fit then takes as long as e-means. The upstream package reports
+  the same effect on synthetic high-dimensional mixtures.
 - **The search is approximate**, with no worst-case bound on missed
   neighbours. The upstream package reports up to 1.7% higher error at equal
   epochs on dense synthetic Gaussian mixtures; a larger `n_probe` trades speed
@@ -208,6 +239,10 @@ Fit times, time to equal error and the comparison across seeds are in the
   sort stays inside MLX's verified sort widths, and larger tables were not
   evaluated upstream either.
 - **Hardware coverage** is M1 Ultra, M4 Max and M5 Ultra with MLX 0.32.4.
+- **Laptops throttle.** Under sustained load a MacBook Pro M4 Max slowed the
+  full search far more than the two-level search, so o-means' advantage there
+  grows with run time. Compare the two only in matched thermal states; the
+  benchmark tools record the thermal pressure level for that reason.
 - No spherical mode, slow EMA or paper recipe; use `EMeans` for those. The
   whole input must fit on the GPU, as for `EMeans`.
 
@@ -217,11 +252,27 @@ Fit times, time to equal error and the comparison across seeds are in the
 .venv/bin/python -m benchmarks.e_means.two_level_bench --dataset spacev-1M \
     --precision float32 bfloat16
 .venv/bin/python -m benchmarks.e_means.omeans_compare run --seeds 10 11 12
-.venv/bin/python -m benchmarks.e_means.omeans_report
+.venv/bin/python -m benchmarks.e_means.omeans_report \
+    --append benchmarks/e_means/omeans_report_notes.md
+.venv/bin/python -m benchmarks.e_means.omeans_centroid_sweep run \
+    --datasets spacev-1M imagenet-clip-512-normalized --output sweep.jsonl
 ```
 
-`two_level_bench` times one batch stage by stage and accepts `--data file.npy`
-for machines without the dataset cache. `omeans_compare` runs each (dataset,
-precision, seed) in a fresh process and records the hash of every measured
-source file; run it from a checkout nobody else edits, and pass
-`--faiss-source` when working in a git worktree.
+- `two_level_bench` times one batch stage by stage. It accepts
+  `--data file.npy` for machines without the dataset cache, and `--rest` for
+  a pause before timing on a laptop.
+- `omeans_compare` runs each (dataset, precision, seed) in a fresh process
+  and records the hash of every measured source file and the thermal pressure
+  level of every timed call. Run it from a checkout nobody else edits, on a
+  machine whose fit time stays flat under continuous load, and pass
+  `--faiss-source` when working in a git worktree.
+- `omeans_interleaved` runs the same campaign with the timed calls of all
+  configurations taken in turn, for a laptop whose GPU throttles: it keeps
+  the configurations in one machine state where `omeans_compare` would time
+  them minutes apart.
+- `omeans_report` refuses mixed, incomplete or throttled campaigns; records
+  of `omeans_interleaved` may have seen thermal pressure, which the report
+  then states.
+- `omeans_centroid_sweep` times e-means, forced two-level and `auto` in turn
+  over the centroid count; `omeans_device_fits` does the same from `.npy`
+  files on a machine without the dataset cache.

@@ -114,8 +114,13 @@ faster, with test-MSE differences within 0.061% in this single-seed campaign.
 
 For many centroids, [`OMeans`](docs/o-means.md) trains e-means with a two-level
 search: each row is compared only with the centroids of a few nearby coarse
-cells, 10–21% of them on the measured embedding datasets. It follows the
+cells, 6–25% of them on the measured embedding datasets. It follows the
 [o-means post](https://owlgebra.ai/blog/o-means/) with separate Metal kernels.
+In a three-seed campaign over 18 datasets on an M5 Ultra it reached
+`EMeans`' held-out error 4.4× faster in float32 and 3.5× in BF16 (geometric
+means; 1.6–10.4× across datasets), and 8.8× faster in float32 at 65,536
+centroids over ten million rows. On a MacBook Pro M4 Max the same campaign
+gave 4.1× and 4.0×.
 
 ```python
 from mlxlearn.cluster import OMeans
@@ -126,8 +131,9 @@ model = OMeans(n_clusters=16384, max_iter=2, random_state=10).fit(X_train)
 Final labels, `predict` and `score` use a full search. `assignment="auto"`
 uses the two-level search only where it was measured faster and returns to
 the full search when a fit's cells turn out too uneven to save comparisons.
-See the [implementation guide](docs/o-means.md) and the
-[benchmark report](docs/o-means-benchmarks-2026-11-18.md).
+See the [implementation guide](docs/o-means.md) and the benchmark reports for
+[M5 Ultra](docs/o-means-benchmarks-2026-11-18.md) and
+[M4 Max](docs/o-means-benchmarks-m4-max-2026-11-19.md).
 
 For full-batch Lloyd clustering, [Metal `KMeans`](docs/k-means.md) is available
 through `from mlxlearn.cluster import KMeans`. It supports dense FP32 training,

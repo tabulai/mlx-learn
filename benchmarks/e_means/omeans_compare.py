@@ -8,6 +8,17 @@ mean. It excludes loading, validation, upload, warm-up and scoring; no final
 label pass is timed for either method. Held-out error uses the shared scorer:
 exact FP32 nearest-centroid assignment and a float64 residual.
 
+Thermal state. A throttled GPU slows the full search more than the two-level
+search, so a comparison across thermal states overstates o-means. On a
+MacBook Pro M4 Max, four minutes of back-to-back e-means fits raised the
+macOS thermal pressure level from nominal to heavy and slowed the same fit
+2.4 times, while an o-means fit slowed far less. Each timed call therefore
+waits for nominal thermal pressure first, and the level read before and after
+the call is recorded; ``omeans_report`` rejects a record with a call that ran
+under thermal pressure. Sustained load also slows that laptop by up to 30%
+before any pressure is reported, which this guard cannot see: run campaigns
+on a machine whose fit time stays flat under continuous load.
+
 Modes:
 
 ``metal-emeans``        ``EMeans(recipe="faiss")`` with o-means' batch law.
@@ -61,6 +72,38 @@ def load_protocol(path):
     return protocol
 
 
+def thermal_pressure():
+    """macOS thermal pressure: 0 nominal, 1 moderate, 2 heavy, 3 trapping, 4 sleeping.
+
+    ``None`` where the level cannot be read.
+    """
+    try:
+        answer = subprocess.run(
+            ["notifyutil", "-g", "com.apple.system.thermalpressurelevel"],
+            capture_output=True, text=True, timeout=5, check=False).stdout.split()
+        return int(answer[-1])
+    except (OSError, ValueError, IndexError, subprocess.TimeoutExpired):
+        return None
+
+
+def settle(limit, poll=1.0, read=thermal_pressure, sleep=time.sleep):
+    """Wait for nominal thermal pressure, at most ``limit`` seconds.
+
+    Returns the seconds waited and the last level read.
+    """
+    waited, level = 0.0, read()
+    while level and waited < limit:
+        sleep(poll)
+        waited += poll
+        level = read()
+    return waited, level
+
+
+def worst_pressure(*levels):
+    known = [level for level in levels if level is not None]
+    return max(known) if known else None
+
+
 def expected_calls(seconds):
     """Three timed calls for short fits, one for long ones."""
     return 3 if seconds < 2.0 else 1
@@ -107,20 +150,32 @@ def worker(config):
             model = model_for(mode, k, epochs, law, precision, seed)
             current = model.prepare_device(resident)
             model.train_device(current)
-            times, result = [], None
+            times, pressures, waited, result = [], [], 0.0, None
             while len(times) < expected_calls(times[0] if times else 0.0):
+                paused, before = settle(config["settle"])
+                if paused:
+                    # The GPU went idle while it cooled: bring it back to its
+                    # working state before the timer starts.
+                    waited += paused
+                    sample = resident[:4096].astype(mx.float32)
+                    until = time.perf_counter() + 0.1
+                    while time.perf_counter() < until:
+                        mx.eval(mx.sum(sample @ sample.T))
                 mx.clear_cache()
                 mx.synchronize()
                 start = time.perf_counter()
                 result = model.train_device(current)
                 mx.synchronize()
                 times.append(time.perf_counter() - start)
+                pressures.append(worst_pressure(before, thermal_pressure()))
             centers = np.asarray(result.centers)
             history = list(result.history)
             evaluated = sum(record.get("evaluated_distances", record["rows"] * k) for record in history)
             fit = {
                 "mode": mode, "epochs": epochs, "seconds": float(np.median(times)),
                 "seconds_all": times, "timed_calls": len(times),
+                "thermal_pressure": worst_pressure(*pressures),
+                "thermal_pressure_all": pressures, "settle_seconds": waited,
                 "test_mse": base.mse(centers, test),
                 "train_sample_mse": base.mse(
                     centers, x[np.linspace(0, n - 1, min(n, 10_000)).astype(int)]),
@@ -133,7 +188,9 @@ def worker(config):
             fits.append(fit)
             print(f"{config['dataset']} {precision} s{seed} {mode} T={epochs}: "
                   f"{fit['seconds']:.3f}s mse {fit['test_mse']:.6g} "
-                  f"fraction {fit['evaluated_fraction']:.3f}", flush=True)
+                  f"fraction {fit['evaluated_fraction']:.3f} "
+                  f"thermal {fit['thermal_pressure']}"
+                  + (f" (waited {waited:.0f}s)" if waited else ""), flush=True)
             del model, current, result
     if sources() != captured:
         raise RuntimeError("Measured source changed during the measurement")
@@ -179,7 +236,7 @@ def run(args):
                     "dataset": name, "k": args.k or entries[name]["k"], "rows": args.rows,
                     "precision": precision, "seed": seed, "modes": modes,
                     "epochs": {mode: protocol["epochs"][mode] for mode in modes},
-                    "threads": args.threads, "cache": str(args.cache),
+                    "threads": args.threads, "settle": args.settle, "cache": str(args.cache),
                     "faiss_source": str(args.faiss_source), "protocol": str(args.protocol),
                     "expected_sources": captured, "output": str(output),
                 }
@@ -203,6 +260,8 @@ def main():
     campaign.add_argument("--k", type=int, help="diagnostic override of the protocol's k")
     campaign.add_argument("--threads", type=int, default=8)
     campaign.add_argument("--timeout", type=float, default=4 * 3600.0)
+    campaign.add_argument("--settle", type=float, default=300.0,
+                          help="longest wait, in seconds, for nominal thermal pressure before a timed call")
     campaign.add_argument("--protocol", type=Path, default=DEFAULT_PROTOCOL)
     campaign.add_argument("--cache", type=Path, default=base.DEFAULT_CACHE)
     campaign.add_argument("--faiss-source", type=Path, default=base.REPO / "tmp/e_means/faiss")

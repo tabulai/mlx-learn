@@ -13,6 +13,7 @@ import argparse
 import csv
 import json
 import math
+import statistics
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -33,13 +34,25 @@ def load(results):
     return [record for record in records if record.get("kind") == KIND]
 
 
-def validate(records):
-    """One campaign: every record measured the same sources on the same machine."""
+def validate(records, partial=False):
+    """One campaign: every record measured the same sources on the same machine.
+
+    Every (dataset, precision) must also have the same seeds, unless ``partial``
+    allows a draft from a campaign that is still running. A fit timed under
+    thermal pressure is rejected: throttling slows the full search more than
+    the two-level search and would overstate o-means. Records of
+    ``omeans_interleaved`` are exempt, because their configurations take turns
+    and share the machine's state; the levels they saw are counted instead.
+    """
     if not records:
         raise ValueError("No o-means comparison records")
     for field in GLOBAL_FIELDS:
         if any(record[field] != records[0][field] for record in records):
             raise ValueError(f"mixed source/environment/device campaigns: {field} differs")
+    timing = records[0].get("timing", "sequential")
+    if any(record.get("timing", "sequential") != timing for record in records):
+        raise ValueError("mixed source/environment/device campaigns: timing differs")
+    levels = defaultdict(int)
     seen = set()
     for record in records:
         key = (record["dataset"], record["precision"], record["seed"])
@@ -51,12 +64,28 @@ def validate(records):
         for fit in record["fits"]:
             if not (fit["seconds"] > 0 and math.isfinite(fit["test_mse"])):
                 raise ValueError(f"invalid measurement in {key}")
-    return {"records": len(records), "datasets": len({r["dataset"] for r in records}),
-            "seeds": sorted({r["seed"] for r in records})}
+            if "thermal_pressure" not in fit:
+                raise ValueError(f"no thermal pressure recorded in {key}")
+            if fit["thermal_pressure"] and timing != "interleaved":
+                raise ValueError(f"measured under thermal pressure: {key}, {fit['mode']} "
+                                 f"at {fit['epochs']:g} epochs, level {fit['thermal_pressure']}")
+            for level in fit.get("thermal_pressure_all", [fit["thermal_pressure"]]):
+                levels[level] += 1
+    seeds = sorted({r["seed"] for r in records})
+    groups = defaultdict(set)
+    for record in records:
+        groups[(record["dataset"], record["precision"])].add(record["seed"])
+    missing = sorted(key for key, found in groups.items() if sorted(found) != seeds)
+    if missing and not partial:
+        raise ValueError(f"incomplete campaign: {missing} lack some of seeds {seeds}")
+    return {"records": len(records), "datasets": len({r["dataset"] for r in records}), "seeds": seeds,
+            "timing": timing,
+            "thermal_calls": {str(level): count for level, count in sorted(
+                levels.items(), key=lambda item: (item[0] is None, item[0] or 0))}}
 
 
 def aggregate(records):
-    """Mean time, error and distances per (dataset, precision, mode, epochs) over seeds."""
+    """Per (dataset, precision, mode, epochs) over seeds: median time, mean error and distances."""
     groups = defaultdict(list)
     shapes = {}
     for record in records:
@@ -67,7 +96,7 @@ def aggregate(records):
     for (dataset, precision, mode, epochs), fits in groups.items():
         curves[(dataset, precision)].setdefault(mode, []).append({
             "epochs": epochs, "seeds": len(fits),
-            "seconds": sum(f["seconds"] for f in fits) / len(fits),
+            "seconds": statistics.median(f["seconds"] for f in fits),
             "error": sum(f["test_mse"] for f in fits) / len(fits),
             "distances": sum(f["evaluated_distances"] for f in fits) / len(fits),
             "fraction": sum(f["evaluated_fraction"] for f in fits) / len(fits),
@@ -161,22 +190,74 @@ def _number(value, pattern="{:.2f}", missing="n/a"):
     return missing if value is None else pattern.format(value)
 
 
-def markdown(rows, validation, device, versions):
+def _extreme(rows, key, pick):
+    row = pick((row for row in rows if row[key] is not None), key=lambda row: row[key])
+    return f"{row[key]:.2f}× ({row['dataset']}, {row['epochs']:g} epochs)"
+
+
+def _summary(rows):
+    """One row per precision: the means the per-dataset tables below support."""
+    lines = ["## Summary", "",
+             "Geometric means over datasets and e-means budgets. \"Same epochs\" divides e-means' "
+             "fit time by o-means' at the budgets both were measured at.", "",
+             "| Precision | Datasets | Time to e-means' error, interpolated | First measured budget "
+             "| Slowest | Fastest | Same epochs | Distances at same epochs, median |",
+             "|---|---:|---:|---:|---|---|---:|---:|"]
+    for precision in sorted({row["precision"] for row in rows}):
+        selected = [row for row in rows if row["precision"] == precision]
+        fractions = [row["equal_epochs_fraction"] for row in selected
+                     if row["equal_epochs_fraction"] is not None]
+        lines.append(
+            f"| {precision} | {len({row['dataset'] for row in selected})} | "
+            f"{_number(geometric_mean([row['speedup'] for row in selected]))}× | "
+            f"{_number(geometric_mean([row['speedup_measured'] for row in selected]))}× | "
+            f"{_extreme(selected, 'speedup', min)} | {_extreme(selected, 'speedup', max)} | "
+            f"{_number(geometric_mean([row['equal_epochs_time_ratio'] for row in selected]))}× | "
+            f"{_number(statistics.median(fractions) if fractions else None, '{:.3f}')} |")
+    return lines + [""]
+
+
+THERMAL_LEVELS = {"0": "nominal", "1": "moderate", "2": "heavy", "3": "trapping", "4": "sleeping",
+                  "None": "unread"}
+
+
+def _thermal_sentence(validation):
+    """How the campaign was timed and which thermal pressure its calls saw."""
+    calls = validation.get("thermal_calls", {})
+    total = sum(calls.values())
+    if validation.get("timing") != "interleaved":
+        return "Every timed call started and ended at nominal macOS thermal pressure."
+    shares = ", ".join(f"{THERMAL_LEVELS.get(level, level)} {count / total:.1%}"
+                       for level, count in calls.items())
+    return ("The timed calls were interleaved: within each dataset, precision and seed, all "
+            "configurations took turns in freshly drawn orders, so that they share the machine's "
+            "thermal state. Each call waited for nominal macOS thermal pressure, for a bounded "
+            f"time; the worst level seen before or after a call was: {shares}.")
+
+
+TITLE = "o-means against e-means on Apple silicon"
+
+
+def markdown(rows, validation, device, versions, title=TITLE):
     lines = [
-        "# o-means against e-means on Apple silicon",
+        f"# {title}",
         "",
         f"Generated from {validation['records']} records over {validation['datasets']} datasets, "
         f"seeds {validation['seeds']}, on {device['device_name']} "
         f"(MLX {versions.get('mlx')}, Python {versions.get('python')}). "
         "Both methods use the Faiss e-means recipe, the same batch law, seed and starting "
         "centroids, with the training matrix resident on the GPU. Times are medians of "
-        "synchronized `train_device` calls after a full warm-up fit; errors are held-out MSE "
-        "with exact float32 assignment and a float64 residual.",
+        "synchronized `train_device` calls after a full warm-up fit, then the median over "
+        "seeds; errors are held-out MSE with exact float32 assignment and a float64 residual, "
+        "averaged over seeds. " + _thermal_sentence(validation),
         "",
     ]
+    lines += _summary(rows)
     for precision in sorted({row["precision"] for row in rows}):
         selected = [row for row in rows if row["precision"] == precision]
         budgets = sorted({row["epochs"] for row in selected})
+        shared = [b for b in budgets if any(row["equal_epochs_time_ratio"] is not None
+                                            for row in selected if row["epochs"] == b)]
         lines += [f"## {precision}", "", "### Time to e-means' error", "",
                   "Speed-up is e-means' fit time divided by the time o-means needs to reach the same "
                   "held-out error. `≥` marks a target the smallest o-means budget already met. "
@@ -212,25 +293,29 @@ def markdown(rows, validation, device, versions):
                   f"{_number(overall_measured)}× measured-only."
                   + (f" Not reached within the measured budgets: {', '.join(unreached)}." if unreached else ""),
                   "", "### Same epoch budget", "",
+                  "Only the budgets both methods were measured at. "
                   "o-means and e-means at the same number of epochs: how much faster o-means' fit is, "
                   "its held-out error relative to e-means' (negative is better), the share of "
                   "distances it evaluated, and the error of o-means with a full search, which "
                   "isolates the closing mean.", "",
-                  "| Dataset | " + " | ".join(f"Faster at {b:g}" for b in budgets) + " | "
-                  + " | ".join(f"Error at {b:g}" for b in budgets)
-                  + " | Distances | Full-search error at " + " / ".join(f"{b:g}" for b in budgets) + " |",
-                  "|---|" + "---:|" * (2 * len(budgets) + 2)]
+                  "| Dataset | " + " | ".join(f"Faster at {b:g}" for b in shared) + " | "
+                  + " | ".join(f"Error at {b:g}" for b in shared)
+                  + " | Distances | Full-search error at " + " / ".join(f"{b:g}" for b in shared) + " |",
+                  "|---|" + "---:|" * (2 * len(shared) + 2)]
         for dataset, cells in by_dataset.items():
             faster = [_number(cells[b]["equal_epochs_time_ratio"], "{:.2f}×") if b in cells else "n/a"
-                      for b in budgets]
+                      for b in shared]
             error = [_number(cells[b]["equal_epochs_error"], "{:+.2%}") if b in cells else "n/a"
-                     for b in budgets]
-            fractions = [cells[b]["equal_epochs_fraction"] for b in budgets
+                     for b in shared]
+            fractions = [cells[b]["equal_epochs_fraction"] for b in shared
                          if b in cells and cells[b]["equal_epochs_fraction"] is not None]
             dense = " / ".join(_number(cells[b]["dense_equal_epochs_error"], "{:+.2%}") if b in cells
-                               else "n/a" for b in budgets)
+                               else "n/a" for b in shared)
             lines.append(f"| {dataset} | " + " | ".join(faster) + " | " + " | ".join(error)
                          + f" | {_number(sum(fractions) / len(fractions) if fractions else None, '{:.3f}')} | {dense} |")
+        lines.append("| **Geometric mean** | " + " | ".join(
+            _number(geometric_mean([r["equal_epochs_time_ratio"] for r in selected if r["epochs"] == b]),
+                    "{:.2f}×") for b in shared) + " |" + " |" * (len(shared) + 2))
         lines += ["", "### Error at e-means' time", "",
                   "o-means' held-out error relative to e-means', when o-means is given the time "
                   "e-means needed. Negative is better.", "",
@@ -249,9 +334,12 @@ def main():
     parser.add_argument("--results", type=Path, default=DEFAULT_RESULTS)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--append", type=Path, help="markdown file with notes to place after the tables")
+    parser.add_argument("--partial", action="store_true",
+                        help="draft from a campaign in which some seeds are still missing")
+    parser.add_argument("--title", default=TITLE)
     args = parser.parse_args()
     records = load(args.results)
-    validation = validate(records)
+    validation = validate(records, partial=args.partial)
     curves, shapes = aggregate(records)
     rows = summarize(curves, shapes)
     base.atomic_json(args.results / "validation.json", validation)
@@ -259,7 +347,7 @@ def main():
         writer = csv.DictWriter(handle, fieldnames=list(rows[0]))
         writer.writeheader()
         writer.writerows(rows)
-    text = markdown(rows, validation, records[0]["device"], records[0]["versions"])
+    text = markdown(rows, validation, records[0]["device"], records[0]["versions"], args.title)
     if args.append:
         text += "\n" + args.append.read_text()
     args.output.write_text(text.rstrip("\n") + "\n")
