@@ -43,6 +43,9 @@ def dataset(kind, n, d, seed=0):
         x = rng.normal(size=(5, d))[rng.integers(0, 5, n)] * 10 + rng.normal(size=(n, d))
     elif kind == "tiny":
         x = rng.normal(size=(n, d)) * 1e-18
+    elif kind == "lowrank":
+        # A few strong directions under weak isotropic noise, as in images.
+        x = rng.normal(size=(n, 12)) @ rng.normal(size=(12, d)) + 0.05 * rng.normal(size=(n, d))
     else:
         raise ValueError(kind)
     return x.astype(np.float32)
@@ -101,7 +104,7 @@ def test_noise_only_potential_falls_back_to_the_reference_routine(metal, plusplu
 def test_default_gate_uses_the_screen_for_large_inputs_only(metal):
     from mlxlearn.cluster import _plusplus
 
-    small = dataset("normal", 400, 6)
+    small = dataset("normal", 300, 6)
     profile = {}
     indices, _ = seed_indices(metal, _plusplus, small, 12, 5, profile)
     np.testing.assert_array_equal(indices, kmeans_plusplus(small, 12, random_state=5)[1])
@@ -150,20 +153,14 @@ def test_reference_chunk_layout_keeps_a_single_trailing_row():
                                   euclidean_distances(candidates, x, squared=True))
 
 
-@pytest.mark.gpu
-@pytest.mark.parametrize("n,d,trials", [(64, 4, 2), (1000, 7, 5), (333, 33, 8), (4099, 16, 11)])
-def test_screen_only_proves_pairs_the_reference_leaves_unchanged(metal, n, d, trials):
-    from mlxlearn._kernels.kmeans_plusplus import candidate_screen
-
-    mx = metal
+def screen_case(n, d, trials):
+    """Rows, candidates and limits that sit on, just beside, and far from the true distances."""
     rng = np.random.default_rng(n + d)
     x = dataset("blobs", n, d, seed=5)
     ids = rng.integers(0, n, trials)
     reference = euclidean_distances(x[ids], x, squared=True)
-    # Limits within a few float32 steps of the true distance are the hard
-    # cases; others are well above or below it.
-    steps = rng.integers(-3, 4, size=n)
     pick = reference[rng.integers(0, trials, n), np.arange(n)]
+    steps = rng.integers(-1, 2, size=n)
     near = pick.copy()
     for _ in range(3):
         near = np.where(steps > 0, np.nextafter(near, np.float32(np.inf)),
@@ -172,21 +169,79 @@ def test_screen_only_proves_pairs_the_reference_leaves_unchanged(metal, n, d, tr
     high = np.where(choice == 0, near, np.where(choice == 1, pick * 0.5, pick * 2)).astype(np.float32)
     low = np.where(rng.random(n) < 0.2, np.float32(0), high).astype(np.float32)
     norms = (np.square(x.astype(np.float64)).sum(axis=1) * (1 + 2.0**-20)).astype(np.float32)
-    padded = np.zeros(max(trials, 8), np.float32)
-    padded[:trials] = norms[ids]
-    table, mask, touched = candidate_screen(mx.array(x), mx.array(x[ids]), mx.array(low),
-                                            mx.array(high), mx.array(norms), mx.array(padded))
+    return x, ids, reference, low, high, norms
+
+
+def check_screen(reference, low, high, trials, table, mask, touched):
     table, mask, touched = np.asarray(table), np.asarray(mask), np.asarray(touched)
     opened = ((mask[None, :] >> np.arange(trials, dtype=np.uint32)[:, None]) & 1).astype(bool)
+    floor, limit = np.broadcast_to(low, opened.shape), np.broadcast_to(high, opened.shape)
     np.testing.assert_array_equal(touched.astype(bool), mask != 0)
-    assert np.all(table[0][opened] == -1) and np.all(table[1][opened] == -1)
-    np.testing.assert_array_equal(table[0][~opened], np.broadcast_to(low, opened.shape)[~opened])
-    np.testing.assert_array_equal(table[1][~opened], np.broadcast_to(high, opened.shape)[~opened])
+    np.testing.assert_array_equal(table[0][~opened], floor[~opened])
+    np.testing.assert_array_equal(table[1][~opened], limit[~opened])
     # Soundness: a proved pair's reference distance does not go below the limit.
-    assert np.all(reference[~opened] >= np.broadcast_to(high, opened.shape)[~opened])
+    assert np.all(reference[~opened] >= limit[~opened])
     # Usefulness: pairs well above the limit are proved.
-    clear = reference > 1.01 * high[None, :] + 1e-6
-    assert np.all(~opened[clear])
+    assert np.all(~opened[reference > 1.01 * limit + 1e-6])
+    # Open pairs bracket the row's new closest distance, tightly.
+    assert np.all(table[0][opened] <= np.minimum(floor, reference)[opened])
+    assert np.all(table[1][opened] >= np.minimum(limit, reference)[opened])
+    assert np.all(table[1][opened] - np.minimum(limit, reference)[opened] <= 1e-3 * reference[opened] + 1e-6)
+    assert np.all(table[0][opened] >= 0)
+    return opened
+
+
+@pytest.mark.gpu
+@pytest.mark.parametrize("n,d,trials", [(64, 4, 2), (1000, 7, 5), (333, 33, 8), (4099, 16, 11)])
+def test_screen_only_proves_pairs_the_reference_leaves_unchanged(metal, n, d, trials):
+    from mlxlearn._kernels.kmeans_plusplus import candidate_ids, candidate_screen
+
+    mx = metal
+    x, ids, reference, low, high, norms = screen_case(n, d, trials)
+    outputs = candidate_screen(mx.array(x), mx.array(low), mx.array(high), mx.array(norms),
+                               candidate_ids(ids), trials)
+    check_screen(reference, low, high, trials, *outputs)
+
+
+@pytest.mark.gpu
+@pytest.mark.parametrize("n,d,trials", [(600, 256, 3), (2100, 300, 9), (1500, 515, 11)])
+def test_projected_screen_proves_the_same_kind_of_pairs_from_row_images(metal, n, d, trials):
+    from mlxlearn._kernels.kmeans_plusplus import candidate_ids, candidate_screen, projected_screen
+    from mlxlearn.cluster._plusplus import _Projection, _Reference
+
+    mx = metal
+    x, ids, reference, low, high, norms = screen_case(n, d, trials)
+    projection = _Projection(x, _Reference(x).norms)
+    assert projection.valid
+    arrays = [mx.array(v) for v in (low, high, norms)]
+    *outputs, settled = projected_screen(mx.array(x), projection.images, projection.eps, *arrays,
+                                         candidate_ids(ids), trials)
+    opened = check_screen(reference, low, high, trials, *outputs)
+    # The images settle some pairs on their own, never an open one.
+    assert opened.sum() <= int(np.asarray(settled).sum()) < trials * n
+    # Pairs the images cannot settle are decided from the full rows exactly as
+    # the dense screen decides them.
+    dense = candidate_screen(mx.array(x), *arrays, candidate_ids(ids), trials)
+    np.testing.assert_array_equal(opened, check_screen(reference, low, high, trials, *dense))
+
+
+@pytest.mark.gpu
+def test_row_images_bound_distances_from_below():
+    from mlxlearn.cluster._plusplus import _Projection, _Reference
+
+    x = dataset("offset", 900, 300, seed=8)
+    projection = _Projection(x, _Reference(x).norms)
+    assert projection.valid
+    images = np.asarray(projection.images).astype(np.float64)
+    eps = np.asarray(projection.eps).astype(np.float64)
+    rows = np.random.default_rng(0).integers(0, len(x), (2, 4000))
+    rows = rows[:, rows[0] != rows[1]]
+    wide = x.astype(np.float64)
+    true = np.sqrt(np.square(wide[rows[0]] - wide[rows[1]]).sum(axis=1))
+    image = np.sqrt(np.square(images[rows[0]] - images[rows[1]]).sum(axis=1))
+    assert np.all(image - eps[rows[0]] - eps[rows[1]] <= true * (1 + 2.0**-22))
+    # Sixty-four of three hundred isotropic directions keep about half of a distance.
+    assert 0.3 < np.median(image / true) < 0.7
 
 
 def second_center_law(x, trials):
@@ -230,6 +285,26 @@ def test_second_center_follows_the_greedy_d2_sampling_law(metal, plusplus):
     # The test has power: uniform seeding of the second center is rejected.
     uniform = runs / len(x)
     assert (np.square(counts - uniform) / uniform).sum() > 10 * 31.3
+
+
+@pytest.mark.gpu
+def test_projected_steps_select_the_reference_centers(metal, plusplus, monkeypatch):
+    monkeypatch.setattr(plusplus, "_PROJECT_STEPS", 16)
+    monkeypatch.setattr(plusplus, "_PROJECT_FROM", 4)
+    for kind, helped in (("lowrank", True), ("normal", False), ("offset", False), ("duplicates", False)):
+        x = dataset(kind, 3000, 260, seed=12)
+        profile = {}
+        indices, state = seed_indices(metal, plusplus, x, 120, 3, profile)
+        expected_state = np.random.RandomState(3)
+        np.testing.assert_array_equal(indices, kmeans_plusplus(x, 120, random_state=expected_state)[1])
+        assert state.uniform() == expected_state.uniform()
+        assert profile["certified"]
+        # Isotropic rows leave nearly every pair to the full rows; the dense
+        # screen then carries the steps between ever rarer attempts.
+        if helped:
+            assert profile["projected_steps"] == 120 - 4
+        else:
+            assert 0 < profile["projected_steps"] < 12
 
 
 @pytest.mark.gpu
