@@ -334,6 +334,19 @@ e-means' speed (median 1.000 over 24 fits). Held-out error across the sweep
 was −1.39% to +0.01% of e-means' at one epoch and −0.23% to +0.27% at two.
 Ten of the 140 rows saw moderate thermal pressure during a call.
 
+Fits shorter than two epochs need a smaller share on the M5 Ultra. The same
+sweep there (SPACEV 1M, SSNPP 1M, CC-News and CelebA at 2,176 to 8,192
+centroids, 96 rows, none under thermal pressure) and the MNIST-family runs
+put fits under two epochs whose probes covered 38–39% of the centroids at
+0.93–1.45× of e-means' speed. Every other group on either GPU was at least
+1.06× faster. The slowest were MNIST, Fashion-MNIST and Kannada-MNIST at
+4,096 centroids in float32 and CelebA at 2,176 and 3,072 centroids in BF16.
+Below two epochs `auto` therefore requires an expected share of at most 0.36
+on M5 Ultra, and on M1 Ultra, which was not measured in this regime. That
+keeps the full search for such fits with 2,176 to 4,223 centroids at 512
+features or more. The M4 Max keeps the limit of one half. Fits of two epochs
+or more were at least 1.08× faster on both GPUs and are unchanged.
+
 ### Reproducing
 
 ```bash

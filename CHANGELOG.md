@@ -14,11 +14,20 @@ All notable changes to this project are documented here. The format follows
   README's MNIST section and the
   [experiment notes](benchmarks/experiments/mnist-family-2026-11-02/README.md#o-means)
   carry the tables, and the o-means guide lists the limit they found: little
-  gain on small data, and a one-epoch fit at 4,096 centroids that is slower
-  than e-means on M5 Ultra.
+  gain on small data.
 
 ### Changed
 
+- `OMeans(assignment="auto")` keeps the full search for fits shorter than two
+  epochs on M1 Ultra and M5 Ultra unless the probes are expected to cover at
+  most 36% of the centroids, instead of one half. On M5 Ultra such fits
+  in that band ran at 0.93–1.45× of e-means' speed, including 7–11% losses on
+  the MNIST-family datasets at 4,096 centroids; with the full search those
+  fits now run at 0.97× of e-means' speed. With the default cells and
+  probes this affects 2,176 to 4,223 centroids at 512 features or more. M4
+  Max, fits of two epochs or more (the default is three), and
+  `assignment="two_level"` are unchanged. `recipe_["search_reason"]` names
+  the case.
 - `mlxlearn.cluster.KMeans` seeds `init="k-means++"` through a Metal screen
   instead of calling scikit-learn's helper on the host. A kernel proves in
   float32, with a rigorous error bound, which (candidate, row) pairs a

@@ -176,9 +176,12 @@ e-means' fit time divided by o-means'.
   two-level search, so its campaign timed all configurations in turn.
 - **Routing:** On M1 Ultra, M4 Max, and M5 Ultra, `assignment="auto"`
   can select the two-level search from 4,224 centroids, or from 2,176
-  with 512 features or more. It returns to the full
-  search when a fit's cells turn out too uneven to save comparisons. Final
-  labels, `predict` and `score` always use a full search.
+  with 512 features or more. On M1 Ultra and M5 Ultra, fits shorter than two
+  epochs keep the full search from 2,176 to 4,223 centroids at 512 features or
+  more, where one-epoch fits on M5 Ultra were measured slower than `EMeans`.
+  It returns to the full search when a fit's cells turn out too uneven to
+  save comparisons. Final labels, `predict` and `score` always use a full
+  search.
 
 See the [implementation guide](docs/o-means.md) and the benchmark reports for
 [M5 Ultra](docs/o-means-benchmarks-2026-11-18.md) and
@@ -584,7 +587,8 @@ settings.
   1.4× faster at 4,096 centroids and 2.0–2.3× at 8,192 from two epochs. At 1,024 and
   2,048 centroids `OMeans` uses the full search and matches `EMeans` (62–114 ms).
 - **Limits at this size:** a one-epoch fit at 4,096 centroids gains only 1.1× on the M4
-  Max and is 7–11% slower than `EMeans` on an M5 Ultra.
+  Max. On an M5 Ultra the two-level search was 7–11% slower than `EMeans` there, so
+  `auto` keeps the full search for it and runs at 0.97× of `EMeans`' speed.
 
 [Tables for every centroid count, both machines and the method](benchmarks/experiments/mnist-family-2026-11-02/README.md#o-means)
 

@@ -38,16 +38,36 @@ MAX_TWO_LEVEL_CLUSTERS = 2**16
 # the tiled scan evaluates a distance at roughly 70% of the dense rate and
 # adds probing and bucketing, so it stops paying somewhat above one half.
 _AUTO_MAX_FRACTION = 0.5
-# GPUs on which whole two-level fits were measured faster than dense ones
-# (MLX 0.32.4, 2026-11-18). Other GPUs keep the dense search under ``auto``.
-_VALIDATED_DEVICES = frozenset({"Apple M1 Ultra", "Apple M4 Max", "Apple M5 Ultra"})
+# A fit shorter than two epochs has less to save: it uses smaller batches under
+# the default batch law and never leaves the first pass, where the cells are
+# re-filed every five batches. Per GPU, the largest expected share of centroids
+# at which such a fit was still measured faster than e-means (207 fits on M4
+# Max and M5 Ultra, 2026-11-19). On M5 Ultra, one-epoch fits whose probes
+# covered 36-50% of the centroids ran at 0.93-1.45x of e-means' speed; every
+# other group was at least 1.06x. M1 Ultra was not measured there and takes
+# the stricter value. The keys are also the GPUs on which whole two-level
+# fits were measured faster than dense ones (MLX 0.32.4, 2026-11-18); other
+# GPUs keep the dense search under ``auto``.
+_SHORT_FIT_EPOCHS = 2.0
+_SHORT_FIT_FRACTION = {"Apple M1 Ultra": 0.36, "Apple M4 Max": 0.5, "Apple M5 Ultra": 0.36}
+_VALIDATED_DEVICES = frozenset(_SHORT_FIT_FRACTION)
+
+
+def _device_name():
+    info = mx.device_info() if hasattr(mx, "device_info") else mx.metal.device_info()
+    return info.get("device_name")
 
 
 @lru_cache(maxsize=1)
 def _two_level_device():
     """Whether the fast two-level scan is validated on this GPU."""
-    info = mx.device_info() if hasattr(mx, "device_info") else mx.metal.device_info()
-    return info.get("device_name") in _VALIDATED_DEVICES and tiled_scan_available()
+    return _device_name() in _VALIDATED_DEVICES and tiled_scan_available()
+
+
+@lru_cache(maxsize=1)
+def _short_fit_fraction():
+    """Largest expected share of centroids for a two-level fit under two epochs."""
+    return _SHORT_FIT_FRACTION.get(_device_name(), min(_SHORT_FIT_FRACTION.values()))
 
 
 def split_closing(close_sums, close_counts, plan):
@@ -187,6 +207,7 @@ class OMeans(EMeans):
         k, cells, probes = int(self.n_clusters), recipe["n_cells"], recipe["n_probe"]
         supported = (k <= MAX_TWO_LEVEL_CLUSTERS and probes <= MAX_PROBES
                      and cells * k <= 2**31 - 1)
+        fraction = expected_fraction(k, cells, probes)
         if self.assignment == "two_level":
             if not supported:
                 raise ValueError(
@@ -197,14 +218,15 @@ class OMeans(EMeans):
             search, reason = "dense", "requested"
         elif not supported:
             search, reason = "dense", "outside the two-level limits"
-        elif expected_fraction(k, cells, probes) > _AUTO_MAX_FRACTION:
+        elif fraction > _AUTO_MAX_FRACTION:
             search, reason = "dense", "probes cover most centroids"
         elif not _two_level_device():
             search, reason = "dense", "two-level scan not validated on this GPU"
+        elif float(self.max_iter) < _SHORT_FIT_EPOCHS and fraction > _short_fit_fraction():
+            search, reason = "dense", "short fit: probes cover too many centroids on this GPU"
         else:
             search, reason = "two_level", "validated"
-        recipe.update(search=search, search_reason=reason,
-                      expected_fraction=expected_fraction(k, cells, probes))
+        recipe.update(search=search, search_reason=reason, expected_fraction=fraction)
         return recipe
 
     def train_device(self, prepared, *, capture_assignments=False):

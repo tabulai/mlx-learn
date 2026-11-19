@@ -66,9 +66,9 @@ def training_table(runs):
         auto = [a[("omeans-auto", t)] for t in BUDGETS]
         faster = [e["seconds"] / o["seconds"] for e, o in zip(emeans, auto, strict=True)]
         control = [a[("emeans", t)]["seconds"] / a[("omeans-dense", t)]["seconds"] for t in (1, 2)]
-        search = "/".join(sorted({s for o in auto for s in o["search"]})).replace("_", "-")
-        if search == "two-level":
-            faster_all += faster
+        searches = ["/".join(o["search"]).replace("_", "-") for o in auto]
+        faster_all += [f for f, s in zip(faster, searches, strict=True) if s == "two-level"]
+        search = searches[0] if len(set(searches)) == 1 else " / ".join(searches)
         if auto[1]["fallbacks"]:
             search += f", full search in {auto[1]['fallbacks']} of {auto[1]['seeds']} seeds"
         print(f"| {NAMES[name]} | {k:,} | {search} | {auto[1]['fraction']:.0%} | "
