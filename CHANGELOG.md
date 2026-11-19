@@ -8,6 +8,19 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- MNIST-family o-means results: `OMeans` against `EMeans`, mlxlearn's `KMeans`
+  and scikit-learn's `KMeans` and `MiniBatchKMeans` on MNIST, Fashion-MNIST and
+  Kannada-MNIST at 1,024 to 8,192 centroids, on an M4 Max and an M5 Ultra. The
+  README's MNIST section and the
+  [experiment notes](benchmarks/experiments/mnist-family-2026-11-02/README.md#o-means)
+  carry the tables, and the o-means guide lists the limit they found: little
+  gain on small data, and a one-epoch fit at 4,096 centroids that is slower
+  than e-means on M5 Ultra.
+
+## [0.1.5] — 2026-11-19
+
+### Added
+
 - `mlxlearn.cluster.OMeans`: e-means with a two-level nearest-centroid search,
   after the o-means post and the `contrib/o_means` package of the
   owlgebra-ai/faiss fork. Centroids are grouped into coarse cells kept sorted
@@ -35,10 +48,8 @@ All notable changes to this project are documented here. The format follows
   (M5 Ultra) and
   [docs/o-means-benchmarks-m4-max-2026-11-19.md](docs/o-means-benchmarks-m4-max-2026-11-19.md)
   (M4 Max, interleaved).
-- `benchmarks/experiments/mnist-family-2026-11-02/omeans.py`: `OMeans` against
-  `EMeans`, mlxlearn's `KMeans` and scikit-learn's `KMeans` and
-  `MiniBatchKMeans` on MNIST, Fashion-MNIST and Kannada-MNIST at 1,024 to
-  8,192 centroids.
+- MNIST-family O-means benchmark and summary scripts under
+  `benchmarks/experiments/mnist-family-2026-11-02/`.
 
 ## [0.1.4] — 2026-11-18
 
@@ -740,7 +751,8 @@ Each of these is now covered by a regression test:
   shape, making `fit` a non-pure function of its arguments.
 - `except Exception:` around the accelerated path, rerunning silently on scikit-learn.
 
-[Unreleased]: https://github.com/tabulai/mlx-learn/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/tabulai/mlx-learn/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/tabulai/mlx-learn/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/tabulai/mlx-learn/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/tabulai/mlx-learn/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/tabulai/mlx-learn/compare/v0.1.1...v0.1.2
