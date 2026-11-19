@@ -38,7 +38,7 @@ stock inheritance. See the [compatibility details](docs/support_matrix.md).
 
 ## Status
 
-**`0.1.4` — alpha.** The API may change. See [CHANGELOG.md](CHANGELOG.md).
+**`0.1.5` — alpha.** The API may change. See [CHANGELOG.md](CHANGELOG.md).
 
 | Estimator | Status |
 |---|---|
@@ -50,6 +50,7 @@ stock inheritance. See the [compatibility details](docs/support_matrix.md).
 | `mlxlearn.decomposition.PCA` | 0.1.2 |
 | `mlxlearn.cluster.EMeans` | 0.1.3; Metal GPU, paper/Faiss recipes |
 | `mlxlearn.cluster.KMeans` | 0.1.3; Metal GPU, Lloyd clustering |
+| `mlxlearn.cluster.OMeans` | 0.1.5; Metal GPU, e-means with a two-level centroid search |
 | `LinearRegression`, `Ridge`, `DBSCAN`, `TSNE` | planned, 0.2.x |
 | `SVR`, `NuSVR`, `NuSVC` | deferred — will not ship until they implement the true objective |
 | tree ensembles | out of scope |
@@ -121,6 +122,50 @@ The [0.1.3 equal-pass comparison](docs/k-means-10m-comparison-2026-11-15.md)
 reports runtime, peak fit memory, and test MSE for four methods on five
 10M-vector datasets.
 
+## O-means clustering
+
+Version 0.1.5 adds [`OMeans`](docs/o-means.md) for clustering with many
+centroids. During two-level training, each row is compared with the
+centroids of a few nearby coarse cells, covering 6–25% of the centroids on
+the measured embedding datasets. The estimator follows the
+[o-means post](https://owlgebra.ai/blog/o-means/) with separate Metal kernels.
+
+```python
+from mlxlearn.cluster import OMeans
+
+model = OMeans(n_clusters=16384, max_iter=2, random_state=10).fit(X_train)
+```
+
+Against `EMeans(recipe="faiss")` with the same batch law, seed and starting
+centroids, over 18 datasets and three seeds. Each entry is a geometric mean of
+e-means' fit time divided by o-means'.
+
+| | M5 Ultra, float32 | M5 Ultra, BF16 | M4 Max, float32 | M4 Max, BF16 |
+|---|---:|---:|---:|---:|
+| Time to `EMeans`' held-out error | **4.44×** | **3.55×** | **4.13×** | **3.96×** |
+| Same epochs | 4.44× | 3.42× | 4.20× | 3.90× |
+| Time to `EMeans`' error, 10M rows and 65,536 centroids | **8.8×** | **5.9×** | **7.3×** | **7.0×** |
+
+- **Range:** 1.6–10.4× across datasets on M5 Ultra and 1.5–8.0× on M4 Max. The
+  gain grows with the number of centroids and is smallest on unnormalized
+  GloVe-200, whose cells come out uneven.
+- **Quality:** at the same epochs, held-out error is −1.14% to +0.10% of
+  `EMeans`' at one epoch and −0.17% to +0.36% at two. O-means needs 2 to 2.5
+  epochs to match `EMeans`' two-epoch error.
+- **Method:** the M5 Ultra campaign timed one configuration after another, with
+  every call at nominal thermal pressure. The M4 Max is a laptop whose GPU
+  throttles under sustained load, which slows the full search more than the
+  two-level search, so its campaign timed all configurations in turn.
+- **Routing:** On M1 Ultra, M4 Max, and M5 Ultra, `assignment="auto"`
+  can select the two-level search from 4,224 centroids, or from 2,176
+  with 512 features or more. It returns to the full
+  search when a fit's cells turn out too uneven to save comparisons. Final
+  labels, `predict` and `score` always use a full search.
+
+See the [implementation guide](docs/o-means.md) and the benchmark reports for
+[M5 Ultra](docs/o-means-benchmarks-2026-11-18.md) and
+[M4 Max](docs/o-means-benchmarks-m4-max-2026-11-19.md).
+
 ## Requirements
 
 - macOS on Apple silicon (arm64)
@@ -136,7 +181,7 @@ CI tests only valid pairs — see [`docs/support_matrix.md`](docs/support_matrix
 pip install mlx-learn
 ```
 
-Version `0.1.4` provides Apple silicon wheels for Python 3.10–3.13 with Metal
+Version `0.1.5` provides Apple silicon wheels for Python 3.10–3.13 with Metal
 and C++ CPU extensions. Source builds can also include these optional extensions.
 The KNN CPU extension handles small workloads and is compiled at build time;
 fitting or querying never invokes the C++ compiler. A compatible wheel includes

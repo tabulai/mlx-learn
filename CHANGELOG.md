@@ -6,6 +6,40 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.5] — 2026-11-19
+
+### Added
+
+- `mlxlearn.cluster.OMeans`: e-means with a two-level nearest-centroid search,
+  after the o-means post and the `contrib/o_means` package of the
+  owlgebra-ai/faiss fork. Centroids are grouped into coarse cells kept sorted
+  in an assignment mirror; each training row is compared only with the
+  centroids of its nearest cells. Cells are re-filed every five batches in the
+  first pass and rebuilt every half pass afterwards, split links reach newly
+  created centroids, and fits shorter than two epochs end with a
+  recency-weighted mean. New Metal kernels bucket (row, cell) pairs with
+  integer atomics and scan each cell's contiguous centroid block with matrix
+  tiles; nothing is read back to the host between batches. Float32 and BF16
+  assignment are supported. `assignment="auto"` selects the two-level search
+  on M1 Ultra, M4 Max and M5 Ultra where the probes cover at most half of the
+  centroids, and returns to the full search when a fit's cells are too uneven
+  to save comparisons. Final labels, `predict` and `score` always use a full
+  search. See [docs/o-means.md](docs/o-means.md).
+- `benchmarks/e_means/two_level_bench.py`, `omeans_compare.py`,
+  `omeans_interleaved.py`, `omeans_report.py`, `omeans_centroid_sweep.py` and
+  `omeans_device_fits.py`: kernel-level and fit-level comparisons of o-means
+  with e-means, with per-record source hashes. Timed calls wait for nominal
+  macOS thermal pressure and record the level; the report rejects throttled,
+  mixed or incomplete campaigns. `omeans_interleaved` times all
+  configurations in turn, for laptops whose GPU throttles under sustained
+  load. Results:
+  [docs/o-means-benchmarks-2026-11-18.md](docs/o-means-benchmarks-2026-11-18.md)
+  (M5 Ultra) and
+  [docs/o-means-benchmarks-m4-max-2026-11-19.md](docs/o-means-benchmarks-m4-max-2026-11-19.md)
+  (M4 Max, interleaved).
+- MNIST-family O-means benchmark and summary scripts under
+  `benchmarks/experiments/mnist-family-2026-11-02/`.
+
 ## [0.1.4] — 2026-11-18
 
 ### Fixed
@@ -706,7 +740,8 @@ Each of these is now covered by a regression test:
   shape, making `fit` a non-pure function of its arguments.
 - `except Exception:` around the accelerated path, rerunning silently on scikit-learn.
 
-[Unreleased]: https://github.com/tabulai/mlx-learn/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/tabulai/mlx-learn/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/tabulai/mlx-learn/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/tabulai/mlx-learn/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/tabulai/mlx-learn/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/tabulai/mlx-learn/compare/v0.1.1...v0.1.2
