@@ -238,6 +238,13 @@ over the centroid count and the method are in the
 - **Above 65,536 centroids** the two-level search is not available: its cell
   sort stays inside MLX's verified sort widths, and larger tables were not
   evaluated upstream either.
+- **Small data gains little.** On the 60,000 × 784 MNIST-family datasets the
+  two-level search is 1.4× faster than e-means at 4,096 centroids and
+  2.0–2.3× at 8,192 from two epochs on M4 Max. A one-epoch fit at 4,096
+  centroids has only 15 batches to amortize the first cell build: it gains
+  1.1× on M4 Max and is 7–11% slower than e-means on M5 Ultra, where `auto`
+  still selects the two-level search. See the
+  [MNIST-family results](../benchmarks/experiments/mnist-family-2026-11-02/README.md#o-means).
 - **Hardware coverage** is M1 Ultra, M4 Max and M5 Ultra with MLX 0.32.4.
 - **Laptops throttle.** Under sustained load a MacBook Pro M4 Max slowed the
   full search far more than the two-level search, so o-means' advantage there
