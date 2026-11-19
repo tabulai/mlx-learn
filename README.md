@@ -112,29 +112,6 @@ measures matched FP32 Metal and original Faiss CPU runs: Metal is 3.98–18.95×
 faster, with test-MSE differences within 0.061% in this single-seed campaign.
 `EMeans` is an explicit estimator; it does not replace sklearn's `KMeans` through patching.
 
-For many centroids, [`OMeans`](docs/o-means.md) trains e-means with a two-level
-search: each row is compared only with the centroids of a few nearby coarse
-cells, 6–25% of them on the measured embedding datasets. It follows the
-[o-means post](https://owlgebra.ai/blog/o-means/) with separate Metal kernels.
-In a three-seed campaign over 18 datasets on an M5 Ultra it reached
-`EMeans`' held-out error 4.4× faster in float32 and 3.5× in BF16 (geometric
-means; 1.6–10.4× across datasets), and 8.8× faster in float32 at 65,536
-centroids over ten million rows. On a MacBook Pro M4 Max the same campaign
-gave 4.1× and 4.0×.
-
-```python
-from mlxlearn.cluster import OMeans
-
-model = OMeans(n_clusters=16384, max_iter=2, random_state=10).fit(X_train)
-```
-
-Final labels, `predict` and `score` use a full search. `assignment="auto"`
-uses the two-level search only where it was measured faster and returns to
-the full search when a fit's cells turn out too uneven to save comparisons.
-See the [implementation guide](docs/o-means.md) and the benchmark reports for
-[M5 Ultra](docs/o-means-benchmarks-2026-11-18.md) and
-[M4 Max](docs/o-means-benchmarks-m4-max-2026-11-19.md).
-
 For full-batch Lloyd clustering, [Metal `KMeans`](docs/k-means.md) is available
 through `from mlxlearn.cluster import KMeans`. It supports dense FP32 training,
 explicit, random or k-means++ initialization, multiple restarts, and final
@@ -144,6 +121,49 @@ of `patch_sklearn()`.
 The [0.1.3 equal-pass comparison](docs/k-means-10m-comparison-2026-11-15.md)
 reports runtime, peak fit memory, and test MSE for four methods on five
 10M-vector datasets.
+
+## O-means clustering
+
+For many centroids, [`OMeans`](docs/o-means.md) trains e-means with a two-level
+search: each row is compared only with the centroids of a few nearby coarse
+cells, 6–25% of them on the measured embedding datasets. It follows the
+[o-means post](https://owlgebra.ai/blog/o-means/) with separate Metal kernels,
+and is not yet in a release.
+
+```python
+from mlxlearn.cluster import OMeans
+
+model = OMeans(n_clusters=16384, max_iter=2, random_state=10).fit(X_train)
+```
+
+Against `EMeans(recipe="faiss")` with the same batch law, seed and starting
+centroids, over 18 datasets and three seeds. Each entry is a geometric mean of
+e-means' fit time divided by o-means'.
+
+| | M5 Ultra, float32 | M5 Ultra, BF16 | M4 Max, float32 | M4 Max, BF16 |
+|---|---:|---:|---:|---:|
+| Time to `EMeans`' held-out error | **4.44×** | **3.55×** | **4.13×** | **3.96×** |
+| Same epochs | 4.44× | 3.42× | 4.20× | 3.90× |
+| Time to `EMeans`' error, 10M rows and 65,536 centroids | **8.8×** | **5.9×** | **7.3×** | **7.0×** |
+
+- **Range:** 1.6–10.4× across datasets on M5 Ultra and 1.5–8.0× on M4 Max. The
+  gain grows with the number of centroids and is smallest on unnormalized
+  GloVe-200, whose cells come out uneven.
+- **Quality:** at the same epochs, held-out error is −1.14% to +0.10% of
+  `EMeans`' at one epoch and −0.17% to +0.36% at two. O-means needs 2 to 2.5
+  epochs to match `EMeans`' two-epoch error.
+- **Method:** the M5 Ultra campaign timed one configuration after another, with
+  every call at nominal thermal pressure. The M4 Max is a laptop whose GPU
+  throttles under sustained load, which slows the full search more than the
+  two-level search, so its campaign timed all configurations in turn.
+- **Routing:** `assignment="auto"` uses the two-level search from 4,224
+  centroids, or from 2,176 with 512 features or more, and returns to the full
+  search when a fit's cells turn out too uneven to save comparisons. Final
+  labels, `predict` and `score` always use a full search.
+
+See the [implementation guide](docs/o-means.md) and the benchmark reports for
+[M5 Ultra](docs/o-means-benchmarks-2026-11-18.md) and
+[M4 Max](docs/o-means-benchmarks-m4-max-2026-11-19.md).
 
 ## Requirements
 
