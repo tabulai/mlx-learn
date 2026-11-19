@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.6] — 2026-11-19
+
 ### Added
 
 - MNIST-family o-means results: `OMeans` against `EMeans`, mlxlearn's `KMeans`
@@ -18,16 +20,6 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
-- `OMeans(assignment="auto")` keeps the full search for fits shorter than two
-  epochs on M1 Ultra and M5 Ultra unless the probes are expected to cover at
-  most 36% of the centroids, instead of one half. On M5 Ultra such fits
-  in that band ran at 0.93–1.45× of e-means' speed, including 7–11% losses on
-  the MNIST-family datasets at 4,096 centroids; with the full search those
-  fits now run at 0.97× of e-means' speed. With the default cells and
-  probes this affects 2,176 to 4,223 centroids at 512 features or more. M4
-  Max, fits of two epochs or more (the default is three), and
-  `assignment="two_level"` are unchanged. `recipe_["search_reason"]` names
-  the case.
 - `mlxlearn.cluster.KMeans` seeds `init="k-means++"` through a Metal screen
   instead of calling scikit-learn's helper on the host. A kernel proves in
   float32, with a rigorous error bound, which (candidate, row) pairs a
@@ -42,6 +34,16 @@ All notable changes to this project are documented here. The format follows
   and the default fit takes 4.4 s at 4,096 centers, down from 110 s. See
   [docs/k-means.md](docs/k-means.md#k-means-initialization) and
   `benchmarks/experiments/kmeans-plusplus-2026-11-19`.
+- `OMeans(assignment="auto")` keeps the full search for fits shorter than two
+  epochs on M1 Ultra and M5 Ultra unless the probes are expected to cover at
+  most 36% of the centroids, instead of one half. On M5 Ultra such fits
+  in that band ran at 0.93–1.45× of e-means' speed, including 7–11% losses on
+  the MNIST-family datasets at 4,096 centroids; with the full search those
+  fits now run at 0.97× of e-means' speed. With the default cells and
+  probes this affects 2,176 to 4,223 centroids at 512 features or more. M4
+  Max, fits of two epochs or more (the default is three), and
+  `assignment="two_level"` are unchanged. `recipe_["search_reason"]` names
+  the case.
 
 ## [0.1.5] — 2026-11-19
 
@@ -777,7 +779,8 @@ Each of these is now covered by a regression test:
   shape, making `fit` a non-pure function of its arguments.
 - `except Exception:` around the accelerated path, rerunning silently on scikit-learn.
 
-[Unreleased]: https://github.com/tabulai/mlx-learn/compare/v0.1.5...HEAD
+[Unreleased]: https://github.com/tabulai/mlx-learn/compare/v0.1.6...HEAD
+[0.1.6]: https://github.com/tabulai/mlx-learn/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/tabulai/mlx-learn/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/tabulai/mlx-learn/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/tabulai/mlx-learn/compare/v0.1.2...v0.1.3
