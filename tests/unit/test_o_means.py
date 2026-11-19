@@ -365,6 +365,47 @@ def test_search_selection(monkeypatch):
     assert search(n_clusters=16384, assignment="two_level") == ("two_level", "requested")
 
 
+def test_short_fits_need_probes_to_cover_fewer_centroids(monkeypatch):
+    from mlxlearn.cluster import _o_means
+    from mlxlearn.cluster._o_means import OMeans
+
+    def search(**kwargs):
+        shape = {"n": kwargs.pop("n", 60_000), "d": kwargs.pop("d", 784)}
+        recipe = OMeans(**kwargs)._resolve_recipe(**shape)
+        return recipe["search"], recipe["search_reason"], round(recipe["expected_fraction"], 3)
+
+    short = "short fit: probes cover too many centroids on this GPU"
+    monkeypatch.setattr(_o_means, "_two_level_device", lambda: True)
+    monkeypatch.setattr(_o_means, "_short_fit_fraction", lambda: 0.36)
+    # 32 cells and 12 probes cover 38% of 4,096 centroids: enough from two epochs, not below.
+    assert search(n_clusters=4096, max_iter=1) == ("dense", short, 0.383)
+    assert search(n_clusters=4096, max_iter=1.9) == ("dense", short, 0.383)
+    assert search(n_clusters=4096, max_iter=2) == ("two_level", "validated", 0.383)
+    assert search(n_clusters=4096, max_iter=3) == ("two_level", "validated", 0.383)
+    # More centroids, or fewer features and so 16 probes of 48 cells, stay under the limit.
+    assert search(n_clusters=8192, max_iter=1) == ("two_level", "validated", 0.195)
+    assert search(n_clusters=4224, max_iter=1, n=1_000_000, d=100) == ("two_level", "validated", 0.345)
+    assert search(n_clusters=4096, max_iter=1, n_probe=8) == ("two_level", "validated", 0.258)
+    # An explicit request is never overridden, and the limit is the GPU's own.
+    assert search(n_clusters=4096, max_iter=1, assignment="two_level") == ("two_level", "requested", 0.383)
+    monkeypatch.setattr(_o_means, "_short_fit_fraction", lambda: 0.5)
+    assert search(n_clusters=4096, max_iter=1) == ("two_level", "validated", 0.383)
+    assert search(n_clusters=1024, max_iter=1) == ("dense", "probes cover most centroids", 0.766)
+
+
+def test_short_fit_limit_is_per_gpu(monkeypatch):
+    from mlxlearn.cluster import _o_means
+
+    mx = pytest.importorskip("mlx.core")
+    for name, expected in [("Apple M4 Max", 0.5), ("Apple M5 Ultra", 0.36), ("Apple M1 Ultra", 0.36),
+                           ("Apple M9 Hyper", 0.36)]:
+        _o_means._short_fit_fraction.cache_clear()
+        monkeypatch.setattr(mx, "device_info", lambda name=name: {"device_name": name}, raising=False)
+        assert _o_means._short_fit_fraction() == expected
+    _o_means._short_fit_fraction.cache_clear()
+    assert set(_o_means._SHORT_FIT_FRACTION) == set(_o_means._VALIDATED_DEVICES)
+
+
 @pytest.mark.gpu
 def test_auto_returns_to_dense_when_cells_stop_saving_comparisons(metal, monkeypatch):
     from mlxlearn.cluster import _o_means
@@ -407,7 +448,7 @@ def test_two_level_device_requires_a_validated_gpu_and_the_tiled_scan(monkeypatc
             ("Apple M4 Max", True, True), ("Apple M1 Ultra", True, True), ("Apple M5 Ultra", True, True),
             ("Apple M4 Max", False, False), ("Apple M9 Hyper", True, False)]:
         _o_means._two_level_device.cache_clear()
-        monkeypatch.setattr(mx, "device_info", lambda name=name: {"device_name": name})
+        monkeypatch.setattr(mx, "device_info", lambda name=name: {"device_name": name}, raising=False)
         monkeypatch.setattr(_o_means, "tiled_scan_available", lambda available=available: available)
         assert _o_means._two_level_device() is expected
     _o_means._two_level_device.cache_clear()

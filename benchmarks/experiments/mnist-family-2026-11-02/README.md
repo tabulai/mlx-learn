@@ -164,9 +164,14 @@ does the same work.
   the full search after the fifth batch.
 - **The control is 0.93–0.98×:** at this size `OMeans`' own loop costs 2–7% over
   e-means before any search saving.
-- **M5 Ultra:** 1.15–1.21× at 4,096 centroids and 1.74–1.85× at 8,192 from two epochs.
-  At one epoch it is 1.26–1.29× at 8,192, but 0.89–0.93× at 4,096: there `auto` picks
-  the two-level search and a one-epoch fit ends up 7–11% slower than e-means.
+- **M5 Ultra:** 1.18–1.23× at 4,096 centroids and 1.74–1.85× at 8,192 from two epochs,
+  and 1.26–1.29× at 8,192 at one epoch. A one-epoch fit at 4,096 centroids with the
+  two-level search was 7–11% slower than e-means there (0.89–0.93× in the first run), so
+  `auto` now keeps the full search for fits under two epochs on M5 Ultra when the probes
+  would cover more than 36% of the centroids. Such a fit runs at 0.97× of e-means' speed,
+  the cost of `OMeans`' own loop. The 4,096-centroid files in `results/omeans-m5-ultra/`
+  were re-measured with that rule. Their reference fits were not repeated and come from
+  the first run.
 
 ### Fits against scikit-learn
 
@@ -196,7 +201,7 @@ held-out error relative to scikit-learn's `KMeans`. M4 Max.
   error is 1.4–3.9% higher.
 - Against `EMeans.fit`, `OMeans.fit` is 1.21–1.27× faster at 4,096 centroids and
   1.67–1.74× at 8,192, and the same below. On the M5 Ultra the two ratios are
-  1.12–1.14× and 1.44–1.49×, and against scikit-learn's `KMeans` it is 675–1,854×
+  1.13–1.14× and 1.44–1.49×, and against scikit-learn's `KMeans` it is 675–1,854×
   faster.
 - mlxlearn's `KMeans` spends most of its default fit in k-means++ initialization at these
   centroid counts: 27–221 s against 6–14 s with `init="random"`. This column predates

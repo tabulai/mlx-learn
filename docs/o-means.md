@@ -87,6 +87,17 @@ full search otherwise. `recipe_["search_reason"]` states which applied.
 - The GPU is one on which whole fits were measured faster: M1 Ultra, M4 Max
   and M5 Ultra as of MLX 0.32.4. Other GPUs use the full search until they
   are measured; `assignment="two_level"` runs there on request.
+- A fit shorter than two epochs (`max_iter < 2`) meets a stricter limit on
+  M1 Ultra and M5 Ultra: the probes may cover at most 36% of the centroids.
+  Under the default batch law such a fit uses half the batch size of a
+  two-epoch fit and never leaves the first pass, where the cells are re-filed
+  every five batches, so it has less to save. On M5 Ultra, whose full search
+  is fast, fits under two epochs whose probes covered 38–39% of the centroids
+  ran at 0.93–1.45× of e-means' speed. With the default cells and probes the
+  limit keeps the full search for fits under two epochs with 2,176 to 4,223
+  centroids at 512 features or more. M4 Max keeps the limit of one half, since every group measured there
+  was at least 1.06× faster. M1 Ultra was not measured in this regime and
+  takes the stricter limit.
 - The cells stay even. After the first batch, after the first revival check
   and at the end of every pass, `auto` reads the share of centroids the
   searches actually compared. Above one half it returns to the full search
@@ -242,8 +253,10 @@ over the centroid count and the method are in the
   two-level search is 1.4× faster than e-means at 4,096 centroids and
   2.0–2.3× at 8,192 from two epochs on M4 Max. A one-epoch fit at 4,096
   centroids has only 15 batches to amortize the first cell build: it gains
-  1.1× on M4 Max and is 7–11% slower than e-means on M5 Ultra, where `auto`
-  still selects the two-level search. See the
+  1.1× on M4 Max and was 7–11% slower than e-means on M5 Ultra. `auto`
+  therefore keeps the full search for it on M5 Ultra and M1 Ultra (see
+  [Parameters](#parameters)), where it runs at 0.97× of e-means' speed, the
+  cost of o-means' own loop at this size. See the
   [MNIST-family results](../benchmarks/experiments/mnist-family-2026-11-02/README.md#o-means).
 - **Hardware coverage** is M1 Ultra, M4 Max and M5 Ultra with MLX 0.32.4.
 - **Laptops throttle.** Under sustained load a MacBook Pro M4 Max slowed the
