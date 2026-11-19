@@ -181,7 +181,9 @@ class KMeans(ClusterMixin, TransformerMixin, BaseEstimator):
     Parameters follow sklearn KMeans where supported: ``init`` accepts
     ``'k-means++'``, ``'random'``, or an explicit center matrix; ``n_init='auto'``
     means one run for k-means++/explicit init and ten for random init. Explicit
-    initialization always uses one run. Only ``algorithm='lloyd'`` is supported.
+    initialization always uses one run. K-means++ selects the centers that
+    ``sklearn.cluster.kmeans_plusplus`` selects for the float32 input and the
+    same ``random_state``. Only ``algorithm='lloyd'`` is supported.
     ``copy_x=False`` is accepted but inputs are still preserved. Sample weights,
     sparse data and callable initializers are unsupported.
 

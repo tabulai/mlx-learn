@@ -115,6 +115,18 @@ def test_default_gate_uses_the_screen_for_large_inputs_only(metal):
     assert profile["certified"]
 
 
+@pytest.mark.gpu
+def test_release_without_safe_math_mode_keeps_the_reference_routine(metal, plusplus, monkeypatch):
+    from mlxlearn._kernels import kmeans_plusplus as kernels
+
+    monkeypatch.setattr(kernels, "_safe_math", lambda: False)
+    x = dataset("blobs", 900, 12)
+    profile = {}
+    indices, _ = seed_indices(metal, plusplus, x, 20, 4, profile)
+    np.testing.assert_array_equal(indices, kmeans_plusplus(x, 20, random_state=4)[1])
+    assert profile == {}
+
+
 @pytest.mark.parametrize("kind", ["blobs", "offset"])
 @pytest.mark.parametrize("n,d,count", [(700, 9, 1), (700, 9, 6), (1129, 16, 5), (64, 200, 3), (2500, 40, 11)])
 def test_reference_distances_reproduce_scikit_learn_bit_for_bit(kind, n, d, count):
@@ -305,6 +317,54 @@ def test_projected_steps_select_the_reference_centers(metal, plusplus, monkeypat
             assert profile["projected_steps"] == 120 - 4
         else:
             assert 0 < profile["projected_steps"] < 12
+
+
+def helper_steps(x, k, seed, float64_prefix):
+    """The helper's steps from public functions, with either kind of prefix sum."""
+    rng = np.random.RandomState(seed)
+    n = len(x)
+    weights = np.ones(n, np.float32)
+    trials = 2 + int(np.log(k))
+    indices = np.full(k, -1, dtype=int)
+    indices[0] = rng.choice(n, p=weights / weights.sum())
+    closest = euclidean_distances(x[indices[:1]], x, squared=True)
+    potential = closest @ weights
+    for step in range(1, k):
+        draws = rng.uniform(size=trials) * potential
+        prefix = np.cumsum(weights * closest, dtype=np.float64 if float64_prefix else None)
+        ids = np.searchsorted(prefix, draws)
+        np.clip(ids, None, n - 1, out=ids)
+        table = euclidean_distances(x[ids], x, squared=True)
+        np.minimum(closest, table, out=table)
+        potentials = table @ weights.reshape(-1, 1)
+        best = np.argmin(potentials)
+        potential, closest = potentials[best], table[best]
+        indices[step] = ids[best]
+    return indices
+
+
+@pytest.mark.gpu
+@pytest.mark.parametrize("float64_prefix", [False, True])
+def test_both_prefix_sum_generations_of_the_helper_are_followed(metal, plusplus, monkeypatch, float64_prefix):
+    # scikit-learn 1.7 samples from float64 prefix sums and 1.8 onward from
+    # float32 ones; the seeding follows the installed release.
+    installed = plusplus._FLOAT64_PREFIX
+    monkeypatch.setattr(plusplus, "_FLOAT64_PREFIX", float64_prefix)
+    plusplus._prefix_routine.cache_clear()
+    try:
+        assert plusplus._prefix_routine() is plusplus._scan_prefix
+        values = dataset("normal", 5000, 1)[:, 0] ** 2
+        np.testing.assert_array_equal(plusplus._scan_prefix(values), plusplus._host_prefix(values))
+        assert plusplus._scan_prefix(values).dtype == (np.float64 if float64_prefix else np.float32)
+        x = dataset("blobs", 2500, 20, seed=14)
+        profile = {}
+        indices, _ = seed_indices(metal, plusplus, x, 150, 2, profile)
+        np.testing.assert_array_equal(indices, helper_steps(x, 150, 2, float64_prefix))
+        assert profile["certified"]
+        if float64_prefix == installed:
+            np.testing.assert_array_equal(indices, kmeans_plusplus(x, 150, random_state=2)[1])
+    finally:
+        plusplus._prefix_routine.cache_clear()
 
 
 @pytest.mark.gpu

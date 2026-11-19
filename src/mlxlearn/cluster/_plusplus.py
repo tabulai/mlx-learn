@@ -18,10 +18,12 @@ depends on the shape of the call, so a product over selected rows may differ
 from the reference's in the last bits. Every evaluated distance is therefore
 an interval that contains the reference value:
 
-* nearly always both ends round to the same float32, which is then exact;
-* otherwise the reference's own chunk is recomputed with its shapes, except
-* for a row that coincides with a candidate, whose distance is rounding noise
-  between zero and a tiny bound and is carried as that interval.
+* Nearly always both ends round to the same float32, which is then the
+  reference's value.
+* A row that coincides with a candidate has only rounding noise for a
+  distance, between zero and a tiny bound. It keeps that interval.
+* In the remaining cases the reference's own chunk is recomputed with its
+  shapes.
 
 Float32 sums are monotone in every term for a fixed summation order, so sums
 over the lower and the upper ends bracket the reference's. A step is accepted
@@ -29,6 +31,10 @@ when both ends give the same candidates and the same potentials. If they ever
 differ, as when more centers are requested than there are distinct rows and
 only noise is left to sample, the reference routine runs instead from the
 initial random state.
+
+The same brackets save work. The kernel returns a float32 bracket for every
+pair it cannot prove, so the potentials of all candidates are bracketed before
+any float64 arithmetic, and only candidates that can still win are evaluated.
 """
 
 from __future__ import annotations
@@ -145,7 +151,8 @@ class _Reference:
         Pair ``j`` is candidate ``which[j]`` and row ``rows[position[j]]``.
         The reference value lies between the returned ``least`` and ``most``.
         """
-        centers = candidates.astype(np.float64)
+        used, which = np.unique(which, return_inverse=True)
+        centers = candidates[used].astype(np.float64)
         own = np.einsum("ij,ij->i", centers, centers)
         products = np.empty((len(centers), len(rows)))
         step = _block_rows(self.host.shape[1])
@@ -263,10 +270,7 @@ def _prefix_routine():
     """
     values = np.ldexp(np.random.default_rng(0).random(4096), np.arange(4096) % 40 - 20)
     values = values.astype(np.float32)
-    try:
-        same = np.array_equal(_scan_prefix(values), _host_prefix(values))
-    except Exception:  # an MLX build without a CPU scan for this type
-        same = False
+    same = np.array_equal(_scan_prefix(values), _host_prefix(values))
     return _scan_prefix if same else _host_prefix
 
 

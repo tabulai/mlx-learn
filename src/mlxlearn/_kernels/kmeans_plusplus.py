@@ -201,26 +201,40 @@ _PROJECTED = r"""
 
 _GROUP = 256
 
+# The error bounds assume IEEE rounding of every float32 operation.
+_SAFE = {"math_mode": "safe"}
+
 
 @lru_cache(None)
 def _kernel(name):
     if name == "screen":
         return mx.fast.metal_kernel(
             name="kmeans_plusplus_screen", input_names=["x", "low", "high", "norms", "ids", "shape"],
-            output_names=["table", "mask", "touched"], source=_SCREEN, header=_HEADER)
+            output_names=["table", "mask", "touched"], source=_SCREEN, header=_HEADER,
+            compile_options=_SAFE)
     if name == "projected":
         return mx.fast.metal_kernel(
             name="kmeans_plusplus_projected",
             input_names=["x", "z", "eps", "low", "high", "norms", "ids", "shape"],
             output_names=["table", "mask", "touched", "settled"], source=_PROJECTED,
-            header=_HEADER)
+            header=_HEADER, compile_options=_SAFE)
     raise ValueError(name)
 
 
+@lru_cache(maxsize=1)
+def _safe_math():
+    try:
+        _kernel("screen")
+    except TypeError:
+        # Earlier supported MLX releases cannot select Metal's safe math mode.
+        return False
+    return True
+
+
 def screen_supported(n, d, trials):
-    """Whether the screens' inputs and per-row candidate mask cover this problem."""
+    """Whether the screens cover this problem on this MLX release."""
     # Inputs shorter than eight elements are bound in another address space.
-    return n >= 8 and n * d >= 8 and trials <= 32 and n <= 2**32 - 1
+    return n >= 8 and trials <= 32 and n <= 2**32 - 1 and _safe_math()
 
 
 def candidate_ids(ids):
