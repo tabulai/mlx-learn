@@ -38,7 +38,7 @@ stock inheritance. See the [compatibility details](docs/support_matrix.md).
 
 ## Status
 
-**`0.1.5` — alpha.** The API may change. See [CHANGELOG.md](CHANGELOG.md).
+**`0.1.6` — alpha.** The API may change. See [CHANGELOG.md](CHANGELOG.md).
 
 | Estimator | Status |
 |---|---|
@@ -49,15 +49,22 @@ stock inheritance. See the [compatibility details](docs/support_matrix.md).
 | `mlxlearn.svm.SVC` (exact) | 0.1.0 |
 | `mlxlearn.decomposition.PCA` | 0.1.2 |
 | `mlxlearn.cluster.EMeans` | 0.1.3; Metal GPU, paper/Faiss recipes |
-| `mlxlearn.cluster.KMeans` | 0.1.3; Metal GPU, Lloyd clustering |
+| `mlxlearn.cluster.KMeans` | 0.1.3; Metal GPU, Lloyd clustering; Metal k-means++ seeding since 0.1.6 |
 | `mlxlearn.cluster.OMeans` | 0.1.5; Metal GPU, e-means with a two-level centroid search |
 | `LinearRegression`, `Ridge`, `DBSCAN`, `TSNE` | planned, 0.2.x |
 | `SVR`, `NuSVR`, `NuSVC` | deferred — will not ship until they implement the true objective |
 | tree ensembles | out of scope |
 
-## 0.1.5 benchmark highlights
+## Recent benchmark highlights
 
-- **O-means against e-means.** Over 18 datasets and three seeds, `OMeans`
+- **K-means++ seeding on the GPU (0.1.6).** `KMeans(init="k-means++")` now
+  chooses its starting centers with a Metal screen, and for a given
+  `random_state` it selects the same rows as `sklearn.cluster.kmeans_plusplus`.
+  On MNIST (60,000 × 784, M4 Max) seeding 8,192 centers takes **5.4 s instead
+  of 217 s**, and the default fit at 1,024 to 8,192 centers takes **1.4–7.0 s
+  instead of 27–219 s**, with the same iterations and inertia.
+  [K-means++ initialization](docs/k-means.md#k-means-initialization)
+- **O-means against e-means (0.1.5).** Over 18 datasets and three seeds, `OMeans`
   reached `EMeans`' held-out error **4.44× faster in float32 and 3.55× in
   BF16** on an M5 Ultra, and **4.13× and 3.96×** on an M4 Max, as geometric
   means. At ten million rows and 65,536 centroids it was **8.8×** faster in
@@ -66,7 +73,7 @@ stock inheritance. See the [compatibility details](docs/support_matrix.md).
   to +0.36% of `EMeans`'.
   [M5 Ultra report](docs/o-means-benchmarks-2026-11-18.md) ·
   [M4 Max report](docs/o-means-benchmarks-m4-max-2026-11-19.md)
-- **O-means on the MNIST family.** On three 60,000 × 784 datasets, an
+- **O-means on the MNIST family (0.1.5).** On three 60,000 × 784 datasets, an
   `OMeans` fit at 4,096 to 8,192 centroids takes **150–242 ms** on an M4 Max,
   against 107–223 s for scikit-learn's `KMeans`, with held-out error within
   1% of it. Against `EMeans` this small data gains 1.4× in training at 4,096
@@ -134,7 +141,9 @@ For full-batch Lloyd clustering, [Metal `KMeans`](docs/k-means.md) is available
 through `from mlxlearn.cluster import KMeans`. It supports dense FP32 training,
 explicit, random or k-means++ initialization, multiple restarts, and final
 nearest-centroid labels and inertia. Use the direct estimator; it is not part
-of `patch_sklearn()`.
+of `patch_sklearn()`. Since 0.1.6 its k-means++ initialization runs on the
+GPU and selects the same centers as scikit-learn's helper for a given
+`random_state`; see [K-means++ initialization](docs/k-means.md#k-means-initialization).
 
 The [0.1.3 equal-pass comparison](docs/k-means-10m-comparison-2026-11-15.md)
 reports runtime, peak fit memory, and test MSE for four methods on five
@@ -203,7 +212,7 @@ CI tests only valid pairs — see [`docs/support_matrix.md`](docs/support_matrix
 pip install mlx-learn
 ```
 
-Version `0.1.5` provides Apple silicon wheels for Python 3.10–3.13 with Metal
+Version `0.1.6` provides Apple silicon wheels for Python 3.10–3.13 with Metal
 and C++ CPU extensions. Source builds can also include these optional extensions.
 The KNN CPU extension handles small workloads and is compiled at build time;
 fitting or querying never invokes the C++ compiler. A compatible wheel includes
