@@ -55,6 +55,24 @@ stock inheritance. See the [compatibility details](docs/support_matrix.md).
 | `SVR`, `NuSVR`, `NuSVC` | deferred — will not ship until they implement the true objective |
 | tree ensembles | out of scope |
 
+## 0.1.5 benchmark highlights
+
+- **O-means against e-means.** Over 18 datasets and three seeds, `OMeans`
+  reached `EMeans`' held-out error **4.44× faster in float32 and 3.55× in
+  BF16** on an M5 Ultra, and **4.13× and 3.96×** on an M4 Max, as geometric
+  means. At ten million rows and 65,536 centroids it was **8.8×** faster in
+  float32 on the M5 Ultra. It compares each row with a median 11% of the
+  centroids, and its held-out error at the same epochs stays within −1.14%
+  to +0.36% of `EMeans`'.
+  [M5 Ultra report](docs/o-means-benchmarks-2026-11-18.md) ·
+  [M4 Max report](docs/o-means-benchmarks-m4-max-2026-11-19.md)
+- **O-means on the MNIST family.** On three 60,000 × 784 datasets, an
+  `OMeans` fit at 4,096 to 8,192 centroids takes **150–242 ms** on an M4 Max,
+  against 107–223 s for scikit-learn's `KMeans`, with held-out error within
+  1% of it. Against `EMeans` this small data gains 1.4× in training at 4,096
+  centroids and 2.0–2.3× at 8,192.
+  [MNIST-family results](#mnist-fashion-mnist-and-kannada-mnist)
+
 ## 0.1.4 benchmark highlights
 
 - **E-means against Lloyd at 25 iterations.** The 0.1.3 benchmark gave both
