@@ -199,7 +199,10 @@ held-out error relative to scikit-learn's `KMeans`. M4 Max.
   1.12–1.14× and 1.44–1.49×, and against scikit-learn's `KMeans` it is 675–1,854×
   faster.
 - mlxlearn's `KMeans` spends most of its default fit in k-means++ initialization at these
-  centroid counts: 27–221 s against 6–14 s with `init="random"`.
+  centroid counts: 27–221 s against 6–14 s with `init="random"`. This column predates
+  the Metal k-means++ seeding: with it, the default fit on MNIST takes 1.4–7.0 s at 1,024
+  to 8,192 centers on the same M4 Max, with the same centers per seed
+  ([measurements](../kmeans-plusplus-2026-11-19/README.md)).
 
 Five of the 684 timed M4 Max configurations saw moderate thermal pressure around a call;
 the interleaving keeps e-means and o-means in the same state. The M5 Ultra saw none.

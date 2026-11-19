@@ -17,7 +17,6 @@ from numbers import Integral, Real
 import mlx.core as mx
 import numpy as np
 from sklearn.base import BaseEstimator, ClusterMixin, TransformerMixin
-from sklearn.cluster import kmeans_plusplus
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.utils import check_random_state
 from sklearn.utils.validation import check_is_fitted
@@ -30,6 +29,7 @@ from .._kernels.e_means import (
     selected_distances,
 )
 from .._kernels.lloyd_bounds import reusable_labels, separation_lower
+from ._plusplus import plusplus_indices
 
 _UINT32_MAX = 2**32 - 1
 
@@ -181,7 +181,9 @@ class KMeans(ClusterMixin, TransformerMixin, BaseEstimator):
     Parameters follow sklearn KMeans where supported: ``init`` accepts
     ``'k-means++'``, ``'random'``, or an explicit center matrix; ``n_init='auto'``
     means one run for k-means++/explicit init and ten for random init. Explicit
-    initialization always uses one run. Only ``algorithm='lloyd'`` is supported.
+    initialization always uses one run. K-means++ selects the centers that
+    ``sklearn.cluster.kmeans_plusplus`` selects for the float32 input and the
+    same ``random_state``. Only ``algorithm='lloyd'`` is supported.
     ``copy_x=False`` is accepted but inputs are still preserved. Sample weights,
     sparse data and callable initializers are unsupported.
 
@@ -241,7 +243,9 @@ class KMeans(ClusterMixin, TransformerMixin, BaseEstimator):
         """Validate and own input/init storage before resident optimization.
 
         This includes upload, initialization and the global mean and tolerance.
-        K-means++ initialization uses sklearn's public CPU helper. Preparation
+        K-means++ initialization selects the centers of sklearn's public helper
+        for the same ``random_state``; a Metal screen leaves the host only the
+        rows a candidate center can change (see ``_plusplus``). Preparation
         can be reused by a model with the same configuration; non-scalar init
         and RandomState parameters must be the same objects. Input mutation
         after this call cannot change the prepared snapshots.
@@ -286,8 +290,8 @@ class KMeans(ClusterMixin, TransformerMixin, BaseEstimator):
                         indices = rng.choice(n, size=k, replace=False)
                         centers = data[mx.array(indices, mx.int32)]
                     else:
-                        values, _ = kmeans_plusplus(host, n_clusters=k, random_state=rng)
-                        centers = mx.array(values, mx.float32)
+                        indices = plusplus_indices(data, host, k, rng)
+                        centers = data[mx.array(indices, mx.int32)]
                     initials.append(centers)
             tolerance = 0.0
             if self.tol:

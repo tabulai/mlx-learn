@@ -17,6 +17,23 @@ All notable changes to this project are documented here. The format follows
   gain on small data, and a one-epoch fit at 4,096 centroids that is slower
   than e-means on M5 Ultra.
 
+### Changed
+
+- `mlxlearn.cluster.KMeans` seeds `init="k-means++"` through a Metal screen
+  instead of calling scikit-learn's helper on the host. A kernel proves in
+  float32, with a rigorous error bound, which (candidate, row) pairs a
+  candidate center leaves unchanged; for inputs with at least 256 features it
+  first compares 64-dimensional images of the rows. The host evaluates the
+  remaining pairs in float64 and keeps the helper's expressions for sampling
+  and potentials. A `random_state` selects the rows
+  `sklearn.cluster.kmeans_plusplus` selects on the same machine: every step is
+  certified with interval bounds, and a seeding that cannot be certified runs
+  the helper itself. On MNIST (60,000 x 784, M4 Max) seeding takes 0.9 s for
+  1,024 centers and 5.4 s for 8,192, against 27 s and 217 s for the helper,
+  and the default fit takes 4.4 s at 4,096 centers, down from 110 s. See
+  [docs/k-means.md](docs/k-means.md#k-means-initialization) and
+  `benchmarks/experiments/kmeans-plusplus-2026-11-19`.
+
 ## [0.1.5] — 2026-11-19
 
 ### Added
