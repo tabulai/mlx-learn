@@ -48,9 +48,11 @@ and `transform(X)` returns Euclidean distances to every center.
 Explicit initial centers select one initialization. Requesting more than one
 with an explicit matrix emits a `RuntimeWarning` and uses one. When several
 initializations are requested, the returned model is selected by final inertia.
-K-means++ initialization uses scikit-learn's public helper during preparation;
-the Lloyd iterations run on Metal. `n_init_`, `best_restart_`,
-`convergence_reason_` and `iteration_stats_` describe the selected run.
+K-means++ initialization selects the centers of scikit-learn's public helper
+for the same `random_state`, with most of the work on Metal (see
+[K-means++ initialization](#k-means-initialization)); the Lloyd iterations run
+on Metal. `n_init_`, `best_restart_`, `convergence_reason_` and
+`iteration_stats_` describe the selected run.
 
 The convergence threshold is `tol * mean(feature_variances)`, applied to the
 sum of squared center shifts. Unchanged labels are checked first. Even with
@@ -64,8 +66,11 @@ Fractional epoch budgets belong to [EMeans](e-means.md), not this estimator.
 
 The API follows scikit-learn conventions but does not promise identical
 centroids, random initialization, tie-breaking, or inertia bits. GPU reductions
-and floating-point ordering differ. To compare implementations from exactly the
-same starting centers, pass the same explicit FP32 initialization to each:
+and floating-point ordering differ. K-means++ starting centers are those of
+scikit-learn's `kmeans_plusplus` helper on the float32 input; scikit-learn's
+own `KMeans` seeds from mean-centered data and can start elsewhere. To compare
+implementations from exactly the same starting centers, pass the same explicit
+FP32 initialization to each:
 
 ```python
 seed, k = 10, 1024
@@ -79,6 +84,78 @@ model = KMeans(
     random_state=seed,
 ).fit(X)
 ```
+
+## K-means++ initialization
+
+`init="k-means++"` selects the rows that
+`sklearn.cluster.kmeans_plusplus(X32, n_clusters, random_state=...)` selects on
+the same machine, where `X32` is the float32 input, and it consumes the same
+random numbers. A fixed `random_state` therefore gives the centers it gave when
+`KMeans` called that helper directly. Like the helper, the selection follows the
+installed scikit-learn release: 1.8 changed the helper's sampling prefix sums
+from float64 to float32, which changes the candidates a seed draws.
+
+The helper draws `2 + int(log(n_clusters))` candidates for every new center
+and evaluates float64 distances from each of them to every row. Only rows
+nearer to a candidate than to their current center matter: on MNIST 49% of the
+(candidate, row) pairs for the second center and 0.16% for the 257th. Each
+step now works as follows.
+
+1. A Metal kernel compares every (candidate, row) pair in float32 and proves
+   most pairs unchanged with a rigorous error bound. For inputs with at least
+   256 features it first compares 64-dimensional images of the rows, whose
+   distances bound the true ones from below, and reads full rows only for the
+   pairs the images cannot settle. On data without a few dominant directions
+   the images settle little, and the kernel that reads every row takes over.
+2. For the remaining pairs the kernel returns a float32 bracket of the
+   distance. Potentials summed over both bracket ends rule out candidates that
+   cannot win, and the host evaluates the other candidates' open pairs in
+   float64.
+3. Sampling, candidate potentials and the choice among candidates use the
+   helper's NumPy expressions on the resulting values.
+
+The match with the helper is certified. The helper rounds float64 results to
+float32, and its float64 dot products come from a BLAS routine whose last bits
+depend on the shape of the call. A product over selected rows is therefore an
+interval. If both ends round to the same float32, that value is the helper's;
+if not, the helper's own chunk is recomputed with its shapes. A row that
+coincides with a candidate has only round-off for a distance and keeps its
+interval. A step is accepted when both interval ends give the same candidates
+and the same potentials. When they do not, the helper itself runs from the
+initial random state. This happens when more centers are requested than there
+are distinct rows, where the helper samples its own round-off.
+
+Small problems call the helper directly: it is as fast as a GPU round trip
+below about `trials * n_samples * (n_features + 48) = 2**22`. So do MLX
+releases that cannot compile kernels in Metal's safe math mode, which the
+error bounds assume.
+
+Besides the input, seeding holds two `trials x n_samples` float32 tables
+(lower and upper bounds), float64 row norms, and for inputs with at least 256
+features the `n_samples x 64` float32 images.
+
+Seeding time on MNIST (60,000 x 784, pixels in [0, 1], `random_state=10`,
+M4 Max; the same rows are selected in every case):
+
+| Centers | scikit-learn helper | Metal screen | Speedup |
+|---:|---:|---:|---:|
+| 1,024 | 26.9 s | 0.90 s | 30x |
+| 2,048 | 54.2 s | 1.62 s | 34x |
+| 4,096 | 108.6 s | 2.82 s | 38x |
+| 8,192 | 217.1 s | 5.41 s | 40x |
+
+Whole fits with default settings on the same data. `init="random"` runs ten
+restarts, k-means++ one:
+
+| Centers | `KMeans(k)` before | `KMeans(k)` | `KMeans(k, init="random")` |
+|---:|---:|---:|---:|
+| 1,024 | 27.5 s | 1.39 s | 6.70 s |
+| 2,048 | 54.9 s | 2.40 s | 7.97 s |
+| 4,096 | 110.4 s | 4.42 s | 10.66 s |
+| 8,192 | 218.7 s | 7.02 s | 13.59 s |
+
+Scripts, per-stage profiles and raw results are in
+[`benchmarks/experiments/kmeans-plusplus-2026-11-19`](../benchmarks/experiments/kmeans-plusplus-2026-11-19/README.md).
 
 ## Device execution and memory
 

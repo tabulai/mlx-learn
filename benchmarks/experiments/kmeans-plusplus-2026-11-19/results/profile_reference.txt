@@ -1,0 +1,17 @@
+
+scikit-learn helper, 1024 centers, 8 candidates per center: 26.32 s, 25.725 ms per center
+
+| Stage | Seconds | Share | Microseconds per center |
+|---|---:|---:|---:|
+| distances: row norms | 13.648 | 51.9% | 13341 |
+| distances: GEMM | 6.670 | 25.3% | 6520 |
+| distances: upcast rows to float64 | 5.007 | 19.0% | 4894 |
+| distances: add norms, round to float32 | 0.530 | 2.0% | 518 |
+| prefix sums | 0.144 | 0.5% | 141 |
+| potentials, best candidate | 0.054 | 0.2% | 53 |
+| minimum with closest | 0.045 | 0.2% | 44 |
+| search, gather candidates | 0.031 | 0.1% | 30 |
+| random draws | 0.012 | 0.0% | 12 |
+
+Share of (candidate, row) pairs nearer than the row's closest center: step 1: 0.48752, step 4: 0.14164, step 16: 0.02415, step 64: 0.00850, step 256: 0.00157
+same indices as sklearn.cluster.kmeans_plusplus: True
