@@ -38,7 +38,7 @@ stock inheritance. See the [compatibility details](docs/support_matrix.md).
 
 ## Status
 
-**`0.1.4` — alpha.** The API may change. See [CHANGELOG.md](CHANGELOG.md).
+**`0.1.5` — alpha.** The API may change. See [CHANGELOG.md](CHANGELOG.md).
 
 | Estimator | Status |
 |---|---|
@@ -50,7 +50,7 @@ stock inheritance. See the [compatibility details](docs/support_matrix.md).
 | `mlxlearn.decomposition.PCA` | 0.1.2 |
 | `mlxlearn.cluster.EMeans` | 0.1.3; Metal GPU, paper/Faiss recipes |
 | `mlxlearn.cluster.KMeans` | 0.1.3; Metal GPU, Lloyd clustering |
-| `mlxlearn.cluster.OMeans` | unreleased; Metal GPU, e-means with a two-level centroid search |
+| `mlxlearn.cluster.OMeans` | 0.1.5; Metal GPU, e-means with a two-level centroid search |
 | `LinearRegression`, `Ridge`, `DBSCAN`, `TSNE` | planned, 0.2.x |
 | `SVR`, `NuSVR`, `NuSVC` | deferred — will not ship until they implement the true objective |
 | tree ensembles | out of scope |
@@ -124,11 +124,11 @@ reports runtime, peak fit memory, and test MSE for four methods on five
 
 ## O-means clustering
 
-For many centroids, [`OMeans`](docs/o-means.md) trains e-means with a two-level
-search: each row is compared only with the centroids of a few nearby coarse
-cells, 6–25% of them on the measured embedding datasets. It follows the
-[o-means post](https://owlgebra.ai/blog/o-means/) with separate Metal kernels,
-and is not yet in a release.
+Version 0.1.5 adds [`OMeans`](docs/o-means.md) for clustering with many
+centroids. During two-level training, each row is compared with the
+centroids of a few nearby coarse cells, covering 6–25% of the centroids on
+the measured embedding datasets. The estimator follows the
+[o-means post](https://owlgebra.ai/blog/o-means/) with separate Metal kernels.
 
 ```python
 from mlxlearn.cluster import OMeans
@@ -156,8 +156,9 @@ e-means' fit time divided by o-means'.
   every call at nominal thermal pressure. The M4 Max is a laptop whose GPU
   throttles under sustained load, which slows the full search more than the
   two-level search, so its campaign timed all configurations in turn.
-- **Routing:** `assignment="auto"` uses the two-level search from 4,224
-  centroids, or from 2,176 with 512 features or more, and returns to the full
+- **Routing:** On M1 Ultra, M4 Max, and M5 Ultra, `assignment="auto"`
+  can select the two-level search from 4,224 centroids, or from 2,176
+  with 512 features or more. It returns to the full
   search when a fit's cells turn out too uneven to save comparisons. Final
   labels, `predict` and `score` always use a full search.
 
@@ -180,7 +181,7 @@ CI tests only valid pairs — see [`docs/support_matrix.md`](docs/support_matrix
 pip install mlx-learn
 ```
 
-Version `0.1.4` provides Apple silicon wheels for Python 3.10–3.13 with Metal
+Version `0.1.5` provides Apple silicon wheels for Python 3.10–3.13 with Metal
 and C++ CPU extensions. Source builds can also include these optional extensions.
 The KNN CPU extension handles small workloads and is compiled at build time;
 fitting or querying never invokes the C++ compiler. A compatible wheel includes
