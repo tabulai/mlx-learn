@@ -60,20 +60,15 @@ def _normalize(x):
     return scaled / mx.where(norm > 0, norm, 1)
 
 
-def revive(centers, counts, uniform, threshold, split_epsilon, companion=None, *, precision="float32"):
-    """Split underused clusters with weighted sampling without replacement.
+def split_plan(counts, uniform, threshold):
+    """Pair dead clusters with mass-weighted donors, entirely on the GPU.
 
-    ``uniform`` contains independent U(0,1) samples, one per centroid. Gumbel
-    top-k implements the reference's mass-proportional donor sampling. The
-    whole selection stays on the GPU, including the dynamic number of dead
-    clusters. ``companion`` optionally supplies slow-EMA (centers, counts),
-    which undergo the same donor/child mapping using their own statistics.
-    BF16 repairs a collapsed split by moving the child's first coordinate to
-    the next BF16 value toward positive infinity, or inward at the finite
-    maximum. Other precisions retain the original multiplicative convention.
-    Returns ``centers, counts, number_of_splits, companion``.
+    Returns ``is_child, is_donor, source, target, number``. ``source[t]`` is
+    the donor of child slot ``t`` and ``target[s]`` the child slot of donor
+    ``s``; each is meaningful only under its mask. The lowest-index dead
+    slots become children. Unused outputs stay lazy and are never computed.
     """
-    k, d = centers.shape
+    k = counts.shape[0]
     ids = mx.arange(k, dtype=mx.int32)
     dead = counts < (threshold * mx.sum(counts) / k)
     available = (~dead) & (counts > 0)
@@ -87,6 +82,28 @@ def revive(centers, counts, uniform, threshold, split_epsilon, companion=None, *
     is_child = target_rank < number
     is_donor = donor_rank < number
     source = donor_order[target_rank]
+    target = target_order[donor_rank]
+    return is_child, is_donor, source, target, number
+
+
+def revive(centers, counts, uniform, threshold, split_epsilon, companion=None, *,
+           precision="float32", plan=None):
+    """Split underused clusters with weighted sampling without replacement.
+
+    ``uniform`` contains independent U(0,1) samples, one per centroid. Gumbel
+    top-k implements the reference's mass-proportional donor sampling. The
+    whole selection stays on the GPU, including the dynamic number of dead
+    clusters. ``companion`` optionally supplies slow-EMA (centers, counts),
+    which undergo the same donor/child mapping using their own statistics.
+    BF16 repairs a collapsed split by moving the child's first coordinate to
+    the next BF16 value toward positive infinity, or inward at the finite
+    maximum. Other precisions retain the original multiplicative convention.
+    ``plan`` reuses a :func:`split_plan` result computed from the same inputs.
+    Returns ``centers, counts, number_of_splits, companion``.
+    """
+    d = centers.shape[1]
+    is_child, is_donor, source, _, number = (
+        split_plan(counts, uniform, threshold) if plan is None else plan)
     offset = mx.where(mx.arange(d) % 2 == 0, split_epsilon, -split_epsilon)
 
     def split(position, mass):
@@ -299,6 +316,12 @@ class EMeans(ClusterMixin, TransformerMixin, BaseEstimator):
             precision=self.precision,
         )
 
+    def _resolve_recipe(self, n, d):
+        return resolve_recipe(
+            n, self.n_clusters, d, self.max_iter, self.batch_size, self.alpha0,
+            self.batch_law, self.recipe, self.unused_threshold,
+        )
+
     def _configuration_signature(self):
         primitive = (str, int, float, bool, type(None))
         return tuple((key, value if isinstance(value, primitive) else id(value))
@@ -318,10 +341,7 @@ class EMeans(ClusterMixin, TransformerMixin, BaseEstimator):
         with mx.stream(mx.gpu):
             data, data_maximum = self._input(X, fit=True, return_bound=True)
             n, d = data.shape
-            self.recipe_ = resolve_recipe(
-                n, self.n_clusters, d, self.max_iter, self.batch_size, self.alpha0,
-                self.batch_law, self.recipe, self.unused_threshold,
-            )
+            self.recipe_ = self._resolve_recipe(n, d)
             k = int(self.n_clusters)
             if k * d > np.iinfo(np.uint32).max or self.recipe_["batch_size"] * d > np.iinfo(np.uint32).max:
                 raise ValueError("centroid or statistical batch size exceeds 32-bit Metal indexing; reduce n_clusters or batch_size")

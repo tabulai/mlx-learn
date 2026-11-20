@@ -132,6 +132,7 @@ HEADER_EXEMPT = {
 # section of THIRD_PARTY_NOTICES.md, and any additional upstream header fails.
 RECORDED_UPSTREAM_HEADERS = {
     "src/mlxlearn/_kernels/e_means_bf16.py": ("Copyright © 2024 Apple Inc.",),
+    "src/mlxlearn/_kernels/o_means.py": ("Copyright © 2024 Apple Inc.",),
     "benchmarks/e_means/experimental_kernels.py": ("Copyright © 2024 Apple Inc.",),
     "benchmarks/e_means/results/optimization/bf16-dispatch-sweep.json": ("Copyright © 2024 Apple Inc.",),
     "benchmarks/e_means/results/optimization/bf16-tile-sweep3.json": ("Copyright © 2024 Apple Inc.",),

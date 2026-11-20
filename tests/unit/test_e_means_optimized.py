@@ -85,6 +85,50 @@ def test_bf16_oracle_rounds_halfway_values_to_even_and_keeps_exponent_range():
     np.testing.assert_array_equal(_bf16(values).view(np.uint32), expected.view(np.uint32))
 
 
+def test_auto_fp32_keeps_gemm_on_mlx_without_safe_math_options(monkeypatch):
+    from mlxlearn._kernels import e_means as kernels
+
+    def unsupported():
+        raise TypeError("unexpected keyword argument 'compile_options'")
+
+    monkeypatch.setattr(kernels.mx, "device_info", lambda: {"device_name": "Apple M4 Max"},
+                        raising=False)
+    monkeypatch.setattr(kernels, "_tile_kernel", unsupported)
+    assert not kernels._streaming_fp32_device.__wrapped__()
+
+
+@pytest.mark.gpu
+@pytest.mark.parametrize("spherical", [False, True])
+def test_auto_fp32_matches_gemm_on_ragged_and_nearly_tied_tiles(metal, monkeypatch, spherical):
+    from mlxlearn._kernels import e_means as kernels
+
+    if not kernels._streaming_fp32_device():
+        pytest.skip("requires the calibrated M4 Max FP32 GEMM")
+    rng = np.random.default_rng(812)
+    # Large offsets create nearly cancelling Euclidean scores. Centers on
+    # opposite sides of a tile boundary tie or differ by one operand ulp.
+    x = (8192 + rng.standard_normal((259, 100))).astype(np.float32)
+    centers = (8192 + rng.standard_normal((2049, 100))).astype(np.float32)
+    centers = np.concatenate([centers, centers[:-1]])
+    centers[2049::2, 1] = np.nextafter(centers[2049::2, 1], np.float32(np.inf))
+    x, centers = metal.array(x), metal.array(centers)
+    options = {"batch_size": 129, "spherical": spherical}
+    expected = kernels.assign(x, centers, method="gemm", **options)
+    streamed = []
+    original = kernels.streaming_tile
+
+    def observe(x, *args, **kwargs):
+        streamed.append(x.shape[0])
+        return original(x, *args, **kwargs)
+
+    monkeypatch.setattr(kernels, "streaming_tile", observe)
+    actual = kernels.assign(x, centers, **options)
+    assert streamed == [129, 129]  # singleton tail retains GEMV arithmetic
+    np.testing.assert_array_equal(np.asarray(actual[0]), np.asarray(expected[0]))
+    np.testing.assert_array_equal(np.asarray(actual[1]).view(np.uint32),
+                                  np.asarray(expected[1]).view(np.uint32))
+
+
 @pytest.mark.gpu
 @pytest.mark.parametrize("n,k,d", [(1, 1, 1), (7, 3, 9), (33, 65, 31), (67, 129, 96)])
 @pytest.mark.parametrize("method", ["auto", "gemm", "fused"])

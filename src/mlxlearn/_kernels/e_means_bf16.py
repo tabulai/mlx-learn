@@ -1,8 +1,8 @@
-"""Native BF16 Metal nearest-centroid assignment with FP32 accumulation.
+"""Streaming Metal nearest-centroid assignment with FP32 accumulation.
 
 The fused tile kernel keeps scores in registers and writes only one winning
 score/index per row and centroid tile. A second SIMD reduction merges tiles.
-Inputs and centroid mirrors are explicitly BF16; no FP16 approximation occurs.
+The tile supports BF16 operands and a binary32 variant for dense FP32 search.
 
 The fragment coordinates and vector load strategy are derived from MLX 0.32.4
 ``mlx/backend/metal/kernels/steel/gemm/{mma,loader}.h`` (MIT).
@@ -51,14 +51,18 @@ _TILE_SOURCE = r"""
         for (uint n = 0; n < TN; ++n)
             acc[m][n] = metal::simdgroup_float8x8(0);
     #pragma clang loop unroll(disable)
-    for (uint f0 = 0; f0 < D; f0 += BK) {
+    for (uint step = 0; step < D; step += BK) {
+        // MLX Steel's FP32 GEMM accumulates its partial depth tile first.
+        // Match its reduction order even when scores differ by one ulp.
+        uint f0 = sizeof(T) == sizeof(float) && D % BK
+                  ? (step == 0 ? D - D % BK : step - BK) : step;
         if constexpr (VECTOR_LOAD) {
             constexpr uint AV = BM * BK / THREADS;
             constexpr uint BV = BN * BK / THREADS;
             constexpr uint AC = BK / AV, BC = BK / BV;
             constexpr uint AR = THREADS / AC, BR = THREADS / BC;
-            struct alignas(2) AVector { uint8_t values[2 * AV]; };
-            struct alignas(2) BVector { uint8_t values[2 * BV]; };
+            struct alignas(T) AVector { T values[AV]; };
+            struct alignas(T) BVector { T values[BV]; };
             #pragma clang loop unroll(full)
             for (uint i = 0; i < BM; i += AR) {
                 uint r = i + tid / AC, f = (tid % AC) * AV;
@@ -310,6 +314,37 @@ def prepare_centers(centers):
     return represented, norms
 
 
+def streaming_tile(x, centers, norms, *, spherical, bm, bk, pad, coalesced):
+    """Compute labels and winning scores for one workspace-bounded FP32 or BF16 tile."""
+    rows, d = x.shape
+    k = centers.shape[0]
+    bn = 64
+    wm = wn = 2
+    threads = 32 * wm * wn
+    parts = (k + bn - 1) // bn
+    partial_scores, partial_indices = _tile_kernel()(
+        inputs=[x, centers, norms],
+        template=[("T", x.dtype), ("N", rows), ("K", k), ("D", d),
+                  ("BM", bm), ("BN", bn), ("BK", bk), ("WM", wm),
+                  ("WN", wn), ("PAD", pad), ("PARTS", parts),
+                  ("MANUAL", True), ("VECTOR_LOAD", True), ("NATIVE", True),
+                  ("SPHERICAL", bool(spherical)), ("COALESCED", coalesced)],
+        grid=(((rows + bm - 1) // bm) * threads, parts, 1),
+        threadgroup=(threads, 1, 1),
+        output_shapes=[(parts, rows), (parts, rows)] if coalesced else [(rows, parts), (rows, parts)],
+        output_dtypes=[mx.float32, mx.uint32], stream=mx.gpu,
+    )
+    merge = _coalesced_merge_kernel() if coalesced else _merge_kernel()
+    return tuple(merge(
+        inputs=[partial_scores, partial_indices],
+        template=[("N", rows), ("PARTS", parts)] + ([("WARPS", 8)] if coalesced else []),
+        grid=(((rows + 31) // 32) * 256 if coalesced else rows * 32, 1, 1),
+        threadgroup=(256, 1, 1),
+        output_shapes=[(rows,), (rows,)],
+        output_dtypes=[mx.uint32, mx.float32], stream=mx.gpu,
+    ))
+
+
 def assign_bf16(x, centers, *, norms=None, batch_size=None, spherical=False):
     """Return uint32 labels and FP32 winning assignment scores.
 
@@ -337,10 +372,8 @@ def assign_bf16(x, centers, *, norms=None, batch_size=None, spherical=False):
     # layout for these common aligned dimensions. Other shapes retain their
     # previous dispatch; larger dimensions showed no consistent layout gain.
     coalesced = d in (96, 128) and k >= 1024 and n >= 32
-    bm, bn, bk = (32, 64, 16) if d <= 128 and not coalesced else (64, 64, 32)
-    wm = wn = 2
-    threads = 32 * wm * wn
-    parts = (k + bn - 1) // bn
+    bm, bk = (32, 16) if d <= 128 and not coalesced else (64, 32)
+    parts = (k + 63) // 64
     block = min(n, _UINT32_MAX // d, _UINT32_MAX // parts,
                 _UINT32_MAX // 32, max(1, _SCRATCH_BYTES // (8 * parts)))
     if batch_size is not None:
@@ -357,26 +390,8 @@ def assign_bf16(x, centers, *, norms=None, batch_size=None, spherical=False):
     for start in range(0, n, block):
         xb = represented_x[start:start + block]
         rows = xb.shape[0]
-        partial_scores, partial_indices = _tile_kernel()(
-            inputs=[xb, centers, norms],
-            template=[("T", mx.bfloat16), ("N", rows), ("K", k), ("D", d),
-                      ("BM", bm), ("BN", bn), ("BK", bk), ("WM", wm),
-                      ("WN", wn), ("PAD", 8), ("PARTS", parts),
-                      ("MANUAL", True), ("VECTOR_LOAD", True), ("NATIVE", True),
-                      ("SPHERICAL", bool(spherical)), ("COALESCED", coalesced)],
-            grid=(((rows + bm - 1) // bm) * threads, parts, 1),
-            threadgroup=(threads, 1, 1),
-            output_shapes=[(parts, rows), (parts, rows)] if coalesced else [(rows, parts), (rows, parts)],
-            output_dtypes=[mx.float32, mx.uint32], stream=mx.gpu,
-        )
-        merge = _coalesced_merge_kernel() if coalesced else _merge_kernel()
-        batch_labels, batch_scores = merge(
-            inputs=[partial_scores, partial_indices],
-            template=[("N", rows), ("PARTS", parts)] + ([("WARPS", 8)] if coalesced else []),
-            grid=(((rows + 31) // 32) * 256 if coalesced else rows * 32, 1, 1),
-            threadgroup=(256, 1, 1),
-            output_shapes=[(rows,), (rows,)],
-            output_dtypes=[mx.uint32, mx.float32], stream=mx.gpu,
+        batch_labels, batch_scores = streaming_tile(
+            xb, centers, norms, spherical=spherical, bm=bm, bk=bk, pad=8, coalesced=coalesced,
         )
         # Materialize each chunk before dispatching another to bound workspace.
         # A single training batch stays lazy for fusion into the fit graph.
