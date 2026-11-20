@@ -72,7 +72,7 @@ jobs:
           import mlxlearn
           from mlxlearn._solvers import _metal_loop, _smo_native, _smo_block_native
           from mlxlearn._kernels import _neighbors_cpu_native, _svc_cpu_native
-          from mlxlearn.cluster import EMeans, KMeans
+          from mlxlearn.cluster import EMeans, KMeans, OMeans
           from mlxlearn.decomposition import PCA
 
           version = re.search(r'^version = "([^"]+)"', pathlib.Path("pyproject.toml").read_text(), re.M).group(1)
@@ -93,6 +93,7 @@ jobs:
           for estimator in (
               KMeans(n_clusters=4, n_init=1, max_iter=2, random_state=0),
               EMeans(n_clusters=4, max_iter=2, batch_size=32, random_state=0),
+              OMeans(n_clusters=4, max_iter=2, batch_size=32, random_state=0),
           ):
               estimator.fit(X32)
               assert estimator.cluster_centers_.shape == (4, 8)

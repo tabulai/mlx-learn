@@ -1,8 +1,9 @@
 """Dense FP32 Lloyd k-means on Metal, with bounded assignment/statistics tiles.
 
 The resident interface keeps input preparation outside a timed optimization.
-All centroid statistics and updates stay on the GPU. This module deliberately
-reuses the frozen e-means primitives without changing their implementation.
+All centroid statistics and updates stay on the GPU. Lloyd shares the dense
+assignment kernels with e-means and can certify previous labels against the
+current centers before issuing a dense search.
 """
 
 from __future__ import annotations
@@ -16,12 +17,19 @@ from numbers import Integral, Real
 import mlx.core as mx
 import numpy as np
 from sklearn.base import BaseEstimator, ClusterMixin, TransformerMixin
-from sklearn.cluster import kmeans_plusplus
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.utils import check_random_state
 from sklearn.utils.validation import check_is_fitted
 
-from .._kernels.e_means import assign, batch_stats, selected_distances
+from .._kernels.e_means import (
+    _scratch_budget,
+    _streaming_fp32_device,
+    assign,
+    batch_stats,
+    selected_distances,
+)
+from .._kernels.lloyd_bounds import reusable_labels, separation_lower
+from ._plusplus import plusplus_indices
 
 _UINT32_MAX = 2**32 - 1
 
@@ -134,13 +142,48 @@ def _relocate_empty(data, offset, labels, distances, sums, counts):
     return centers, empty_count
 
 
+def _compacted_rows(uncertain):
+    """Round a compacted batch up to one of four row counts per power of two.
+
+    The assignment kernels are specialized by row count. The first call at a
+    row count compiles them, which costs over 100 ms until Metal has cached
+    that shape, and the uncertain count differs in nearly every tile. This
+    ladder bounds the compiled sizes while adding fewer than a quarter more
+    rows. The 128-row floor keeps the batch on the streaming kernel.
+    """
+    rows = max(uncertain, 128)
+    step = 1 << ((rows - 1).bit_length() - 3)
+    return -(-rows // step) * step
+
+
+def _pruned_tile(x, centers, old, radii, max_norm):
+    keep, distances = reusable_labels(x, centers, old, radii[old], max_norm)
+    uncertain = len(x) - int(mx.sum(keep).item())
+    if uncertain == 0:
+        return old, distances, len(x)
+    # Only compact rows on shapes with the streaming kernel's fixed dot order.
+    rows = _compacted_rows(uncertain)
+    if x.shape[1] > 512 or rows >= len(x):
+        labels, distances = assign(x, centers)
+        return labels, distances, 0
+    ids = mx.argsort(keep.astype(mx.int32))[:uncertain]
+    work = x[ids]
+    if rows > uncertain:
+        work = mx.concatenate([work, mx.broadcast_to(work[:1], (rows - uncertain, x.shape[1]))])
+    labels, updated = assign(work, centers)
+    return (mx.put_along_axis(old, ids, labels[:uncertain], axis=0),
+            mx.put_along_axis(distances, ids, updated[:uncertain], axis=0), len(x) - uncertain)
+
+
 class KMeans(ClusterMixin, TransformerMixin, BaseEstimator):
     """Full-batch Lloyd clustering using FP32 Metal assignment and updates.
 
     Parameters follow sklearn KMeans where supported: ``init`` accepts
     ``'k-means++'``, ``'random'``, or an explicit center matrix; ``n_init='auto'``
     means one run for k-means++/explicit init and ten for random init. Explicit
-    initialization always uses one run. Only ``algorithm='lloyd'`` is supported.
+    initialization always uses one run. K-means++ selects the centers that
+    ``sklearn.cluster.kmeans_plusplus`` selects for the float32 input and the
+    same ``random_state``. Only ``algorithm='lloyd'`` is supported.
     ``copy_x=False`` is accepted but inputs are still preserved. Sample weights,
     sparse data and callable initializers are unsupported.
 
@@ -200,7 +243,9 @@ class KMeans(ClusterMixin, TransformerMixin, BaseEstimator):
         """Validate and own input/init storage before resident optimization.
 
         This includes upload, initialization and the global mean and tolerance.
-        K-means++ initialization uses sklearn's public CPU helper. Preparation
+        K-means++ initialization selects the centers of sklearn's public helper
+        for the same ``random_state``; a Metal screen leaves the host only the
+        rows a candidate center can change (see ``_plusplus``). Preparation
         can be reused by a model with the same configuration; non-scalar init
         and RandomState parameters must be the same objects. Input mutation
         after this call cannot change the prepared snapshots.
@@ -245,8 +290,8 @@ class KMeans(ClusterMixin, TransformerMixin, BaseEstimator):
                         indices = rng.choice(n, size=k, replace=False)
                         centers = data[mx.array(indices, mx.int32)]
                     else:
-                        values, _ = kmeans_plusplus(host, n_clusters=k, random_state=rng)
-                        centers = mx.array(values, mx.float32)
+                        indices = plusplus_indices(data, host, k, rng)
+                        centers = data[mx.array(indices, mx.int32)]
                     initials.append(centers)
             tolerance = 0.0
             if self.tol:
@@ -260,20 +305,48 @@ class KMeans(ClusterMixin, TransformerMixin, BaseEstimator):
             mx.eval(data, offset, *initials)
             return PreparedKMeansFit(data, tuple(initials), offset, tolerance, self._configuration_signature())
 
-    def _assignment(self, data, centered_centers, offset, *, original_centers=None):
+    def _exclusion_radii(self, data, centers, offset, previous):
+        # The full radii cost k² center pairs. First try a small deterministic
+        # sample of point/center pairs; dense embeddings often fail this test.
+        n, d = data.shape
+        k = len(centers)
+        if (previous is None or k < 4096 or n < 8 * k or not 64 <= d <= 1024
+                or self.assignment_batch_size is not None or not _streaming_fp32_device()):
+            return None
+        sample = mx.arange(128) * (n // 128)
+        ids = previous[sample]
+        norms = mx.sum(centers * centers, axis=1)
+        max_norm = mx.max(norms)
+        sample_radii = separation_lower(centers, ids, norms, max_norm)
+        keep, _ = reusable_labels(data[sample] - offset, centers, ids, sample_radii, max_norm)
+        if int(mx.sum(keep).item()) < 96:
+            return None
+        return separation_lower(centers, mx.arange(k), norms, max_norm), max_norm
+
+    def _assignment(self, data, centered_centers, offset, *, original_centers=None, previous=None):
         labels, distances = [], []
         n, d = data.shape
         rows = self._tile_rows(n, d)
+        bounds = self._exclusion_radii(data, centered_centers, offset, previous)
+        pruned = 0
         for start in range(0, n, rows):
             block = data[start:start + rows]
-            indices, squared = assign(block - offset, centered_centers,
-                                      batch_size=self.assignment_batch_size, precision="float32", method="auto")
-            if original_centers is not None:
-                squared = selected_distances(block, original_centers, indices)
-            mx.eval(indices, squared)
-            labels.append(indices)
-            distances.append(squared)
-        return mx.concatenate(labels), mx.concatenate(distances)
+            tile = len(block) if bounds is None else max(1, _scratch_budget() // (4 * len(centered_centers)))
+            for i in range(0, len(block), tile):
+                points = block[i:i + tile]
+                centered = points - offset
+                if bounds is None:
+                    indices, squared = assign(centered, centered_centers, batch_size=self.assignment_batch_size)
+                else:
+                    old = previous[start + i:start + i + len(points)]
+                    indices, squared, saved = _pruned_tile(centered, centered_centers, old, *bounds)
+                    pruned += saved
+                if original_centers is not None:
+                    squared = selected_distances(points, original_centers, indices)
+                mx.eval(indices, squared)
+                labels.append(indices)
+                distances.append(squared)
+        return mx.concatenate(labels), mx.concatenate(distances), pruned
 
     def _statistics(self, data, labels, offset):
         n, d = data.shape
@@ -308,7 +381,7 @@ class KMeans(ClusterMixin, TransformerMixin, BaseEstimator):
                 reason = "max_iter"
                 for iteration in range(int(self.max_iter)):
                     iteration_start = time.perf_counter()
-                    labels, distances = self._assignment(data, centers, offset)
+                    labels, distances, pruned = self._assignment(data, centers, offset, previous=previous)
                     sums, counts = self._statistics(data, labels, offset)
                     updated, empty_count = _relocate_empty(data, offset, labels, distances, sums, counts)
                     shift = mx.sum((updated - centers) ** 2)
@@ -318,6 +391,7 @@ class KMeans(ClusterMixin, TransformerMixin, BaseEstimator):
                     shift_value = float(shift.item())
                     history.append({"iteration": iteration + 1, "rows": data.shape[0], "inertia_before_update": float(objective.item()),
                                     "center_shift_squared": shift_value, "empty_clusters": empty_count,
+                                    "pruned_rows": pruned,
                                     "seconds": time.perf_counter() - iteration_start})
                     centers = updated
                     if self.verbose:
@@ -332,7 +406,8 @@ class KMeans(ClusterMixin, TransformerMixin, BaseEstimator):
                     previous = labels
                 restored = centers + offset
                 # Fresh assignment also accounts for FP32 restoration rounding.
-                labels, distances = self._assignment(data, restored - offset, offset, original_centers=restored)
+                labels, distances, _ = self._assignment(data, restored - offset, offset,
+                                                        original_centers=restored, previous=labels)
                 labels = labels.astype(mx.int64)
                 inertia = mx.sum(distances)
                 mx.eval(restored, labels, inertia)
@@ -387,7 +462,7 @@ class KMeans(ClusterMixin, TransformerMixin, BaseEstimator):
         """Return the nearest final center index for every input row."""
         with mx.stream(mx.gpu):
             data, centers = self._inference(X)
-            labels, _ = self._assignment(data, centers - self._offset_mx, self._offset_mx)
+            labels, _, _ = self._assignment(data, centers - self._offset_mx, self._offset_mx)
             return np.array(labels, dtype=np.int64)
 
     def transform(self, X):
@@ -416,7 +491,8 @@ class KMeans(ClusterMixin, TransformerMixin, BaseEstimator):
             raise ValueError("sample_weight is not supported by Metal KMeans")
         with mx.stream(mx.gpu):
             data, centers = self._inference(X)
-            _, distances = self._assignment(data, centers - self._offset_mx, self._offset_mx, original_centers=centers)
+            _, distances, _ = self._assignment(data, centers - self._offset_mx, self._offset_mx,
+                                               original_centers=centers)
             return -float(mx.sum(distances).item())
 
     def fit_predict(self, X, y=None, sample_weight=None):

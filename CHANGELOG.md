@@ -13,6 +13,81 @@ All notable changes to this project are documented here. The format follows
   the Gram products of the (centered, weighted) design; `positive=True` raises
   on Layer 1 and falls back under `patch_sklearn()`.
 
+## [0.1.6] — 2026-11-19
+
+### Added
+
+- MNIST-family o-means results: `OMeans` against `EMeans`, mlxlearn's `KMeans`
+  and scikit-learn's `KMeans` and `MiniBatchKMeans` on MNIST, Fashion-MNIST and
+  Kannada-MNIST at 1,024 to 8,192 centroids, on an M4 Max and an M5 Ultra. The
+  README's MNIST section and the
+  [experiment notes](benchmarks/experiments/mnist-family-2026-11-02/README.md#o-means)
+  carry the tables, and the o-means guide lists the limit they found: little
+  gain on small data.
+
+### Changed
+
+- `mlxlearn.cluster.KMeans` seeds `init="k-means++"` through a Metal screen
+  instead of calling scikit-learn's helper on the host. A kernel proves in
+  float32, with a rigorous error bound, which (candidate, row) pairs a
+  candidate center leaves unchanged; for inputs with at least 256 features it
+  first compares 64-dimensional images of the rows. The host evaluates the
+  remaining pairs in float64 and keeps the helper's expressions for sampling
+  and potentials. A `random_state` selects the rows
+  `sklearn.cluster.kmeans_plusplus` selects on the same machine: every step is
+  certified with interval bounds, and a seeding that cannot be certified runs
+  the helper itself. On MNIST (60,000 x 784, M4 Max) seeding takes 0.9 s for
+  1,024 centers and 5.4 s for 8,192, against 27 s and 217 s for the helper,
+  and the default fit takes 4.4 s at 4,096 centers, down from 110 s. See
+  [docs/k-means.md](docs/k-means.md#k-means-initialization) and
+  `benchmarks/experiments/kmeans-plusplus-2026-11-19`.
+- `OMeans(assignment="auto")` keeps the full search for fits shorter than two
+  epochs on M1 Ultra and M5 Ultra unless the probes are expected to cover at
+  most 36% of the centroids, instead of one half. On M5 Ultra such fits
+  in that band ran at 0.93–1.45× of e-means' speed, including 7–11% losses on
+  the MNIST-family datasets at 4,096 centroids; with the full search those
+  fits now run at 0.97× of e-means' speed. With the default cells and
+  probes this affects 2,176 to 4,223 centroids at 512 features or more. M4
+  Max, fits of two epochs or more (the default is three), and
+  `assignment="two_level"` are unchanged. `recipe_["search_reason"]` names
+  the case.
+
+## [0.1.5] — 2026-11-19
+
+### Added
+
+- `mlxlearn.cluster.OMeans`: e-means with a two-level nearest-centroid search,
+  after the o-means post and the `contrib/o_means` package of the
+  owlgebra-ai/faiss fork. Centroids are grouped into coarse cells kept sorted
+  in an assignment mirror; each training row is compared only with the
+  centroids of its nearest cells. Cells are re-filed every five batches in the
+  first pass and rebuilt every half pass afterwards, split links reach newly
+  created centroids, and fits shorter than two epochs end with a
+  recency-weighted mean. New Metal kernels bucket (row, cell) pairs with
+  integer atomics and scan each cell's contiguous centroid block with matrix
+  tiles; nothing is read back to the host between batches. Float32 and BF16
+  assignment are supported. `assignment="auto"` selects the two-level search
+  on M1 Ultra, M4 Max and M5 Ultra where the probes cover at most half of the
+  centroids, and returns to the full search when a fit's cells are too uneven
+  to save comparisons. Final labels, `predict` and `score` always use a full
+  search. See [docs/o-means.md](docs/o-means.md).
+- `benchmarks/e_means/two_level_bench.py`, `omeans_compare.py`,
+  `omeans_interleaved.py`, `omeans_report.py`, `omeans_centroid_sweep.py` and
+  `omeans_device_fits.py`: kernel-level and fit-level comparisons of o-means
+  with e-means, with per-record source hashes. Timed calls wait for nominal
+  macOS thermal pressure and record the level; the report rejects throttled,
+  mixed or incomplete campaigns. `omeans_interleaved` times all
+  configurations in turn, for laptops whose GPU throttles under sustained
+  load. Results:
+  [docs/o-means-benchmarks-2026-11-18.md](docs/o-means-benchmarks-2026-11-18.md)
+  (M5 Ultra) and
+  [docs/o-means-benchmarks-m4-max-2026-11-19.md](docs/o-means-benchmarks-m4-max-2026-11-19.md)
+  (M4 Max, interleaved).
+- MNIST-family O-means benchmark and summary scripts under
+  `benchmarks/experiments/mnist-family-2026-11-02/`.
+
+## [0.1.4] — 2026-11-18
+
 ### Fixed
 
 - Large exact-neighbor queries no longer sort float32 Gram tiles wider than
@@ -90,6 +165,14 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- Large FP32 Lloyd and e-means assignments on M4 Max reduce scores inside
+  GPU tiles. Lloyd also checks whether center separation proves that a point
+  keeps its previous label. See the [assignment and fit benchmarks](docs/clustering-assignment-2026-11-17.md).
+  Mixed Lloyd tiles respect the configured assignment batch size.
+- On M4 GPUs, large exact kNN searches can use taller query tiles and shorter
+  training tiles at workspace budgets of 64–512 MiB. The general GPU search
+  finishes each intermediate query block before allocating the next block's
+  workspace. See the [timing and memory measurements](docs/knn-tight-budgets-2026-11-17.md).
 - SVC training reuses kernel rows across native working sets when the full
   Gram matrix exceeds `cache_size`. Each binary subproblem keeps recently
   requested rows within its existing kernel-row budget after reserving room
@@ -106,6 +189,20 @@ All notable changes to this project are documented here. The format follows
   NumPy-free operation. Host tuning contexts remain scoped to the host API.
   See the [integration report](docs/knn-integration-2026-11-17.md) for the
   combined validation, benchmark protocol and performance limits.
+
+### Measured
+
+- The [Lloyd-25 rerun](docs/k-means-lloyd25-streaming-assignment-2026-11-17.md)
+  measures streaming assignment on four 10M-vector datasets and includes a
+  same-session control using the earlier GEMM implementation.
+- On four 10M-vector datasets with 65,536 centers, Metal e-means at its two- or
+  three-epoch budget ran **6.50–9.27×** faster than 25-iteration Metal KMeans
+  with final labels in both timers, and **8.30–13.34×** faster on training
+  alone. Its test MSE relative to Lloyd at 25 ranged from **−0.27% to +0.18%**:
+  lower on SIFT and SimSearchNet++, higher on DEEP and SPACEV. The 0.1.3
+  comparison held the pass budget equal, which makes the two runtimes equal by
+  construction. These are single-seed, single-fit results and DINO was not
+  run; see the [Lloyd-25 addendum](docs/k-means-lloyd25-reference-2026-11-17.md).
 
 ## [0.1.3] — 2026-11-15
 
@@ -689,7 +786,10 @@ Each of these is now covered by a regression test:
   shape, making `fit` a non-pure function of its arguments.
 - `except Exception:` around the accelerated path, rerunning silently on scikit-learn.
 
-[Unreleased]: https://github.com/tabulai/mlx-learn/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/tabulai/mlx-learn/compare/v0.1.6...HEAD
+[0.1.6]: https://github.com/tabulai/mlx-learn/compare/v0.1.5...v0.1.6
+[0.1.5]: https://github.com/tabulai/mlx-learn/compare/v0.1.4...v0.1.5
+[0.1.4]: https://github.com/tabulai/mlx-learn/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/tabulai/mlx-learn/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/tabulai/mlx-learn/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/tabulai/mlx-learn/compare/v0.1.0a2...v0.1.1

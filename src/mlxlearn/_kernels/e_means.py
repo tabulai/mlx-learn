@@ -1,10 +1,10 @@
 """Metal primitives for e-means on Apple Silicon.
 
-Assignment uses MLX's tuned Metal GEMM, followed by a fused SIMD argmin, or
-an experimental streaming SIMD-group matrix kernel that never materializes
-the full distance matrix. All accumulation and centroid state are float32.
-Float32 GEMMs keep binary32 products on M5-generation GPUs, where MLX would
-use TF32 operands (see ``mlxlearn_device._binary32``).
+Assignment uses MLX's Metal GEMM followed by SIMD argmin, or streams score
+tiles through SIMD-group registers for large FP32 assignments on M4 Max.
+All accumulation and centroid state are float32. Float32 GEMMs keep binary32
+products on M5-generation GPUs, where MLX would use TF32 operands (see
+``mlxlearn_device._binary32``).
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ import mlx.core as mx
 
 from mlxlearn_device._binary32 import matmul
 
-from .e_means_bf16 import assign_bf16, prepare_centers
+from .e_means_bf16 import _tile_kernel, assign_bf16, prepare_centers, streaming_tile
 
 _UINT32_MAX = 2**32 - 1
 
@@ -229,6 +229,19 @@ def _scratch_budget():
     return min(1024 << 20, max(32 << 20, recommended // 64))
 
 
+@lru_cache(maxsize=1)
+def _streaming_fp32_device():
+    info = mx.device_info() if hasattr(mx, "device_info") else mx.metal.device_info()
+    if info.get("device_name") != "Apple M4 Max":
+        return False
+    try:
+        _tile_kernel()
+    except TypeError:
+        # Earlier supported MLX releases lack the safe-math compile option.
+        return False
+    return True
+
+
 def assign(x, centers, *, batch_size=None, spherical=False, method="auto", precision="float32"):
     """Assign rows to centers with bounded scratch memory on the GPU.
 
@@ -241,7 +254,8 @@ def assign(x, centers, *, batch_size=None, spherical=False, method="auto", preci
     and reports residuals between the represented operands. Its ``auto`` and
     ``fused`` paths use native BF16 matrix tiles with register argmin; ``gemm``
     widens the BF16 values before FP32 GEMM to avoid BF16 score rounding.
-    Float32 ``auto`` uses tuned GEMM; ``fused`` exposes the older matrix tiles.
+    Float32 ``auto`` streams large M4 Max score tiles directly into argmin and
+    uses tuned GEMM for the other shapes. ``fused`` exposes the older matrix tiles.
     """
     if method not in {"auto", "gemm", "fused"}:
         raise ValueError("method must be auto, gemm, or fused")
@@ -284,6 +298,15 @@ def assign(x, centers, *, batch_size=None, spherical=False, method="auto", preci
         rows = xb.shape[0]
         if native_bf16:
             labels, _ = assign_bf16(xb, center_mirror, norms=norms, spherical=spherical)
+        elif (method == "auto" and precision == "float32" and rows >= 128
+              and k >= 4096 and 64 <= d <= 512 and _streaming_fp32_device()):
+            # 64 centers per tile: keep one score and index per row in place
+            # of 64 GEMM outputs. Keep the original batching, including GEMV
+            # for singleton tails, whose dot reduction is different.
+            labels, _ = streaming_tile(
+                xb.astype(mx.float32), gemm_centers, norms, spherical=spherical,
+                bm=64, bk=16, pad=4, coalesced=True,
+            )
         elif method == "fused":
             tile, merge = _fused_kernels()
             parts = (k + 63) // 64

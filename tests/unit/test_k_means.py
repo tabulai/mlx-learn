@@ -309,3 +309,15 @@ def test_prepared_mlx_input_is_an_owned_snapshot(metal, estimator):
     prepared = estimator(3, init=initial, n_init=1).prepare_device(resident)
     resident[0] = metal.array([123, 456, 789], dtype=metal.float32)
     np.testing.assert_array_equal(np.asarray(prepared.data), x)
+
+
+def test_compacted_batches_use_four_row_counts_per_power_of_two():
+    from mlxlearn.cluster._k_means import _compacted_rows
+
+    assert [_compacted_rows(rows) for rows in (0, 1, 128, 129, 160, 161, 255, 256, 257, 3585, 4096, 4097)] == [
+        128, 128, 128, 160, 160, 192, 256, 256, 320, 4096, 4096, 5120]
+    sizes = [_compacted_rows(rows) for rows in range(1, 2**16 + 1)]
+    assert sizes == sorted(sizes)
+    assert all(rows <= size < max(1.25 * rows, 129) for rows, size in enumerate(sizes, 1))
+    # 128 to 65,536 spans nine powers of two.
+    assert len(set(sizes)) == 4 * 9 + 1

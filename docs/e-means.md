@@ -202,7 +202,7 @@ every large-scale execution path in the paper and reference repository.
 | CPU-resident centroid tables transferred to GPU in pieces (Appendix J.1) | Not implemented; the complete centroid table must fit |
 | Multi-GPU data/centroid sharding and collectives (Appendix M.1) | Not implemented |
 | SSD staging, prefetching and block-biased sampling (Appendix M.1) | Not implemented |
-| IVF approximate centroid assignment and index rebuild schedules (Appendix M.2) | Not implemented |
+| IVF approximate centroid assignment and index rebuild schedules (Appendix M.2) | Not in `EMeans`; [`OMeans`](o-means.md) trains with a two-level centroid search and its own rebuild schedule |
 | IVF retrieval/index construction and Recall@10 experiments (Appendix L) | Not implemented or benchmarked |
 
 Training currently loads the full input matrix onto the GPU. A memory-mapped

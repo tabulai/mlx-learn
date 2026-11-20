@@ -38,7 +38,7 @@ stock inheritance. See the [compatibility details](docs/support_matrix.md).
 
 ## Status
 
-**`0.1.3` — alpha.** The API may change. See [CHANGELOG.md](CHANGELOG.md).
+**`0.1.6` — alpha.** The API may change. See [CHANGELOG.md](CHANGELOG.md).
 
 | Estimator | Status |
 |---|---|
@@ -50,10 +50,62 @@ stock inheritance. See the [compatibility details](docs/support_matrix.md).
 | `mlxlearn.svm.SVC` (exact) | 0.1.0 |
 | `mlxlearn.decomposition.PCA` | 0.1.2 |
 | `mlxlearn.cluster.EMeans` | 0.1.3; Metal GPU, paper/Faiss recipes |
-| `mlxlearn.cluster.KMeans` | 0.1.3; Metal GPU, Lloyd clustering |
+| `mlxlearn.cluster.KMeans` | 0.1.3; Metal GPU, Lloyd clustering; Metal k-means++ seeding since 0.1.6 |
+| `mlxlearn.cluster.OMeans` | 0.1.5; Metal GPU, e-means with a two-level centroid search |
 | `Ridge`, `DBSCAN`, `TSNE` | planned, 0.2.x |
 | `SVR`, `NuSVR`, `NuSVC` | deferred — will not ship until they implement the true objective |
 | tree ensembles | out of scope |
+
+## Recent benchmark highlights
+
+- **K-means++ seeding on the GPU (0.1.6).** `KMeans(init="k-means++")` now
+  chooses its starting centers with a Metal screen, and for a given
+  `random_state` it selects the same rows as `sklearn.cluster.kmeans_plusplus`.
+  On MNIST (60,000 × 784, M4 Max) seeding 8,192 centers takes **5.4 s instead
+  of 217 s**, and the default fit at 1,024 to 8,192 centers takes **1.4–7.0 s
+  instead of 27–219 s**, with the same iterations and inertia.
+  [K-means++ initialization](docs/k-means.md#k-means-initialization)
+- **O-means against e-means (0.1.5).** Over 18 datasets and three seeds, `OMeans`
+  reached `EMeans`' held-out error **4.44× faster in float32 and 3.55× in
+  BF16** on an M5 Ultra, and **4.13× and 3.96×** on an M4 Max, as geometric
+  means. At ten million rows and 65,536 centroids it was **8.8×** faster in
+  float32 on the M5 Ultra. It compares each row with a median 11% of the
+  centroids, and its held-out error at the same epochs stays within −1.14%
+  to +0.36% of `EMeans`'.
+  [M5 Ultra report](docs/o-means-benchmarks-2026-11-18.md) ·
+  [M4 Max report](docs/o-means-benchmarks-m4-max-2026-11-19.md)
+- **O-means on the MNIST family (0.1.5).** On three 60,000 × 784 datasets, an
+  `OMeans` fit at 4,096 to 8,192 centroids takes **150–242 ms** on an M4 Max,
+  against 107–223 s for scikit-learn's `KMeans`, with held-out error within
+  1% of it. Against `EMeans` this small data gains 1.4× in training at 4,096
+  centroids and 2.0–2.3× at 8,192.
+  [MNIST-family results](#mnist-fashion-mnist-and-kannada-mnist)
+
+## 0.1.4 benchmark highlights
+
+- **E-means against Lloyd at 25 iterations.** The 0.1.3 benchmark gave both
+  methods the same two or three passes. The new comparison adopts the paper's
+  25-iteration Lloyd reference for held-out mean squared error. On four
+  datasets with 10 million vectors and 65,536 centers each, e-means ran
+  **6.58–9.49× as fast** in two or three epochs, with test MSE within 0.28%
+  of Lloyd. Both methods started from identical centers and timed final
+  labeling and inertia. The results use one seed and preset whole epochs on
+  M4 Max. [E-means paper](https://arxiv.org/abs/2611.09501) ·
+  [Full Lloyd-25 benchmark](docs/k-means-lloyd25-streaming-assignment-2026-11-17.md)
+- **Faster Metal clustering.** Streaming FP32 assignment on M4 Max cut
+  fixed-center assignment on 10 million DEEP vectors from **22.88 to 14.77 s**.
+  A two-update Lloyd fit with final labeling fell from **115.56 to 55.67 s**,
+  with identical labels and inertia. In the four-dataset comparison run in the
+  same session, e-means fits were **1.06–1.53× as fast** as with the previous
+  assignment kernel. Lloyd can also reuse labels that its center-separation
+  bound certifies. [Full clustering benchmark](docs/clustering-assignment-2026-11-17.md) ·
+  [Four-dataset kernel comparison](docs/k-means-lloyd25-streaming-assignment-2026-11-17.md#change-from-the-earlier-campaign)
+- **Faster RBF SVC fitting.** The native solver caches kernel rows across
+  working sets when the full Gram matrix exceeds `cache_size`. At **200 MiB**
+  on M4 Max, standard MNIST fit time fell from **9.09 to 3.59 s (2.53×)** and
+  Fashion-MNIST from **10.29 to 4.59 s (2.24×)** against the previous solver.
+  On standard MNIST, accuracy was **97.92%** and all 450,000 decision scores
+  matched the previous build. [Full SVC benchmark](docs/svc-row-cache-2026-11-17.md)
 
 ## E-means clustering
 
@@ -90,10 +142,61 @@ For full-batch Lloyd clustering, [Metal `KMeans`](docs/k-means.md) is available
 through `from mlxlearn.cluster import KMeans`. It supports dense FP32 training,
 explicit, random or k-means++ initialization, multiple restarts, and final
 nearest-centroid labels and inertia. Use the direct estimator; it is not part
-of `patch_sklearn()`.
+of `patch_sklearn()`. Since 0.1.6 its k-means++ initialization runs on the
+GPU and selects the same centers as scikit-learn's helper for a given
+`random_state`; see [K-means++ initialization](docs/k-means.md#k-means-initialization).
 
-The [four-method 10M-vector comparison](docs/k-means-10m-comparison-2026-11-15.md)
-reports runtime, peak fit memory, and test MSE on five datasets.
+The [0.1.3 equal-pass comparison](docs/k-means-10m-comparison-2026-11-15.md)
+reports runtime, peak fit memory, and test MSE for four methods on five
+10M-vector datasets.
+
+## O-means clustering
+
+Version 0.1.5 adds [`OMeans`](docs/o-means.md) for clustering with many
+centroids. During two-level training, each row is compared with the
+centroids of a few nearby coarse cells, covering 6–25% of the centroids on
+the measured embedding datasets. The estimator follows the
+[o-means post](https://owlgebra.ai/blog/o-means/) with separate Metal kernels.
+
+```python
+from mlxlearn.cluster import OMeans
+
+model = OMeans(n_clusters=16384, max_iter=2, random_state=10).fit(X_train)
+```
+
+Against `EMeans(recipe="faiss")` with the same batch law, seed and starting
+centroids, over 18 datasets and three seeds. Each entry is a geometric mean of
+e-means' fit time divided by o-means'.
+
+| | M5 Ultra, float32 | M5 Ultra, BF16 | M4 Max, float32 | M4 Max, BF16 |
+|---|---:|---:|---:|---:|
+| Time to `EMeans`' held-out error | **4.44×** | **3.55×** | **4.13×** | **3.96×** |
+| Same epochs | 4.44× | 3.42× | 4.20× | 3.90× |
+| Time to `EMeans`' error, 10M rows and 65,536 centroids | **8.8×** | **5.9×** | **7.3×** | **7.0×** |
+
+- **Range:** 1.6–10.4× across datasets on M5 Ultra and 1.5–8.0× on M4 Max. The
+  gain grows with the number of centroids and is smallest on unnormalized
+  GloVe-200, whose cells come out uneven.
+- **Quality:** at the same epochs, held-out error is −1.14% to +0.10% of
+  `EMeans`' at one epoch and −0.17% to +0.36% at two. O-means needs 2 to 2.5
+  epochs to match `EMeans`' two-epoch error.
+- **Method:** the M5 Ultra campaign timed one configuration after another, with
+  every call at nominal thermal pressure. The M4 Max is a laptop whose GPU
+  throttles under sustained load, which slows the full search more than the
+  two-level search, so its campaign timed all configurations in turn.
+- **Routing:** On M1 Ultra, M4 Max, and M5 Ultra, `assignment="auto"`
+  can select the two-level search from 4,224 centroids, or from 2,176
+  with 512 features or more. On M1 Ultra and M5 Ultra, fits shorter than two
+  epochs keep the full search from 2,176 to 4,223 centroids at 512 features or
+  more, where one-epoch fits on M5 Ultra were measured slower than `EMeans`.
+  It returns to the full search when a fit's cells turn out too uneven to
+  save comparisons. Final labels, `predict` and `score` always use a full
+  search.
+
+See the [implementation guide](docs/o-means.md) and the benchmark reports for
+[M5 Ultra](docs/o-means-benchmarks-2026-11-18.md) and
+[M4 Max](docs/o-means-benchmarks-m4-max-2026-11-19.md). Results on the much
+smaller [MNIST family](#mnist-fashion-mnist-and-kannada-mnist) are below.
 
 ## Requirements
 
@@ -110,7 +213,7 @@ CI tests only valid pairs — see [`docs/support_matrix.md`](docs/support_matrix
 pip install mlx-learn
 ```
 
-Version `0.1.3` provides Apple silicon wheels for Python 3.10–3.13 with Metal
+Version `0.1.6` provides Apple silicon wheels for Python 3.10–3.13 with Metal
 and C++ CPU extensions. Source builds can also include these optional extensions.
 The KNN CPU extension handles small workloads and is compiled at build time;
 fitting or querying never invokes the C++ compiler. A compatible wheel includes
@@ -412,7 +515,7 @@ distances, indices = index.query(mx.array([[0.2, 0.1]]), k=2)
 mx.eval(distances, indices)  # results remain MLX arrays
 ```
 
-The unreleased integration shares memory-budget query planning between this
+Version 0.1.4 shares memory-budget query planning between this
 resident API and the NumPy interface, adds filtered candidate selection and
 parallel exact fallback, and includes the M5 binary32 and wide-PCA correctness
 fixes. See the [combined tests and benchmarks](docs/knn-integration-2026-11-17.md).
@@ -429,7 +532,7 @@ What that means for the measured development build on an M4 Max:
 |---|---|
 | **Neighbor queries/inference** | Wins **625/648**, **648/648** and **648/648** medians against default brute, single-thread brute and auto sklearn on the [full panel](docs/knn-digits-benchmarks-2026-10-30.md). The ≥2× counts are **587**, **300** and **592**, respectively. |
 | Neighbor `fit` and startup | Owns training data and defers search preparation where appropriate. Fit-only, first fit-plus-query and total process startup are reported separately; query gains do not guarantee faster fit or startup. |
-| `SVC` | Native working sets improve measured linear and RBF fits; tiny-cache RBF still trails sklearn and prediction gains vary. See the [current results and limitations](docs/svc-working-set-2026-10-31.md). Patched routing remains conservative, and linear is excluded from automatic GPU selection. |
+| `SVC` | Native working sets improve measured linear and RBF fits; tiny-cache RBF still trails sklearn and prediction gains vary. See the [working-set results and limitations](docs/svc-working-set-2026-10-31.md) and the [0.1.4 cache benchmark](docs/svc-row-cache-2026-11-17.md). Patched routing remains conservative, and linear is excluded from automatic GPU selection. |
 | `LogisticRegression` | Faster than scikit-learn on large problems: **11.8×, 5.8× and 2.7×** for binary fits at 500,000 × 32, 500,000 × 128 and 60,000 × 1,024 ([fused-kernel rerun](docs/fused-narrow-kernel-2026-10-27.md)), and **6.4–12.8×** for converged 10-class fits at 60,000 × 784 ([MNIST family](#mnist-fashion-mnist-and-kannada-mnist)). Patched dispatch still hands small problems to scikit-learn, which was faster there when last measured. It uses MLX only from 20,000 samples and 2×10⁷ elements, or from 250,000 samples and 8×10⁶ elements. The [historical small-problem measurements](docs/benchmarks.md) explain the per-iteration overhead behind that threshold. |
 | `PCA` | At 1,000,000 × 256 and 1,000,000 × 1,024 with float64 input and 32 components, fits measured **5.24×** and **12.36×** faster than scikit-learn. Full-training transforms measured **2.42×** and **1.62×** faster. Short-query timings varied with memory pressure; the [PCA benchmark details](docs/benchmarks.md#pca-million-row-and-image-rerun) include the slower cases and raw samples. |
 
@@ -474,6 +577,31 @@ float64. The 24-case panel also covers 32 components and explicit randomized PCA
 Held-out reconstruction RMSE agreed within 0.0013% across libraries. Timings are
 medians of nine interleaved rounds after two warmups. [Inputs, scripts and raw results](benchmarks/experiments/mnist-family-2026-11-02/README.md#pca)
 
+**`OMeans`**, measured on 2026-11-19 with seeds 10, 11 and 12. Each entry is the fit time
+followed by the held-out error relative to scikit-learn's `KMeans`. `OMeans` and `EMeans`
+run three epochs and include the final label pass; the scikit-learn fits use default
+settings.
+
+| Dataset | Centroids | `OMeans` | `EMeans` | scikit-learn `MiniBatchKMeans` | scikit-learn `KMeans` |
+|---|---:|---:|---:|---:|---:|
+| MNIST | 4,096 | **150 ms** (+0.25%) | 190 ms (+0.35%) | 23.9 s (+3.53%) | 109.4 s |
+| MNIST | 8,192 | **228 ms** (−0.06%) | 381 ms (−0.02%) | 90.0 s (+3.07%) | 218.0 s |
+| Fashion-MNIST | 4,096 | **156 ms** (−0.68%) | 194 ms (−0.73%) | 23.4 s (+3.88%) | 107.2 s |
+| Fashion-MNIST | 8,192 | **242 ms** (−0.82%) | 420 ms (−0.83%) | 89.4 s (+3.16%) | 217.7 s |
+| Kannada-MNIST | 4,096 | **163 ms** (−0.07%) | 197 ms (+0.02%) | 24.4 s (+2.74%) | 113.3 s |
+| Kannada-MNIST | 8,192 | **230 ms** (−0.93%) | 392 ms (−0.84%) | 93.1 s (+1.35%) | 223.4 s |
+
+- **Against scikit-learn:** across 1,024 to 8,192 centroids `OMeans` fits 445–971× faster
+  than `KMeans` with held-out error between −0.93% and +0.44% of it.
+- **Against `EMeans`:** 60,000 rows are few for the two-level search. Training alone is
+  1.4× faster at 4,096 centroids and 2.0–2.3× at 8,192 from two epochs. At 1,024 and
+  2,048 centroids `OMeans` uses the full search and matches `EMeans` (62–114 ms).
+- **Limits at this size:** a one-epoch fit at 4,096 centroids gains only 1.1× on the M4
+  Max. On an M5 Ultra the two-level search was 7–11% slower than `EMeans` there, so
+  `auto` keeps the full search for it and runs at 0.97× of `EMeans`' speed.
+
+[Tables for every centroid count, both machines and the method](benchmarks/experiments/mnist-family-2026-11-02/README.md#o-means)
+
 **`LogisticRegression`**, run to convergence (`max_iter=5000`, default `tol=1e-4`). Times
 are medians of 5 fits, with float32 input for mlxlearn and float64 for scikit-learn.
 
@@ -509,9 +637,10 @@ float64 input, its faster setting here.
   exact distance tie at the 5th neighbor differently.
 - **Fit:** fitting stores the training data and takes 8–13 ms in both libraries.
 
-**`SVC`** (RBF kernel, `C=1`, `gamma="scale"`). mlxlearn times are medians of 3 fits and
+**Earlier `SVC` benchmark** (RBF kernel, `C=1`, `gamma="scale"`). mlxlearn times are medians of 3 fits and
 scikit-learn times are single fits. Each fit speedup compares the two libraries at the same
-cache size.
+cache size. See the [0.1.4 cache benchmark](docs/svc-row-cache-2026-11-17.md) for the
+updated MNIST and Fashion-MNIST timings.
 
 | Dataset | mlxlearn fit, 200 MB / 2,000 MB cache | sklearn fit | Fit speedup, 200 MB / 2,000 MB | mlxlearn predict | sklearn predict | Predict speedup | Test accuracy, mlxlearn / sklearn | Support vectors, mlxlearn / sklearn |
 |---|---|---|---|---|---|---|---|---|

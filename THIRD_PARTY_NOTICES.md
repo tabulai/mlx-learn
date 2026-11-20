@@ -22,6 +22,11 @@ header is `Copyright © 2024 Apple Inc.`. The implementation was modified on
 bounded row batching, and Python dispatch. The experimental predecessor is
 `benchmarks/e_means/experimental_kernels.py`.
 
+`src/mlxlearn/_kernels/o_means.py` derives its tiled cell scan from that file
+and retains the same `Copyright © 2024 Apple Inc.` header. It was modified on
+2026-11-18 to gather rows through per-cell buckets, loop over the centroid
+block of one cell, and keep a running row minimum.
+
 The following immutable benchmark records embed snapshots of that experimental
 source, including its retained `Copyright © 2024 Apple Inc.` notice and source
 SHA-256. Those embedded source copies are covered by this same attribution and
@@ -231,6 +236,15 @@ were written for mlxlearn. Benchmarks load the upstream code from a separate
 checkout which retains its license, use upstream dataset split fingerprints,
 and credit the original datasets. Faiss is an optional benchmark dependency.
 See [the benchmark guide](benchmarks/e_means/README.md).
+
+The o-means implementation follows the MIT-licensed `contrib/o_means` package
+of the owlgebra-ai/faiss fork (accessed 2026-11-18; its files carry the Meta
+Platforms, Inc. and affiliates copyright header) and the Owlgebra AI post
+*o-means: index the centroids, don't scan them* by Rahul Bajaj, Jaya Nupur and
+Anuj Garg (2026-11-12): the coarse-cell and probe rule, cell rebuild cadence,
+split links and recency-weighted closing mean. No upstream source was copied;
+the estimator, schedule and Metal kernels were written for mlxlearn, and the
+upstream CUDA kernels were not ported.
 
 The October 31, 2026 SVC optimization study inspected scikit-learn-intelex
 commit `f50ab692e6296b573efaaa3d05304a8eb3fbcf8d` and oneDAL tag `2026.2.0`.
