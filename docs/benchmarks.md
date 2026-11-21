@@ -101,7 +101,7 @@ MLX 0.31.2, scikit-learn 1.7.2, NumPy 2.5.1.
 | `svc/fit` | ~2 000 samples **and** ~10⁶ elements; never for `kernel="linear"` | 2.93× | `svc_min_samples = 2048`, `svc_min_work = 1_000_000` |
 | `logreg/fit` | ~20 000 samples **and** ~2·10⁷ elements | 1.34× | `logreg_min_samples = 20_000`, `logreg_min_work = 20_000_000` |
 | `pca/fit` | by solver: `covariance_eigh` ~8·10⁶ elements **or** 512 features; `randomized` ~8·10⁶ elements; `full` and `arpack` never | 14.3× | `pca_covariance_min_work = 8_000_000`, `pca_covariance_min_features = 512`, `pca_randomized_min_work = 8_000_000` |
-| `linreg/fit` | not measured | — | `linreg_min_samples = 8_192`, `linreg_min_work = 4_000_000`; both required, set high until a grid is run |
+| `linreg/fit` | CPU wins in the measured 8,000 × 64 and 16,000 × 128 fits | — | automatic tall fits require 2,048 rows and 262,144 elements; centered wide fits use the CPU route for 256–1,024 rows and at least 262,144 elements |
 
 These feed `mlxlearn._common.config.Tuning`, which dispatch reads. That is the point: a
 published crossover the dispatcher ignores is a claim, not a mechanism.

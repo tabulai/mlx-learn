@@ -17,21 +17,16 @@ before solving produces in exact arithmetic.
 
 How the system is solved
 ------------------------
-scikit-learn's dense path calls ``linalg.lstsq`` (an SVD of the design). MLX's
-SVD is CPU-only — ``mx.linalg.svd`` on the GPU raises ``Metal SVD NYI`` — so the
-device does the work SVD would have spent on a tall matrix anyway: the product
-``XᵀX`` (or ``XXᵀ`` when there are more features than rows). The small Gram
-matrix is then factored on the host. In exact arithmetic this is the same
-min-norm least-squares solution lstsq returns.
+The solver forms a Gram matrix on the smaller side of the design and uses a
+symmetric eigensolver on the host. The CPU uses a float64 symmetric rank-k
+product for small systems and wide fits. Larger products use binary32 with
+float64 iterative refinement. For a centered wide design, an orthogonal
+reflection removes the known null direction of the weighted design.
 
-The float32 Gram has a squared condition number, and Metal's float32 products
-round well past float32 epsilon, so that factorization alone leaves an error a
-caller can see. It is used as a preconditioner instead: float64 iterative
-refinement against the original design recovers the solution, and each step
-costs only host matrix-vector products. A step that stops reducing the residual
-ends the refinement. The host runs float64 ``lstsq`` on the design if the Gram
-cannot resolve the full spectrum or if the refined solution fails the
-normal-equation residual check.
+The spectrum must resolve the requested rank and the solution must satisfy
+the normal-equation residual check. If either check fails, a direct float64
+least-squares factorization of the original working design supplies the
+coefficients and rank diagnostics.
 
 A fit is a pure function of its arguments. Nothing about a previous fit in the
 same process can reach this one.
@@ -43,9 +38,10 @@ import math
 from dataclasses import dataclass
 
 import numpy as np
+from scipy import linalg
 
 from .._common.arrays import NUMPY_FLOAT
-from .._common.device import use_device
+from .._common.device import resolve_device, use_device
 
 __all__ = [
     "OLSConfig",
@@ -131,8 +127,7 @@ def solve_ols(
     Parameters
     ----------
     X : ndarray of shape (n_samples, n_features)
-        Dense and finite. Converted to float32 for the device Gram only;
-        refinement reads these values in float64.
+        Dense and finite. Centering, weighting and residual checks use float64.
     y : ndarray of shape (n_samples,) or (n_samples, n_targets)
         Numeric target. A one-dimensional ``y`` is treated as a single target
         internally; the returned ``coef`` is still ``(1, n_features)``.
@@ -196,8 +191,13 @@ def solve_ols(
         X_work = X_work * scale[:, None]
         y_work = y_work * scale[:, None]
 
+    center_direction = None
+    if config.fit_intercept and 1 < n_samples <= n_features:
+        center_direction = (np.full(n_samples, 1.0 / math.sqrt(n_samples))
+                            if sw is None else scale / math.sqrt(sw_sum))
     coef_T, rank, singular = _lstsq_products(
-        X_work, y_work, rcond=float(config.rcond), device=config.device
+        X_work, y_work, rcond=float(config.rcond), device=config.device,
+        center_direction=center_direction,
     )
     coef = np.ascontiguousarray(coef_T.T, dtype=np.float64)
 
@@ -217,54 +217,90 @@ def solve_ols(
 
 
 def _lstsq_products(
-    X: np.ndarray,
-    y: np.ndarray,
+    design: np.ndarray,
+    target: np.ndarray,
     *,
     rcond: float,
     device: str,
+    center_direction: np.ndarray | None = None,
 ) -> tuple[np.ndarray, int, np.ndarray]:
-    """Min-norm least squares from a device GEMM of the Gram, refined in float64.
+    """Solve and certify the smaller Gram system on the requested device."""
+    n_samples, n_features = design.shape
+    if n_samples == 0 or n_features == 0:
+        coef = np.zeros((n_features, target.shape[1]), dtype=np.float64)
+        return coef, 0, np.zeros(0, dtype=np.float64)
 
-    ``X`` is ``(n, p)``, ``y`` is ``(n, k)``, both float64. Returns ``coef.T`` as
-    ``(p, k)``, the rank, and the singular values of ``X``.
-    """
+    X, y = design, target
+    omitted_norm = 0.0
+    if center_direction is not None:
+        # A Householder reflection sends the weighted constant direction to the
+        # last row. Bound that discarded row before solving in its complement.
+        projection = center_direction @ design
+        omitted_norm = float(np.linalg.norm(projection))
+        projected_cutoff = rcond * (float(np.linalg.norm(design)) / math.sqrt(n_samples))
+        if rcond <= np.finfo(np.float64).eps * max(design.shape) or omitted_norm > projected_cutoff / 32:
+            return _lstsq_direct(design, target, rcond=rcond)
+        leading = center_direction[:-1, None] / (1 + center_direction[-1])
+        X = design[:-1] - leading * (projection + design[-1])
+        y = target[:-1] - leading * (center_direction @ target + target[-1])
+
+    tall = X.shape[0] >= X.shape[1]
+    device = resolve_device(device)
+    # A float64 SYRK wins for the measured skinny and small wide CPU systems.
+    double = device == "cpu" and (X.shape[1] <= 256 or (not tall and X.shape[0] <= 1024))
+    if double:
+        gram = linalg.blas.dsyrk(1.0, X.T, trans=int(not tall), lower=1)
+    else:
+        gram = _device_gram(X, tall=tall, device=device)
+    if not np.isfinite(gram).all():
+        return _lstsq_direct(design, target, rcond=rcond)
+
+    apply_inverse, rank, singular = _factor_gram(gram, rcond=rcond, lower_only=double)
+    largest = float(singular[0])
+    # A small residual can hide a lost singular direction. Require the whole
+    # reduced spectrum to clear the cutoff and floating-point error envelope.
+    if double:
+        eps = float(np.finfo(np.float64).eps)
+        gram_error = 8 * eps * max(X.shape) * float(np.trace(gram))
+        # A direction can resolve rank while still amplifying rounding in
+        # its coefficient. Keep that regime on the direct least-squares path.
+        coefficient_floor = largest * math.sqrt(eps / _STATIONARITY_TOL)
+        uncertainty = max(math.sqrt(max(gram_error, 0.0)), coefficient_floor)
+    else:
+        uncertainty = largest * math.sqrt(float(np.finfo(NUMPY_FLOAT).eps) * max(X.shape))
+    cutoff = math.hypot(rcond * largest, uncertainty) + (1 + rcond) * omitted_norm
+    if singular[-1] <= cutoff:
+        return _lstsq_direct(design, target, rcond=rcond)
+
+    def step(residual):
+        # The dual solution belongs to the row space, which gives minimum norm.
+        return apply_inverse(X.T @ residual) if tall else X.T @ apply_inverse(residual)
+
+    if double:
+        coef = step(y)
+        residual = target - design @ coef
+    else:
+        coef, residual = _refine(X, y, step)
+        if center_direction is not None:
+            residual = target - design @ coef
+    limit = _STATIONARITY_TOL * largest * float(np.linalg.norm(target))
+    if not np.linalg.norm(design.T @ residual) <= limit:
+        return _lstsq_direct(design, target, rcond=rcond)
+    if center_direction is not None:
+        singular = np.append(singular, 0.0)
+    return coef, rank, singular
+
+
+def _device_gram(X: np.ndarray, *, tall: bool, device: str) -> np.ndarray:
     import mlx.core as mx
 
     from mlxlearn_device._binary32 import matmul
 
-    n_samples, n_features = X.shape
-    if n_samples == 0 or n_features == 0:
-        coef = np.zeros((n_features, y.shape[1]), dtype=np.float64)
-        return coef, 0, np.zeros(0, dtype=np.float64)
-
-    tall = n_samples >= n_features
     with use_device(device):
         Xm = mx.array(np.ascontiguousarray(X, dtype=NUMPY_FLOAT), dtype=mx.float32)
         gram = matmul(Xm, Xm, transpose_a=True) if tall else matmul(Xm, Xm, transpose_b=True)
         mx.eval(gram)
-        gram_np = np.asarray(gram, dtype=np.float64)
-
-    if not np.isfinite(gram_np).all():
-        return _lstsq_direct(X, y, rcond=rcond)
-    apply_inverse, rank, singular = _factor_gram(gram_np, rcond=rcond)
-
-    # The residual check depends on y and can pass with missing singular
-    # directions. Allow for float32 dot-product roundoff in the squared
-    # singular value ratios as well as the requested least-squares cutoff.
-    gram_roundoff = float(np.finfo(NUMPY_FLOAT).eps) * max(n_samples, n_features)
-    reliable_cutoff = math.hypot(rcond, math.sqrt(gram_roundoff)) * float(singular[0])
-    if singular[-1] <= reliable_cutoff:
-        return _lstsq_direct(X, y, rcond=rcond)
-
-    def step(residual):
-        # The dual solve keeps every iterate in the row space: the minimum norm.
-        return apply_inverse(X.T @ residual) if tall else X.T @ apply_inverse(residual)
-
-    coef, residual = _refine(X, y, step)
-    limit = _STATIONARITY_TOL * float(singular[0]) * float(np.linalg.norm(y))
-    if np.linalg.norm(X.T @ residual) > limit:
-        return _lstsq_direct(X, y, rcond=rcond)
-    return coef, rank, singular
+        return np.asarray(gram, dtype=np.float64)
 
 
 def _lstsq_direct(X: np.ndarray, y: np.ndarray, *, rcond: float) -> tuple[np.ndarray, int, np.ndarray]:
@@ -287,29 +323,21 @@ def _refine(X: np.ndarray, y: np.ndarray, step) -> tuple[np.ndarray, np.ndarray]
     return coef, residual
 
 
-def _factor_gram(gram: np.ndarray, *, rcond: float):
-    """Pseudoinvert a Gram matrix as a truncated SVD.
-
-    ``gram`` is ``AᵀA`` or ``AAᵀ``. Its eigenvalues are the squares of ``A``'s
-    singular values, so ``rcond`` is applied to ``√λ`` the way ``lstsq`` applies
-    it to ``σ``. Returns a function applying the pseudoinverse, the rank, and
-    the singular values of ``A``.
-    """
-    gram = 0.5 * (gram + gram.T)
-    u, s_gram, vt = np.linalg.svd(gram, full_matrices=False)
-    s_gram = np.maximum(s_gram, 0.0)
-    singular = np.sqrt(s_gram)
-    cutoff = rcond * (float(singular[0]) if singular.size else 0.0)
-    keep = singular > cutoff
-    inv = np.zeros_like(s_gram)
-    positive = keep & (s_gram > 0)
-    inv[positive] = 1.0 / s_gram[positive]
+def _factor_gram(gram: np.ndarray, *, rcond: float, lower_only: bool = False):
+    """Factor a symmetric Gram matrix and apply its truncated pseudoinverse."""
+    if not lower_only:
+        gram = 0.5 * (gram + gram.T)
+    eigenvalues, vectors = linalg.eigh(gram, driver="evd", lower=True, check_finite=False)
+    roots = np.sqrt(np.maximum(eigenvalues, 0.0))
+    keep = roots > rcond * (float(roots[-1]) if roots.size else 0.0)
 
     def apply_inverse(rhs: np.ndarray) -> np.ndarray:
-        # gram = U Σ Vᵀ, so gram⁺ = V Σ⁺ Uᵀ.
-        return vt.T @ (inv[:, None] * (u.T @ rhs))
+        projected = vectors.T @ rhs
+        projected[~keep] = 0
+        projected[keep] /= eigenvalues[keep, None]
+        return vectors @ projected
 
-    return apply_inverse, int(keep.sum()), singular.astype(np.float64, copy=False)
+    return apply_inverse, int(keep.sum()), roots[::-1]
 
 
 def _solve_gram(

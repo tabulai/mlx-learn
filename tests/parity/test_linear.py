@@ -101,6 +101,40 @@ def test_underdetermined_min_norm_matches_sklearn():
     _assert_parity(mlx, ref, X, y)
 
 
+@pytest.mark.parametrize("backend", ["cpu", "mlx"])
+@pytest.mark.parametrize("weighted", [False, True])
+def test_centered_wide_fit_resolves_the_nonconstant_row_space(backend, weighted, monkeypatch):
+    from mlxlearn._solvers import ols
+
+    rng = np.random.default_rng(24)
+    X = 100 + rng.normal(size=(32, 120))
+    y = rng.normal(size=(32, 2))
+    weights = rng.uniform(0.8, 1.2, size=len(X)) if weighted else None
+    ref = SkLinearRegression().fit(X, y, sample_weight=weights)
+
+    def unexpected_fallback(*args, **kwargs):
+        pytest.fail("the centered design has only the known constant null direction")
+
+    monkeypatch.setattr(ols, "_lstsq_direct", unexpected_fallback)
+    with tuning_context(force_backend=backend):
+        model = LinearRegression().fit(X, y, sample_weight=weights)
+    assert model.execution_backend_ == backend
+    assert model.rank_ == ref.rank_ == len(X) - 1
+    np.testing.assert_allclose(model.singular_, ref.singular_, atol=1e-10, rtol=1e-5)
+    np.testing.assert_allclose(model.coef_, ref.coef_, atol=1e-8)
+    np.testing.assert_allclose(model.predict(X), ref.predict(X), atol=1e-8)
+
+
+def test_automatic_patched_fit_uses_cpu_for_measured_tall_shape():
+    from mlxlearn.patching._estimators import LinearRegression as PatchedLinearRegression
+
+    X, y = _data(n_samples=8_000, n_features=64)
+    model = PatchedLinearRegression().fit(X, y)
+    ref = SkLinearRegression().fit(X, y)
+    assert model.execution_backend_ == "cpu"
+    np.testing.assert_allclose(model.predict(X[:20]), ref.predict(X[:20]), atol=1e-8)
+
+
 def test_rank_deficient_objective_still_matches():
     """Duplicate columns: coefficients may differ, the objective must not."""
     X, y = _data(n_features=8, seed=4)

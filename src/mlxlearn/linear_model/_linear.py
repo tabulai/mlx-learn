@@ -19,7 +19,7 @@ import numpy as np
 from sklearn.linear_model import LinearRegression as _SkLinearRegression
 
 from .._common.base import BackendMixin, mlx_guard
-from .._common.config import get_tuning
+from .._common.config import get_config, get_tuning
 from .._common.validation import (
     check_finite_float32,
     check_float32_range,
@@ -73,11 +73,10 @@ class LinearRegression(BackendMixin, _SkLinearRegression):
 
     Notes
     -----
-    **Precision.** The device computes the float32 Gram product of the
-    (centered, weighted) design. The small factorization that follows is
-    host-side, with float64 iterative refinement against the input. A direct
-    float64 least-squares fit handles an unresolved Gram spectrum or a residual
-    that refinement cannot bring within tolerance.
+    **Precision.** The solver factors a symmetric Gram matrix of the centered,
+    weighted design. Small CPU systems use a float64 product. The binary32 path
+    refines the fit in float64. A direct least-squares factorization handles
+    unresolved rank or a residual that exceeds tolerance.
 
     **No caches.** ``fit`` is a pure function of ``(X, y, sample_weight, params)``.
 
@@ -113,21 +112,16 @@ class LinearRegression(BackendMixin, _SkLinearRegression):
             )
 
     def _below_crossover(self, n_samples: int, n_features: int) -> tuple[bool, str]:
-        """Whether stock scikit-learn is expected to win at this size.
-
-        No dedicated crossover has been measured yet, so both thresholds are
-        high on purpose. See ``docs/benchmarks.md``. A problem must be large on
-        both counts before patched dispatch will keep it on MLX.
-        """
+        """Apply measured CPU size floors to automatic fits."""
         tuning = get_tuning()
         work = n_samples * n_features
-        if n_samples < tuning.linreg_min_samples or work < tuning.linreg_min_work:
-            return True, (
-                f"{n_samples} samples x {n_features} features is below the "
-                f"linear-regression crossover ({tuning.linreg_min_samples} samples "
-                f"and {tuning.linreg_min_work} element-ops, both required)"
-            )
-        return False, ""
+        if n_samples < n_features:
+            # Build the dual Gram only where its cubic factorization stays small.
+            eligible = self.fit_intercept and 256 <= n_samples <= 1024
+            below = not eligible or work < tuning.linreg_min_work
+        else:
+            below = n_samples < tuning.linreg_min_samples or work < tuning.linreg_min_work
+        return below, f"{n_samples} samples x {n_features} features is outside the CPU OLS crossover"
 
     def fit(self, X, y, sample_weight=None):
         """Fit the linear model.
@@ -145,10 +139,17 @@ class LinearRegression(BackendMixin, _SkLinearRegression):
         self._validate_params()
 
         self._clear_backend()
+        shape = _safe_shape(X)
+        below, detail = False, ""
+        if shape is not None and get_config().device == "auto":
+            below, detail = self._below_crossover(*shape)
         backend = self._select_backend(
             "fit",
             capability_check=lambda: self._check_linear_capability(X, y),
-            shape=_safe_shape(X),
+            below_crossover=below,
+            crossover_detail=detail,
+            prefer_cpu=True,
+            shape=shape,
         )
         if backend == "sklearn":
             super().fit(X, y, sample_weight)
@@ -168,19 +169,6 @@ class LinearRegression(BackendMixin, _SkLinearRegression):
             reset=True,
         )
         check_finite_float32(X_checked)
-
-        below, detail = self._below_crossover(*X_checked.shape)
-        if below and backend != "cpu":
-            backend = self._select_backend(
-                "fit",
-                below_crossover=True,
-                crossover_detail=detail,
-                shape=X_checked.shape,
-            )
-            if backend == "sklearn":
-                super().fit(X, y, sample_weight)
-                self._set_backend("sklearn")
-                return self
 
         y_arr = np.asarray(y_checked)
         y_is_1d = y_arr.ndim == 1
