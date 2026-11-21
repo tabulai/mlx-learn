@@ -4,17 +4,16 @@ from __future__ import annotations
 
 from sklearn.base import BaseEstimator
 
-from .._common.validation import check_is_fitted
-from ._base import MLXNeighborsMixin
+from ._base import MLXNeighborsMixin, MLXRadiusMixin
 
 __all__ = ["NearestNeighbors"]
 
 
-class NearestNeighbors(MLXNeighborsMixin, BaseEstimator):
+class NearestNeighbors(MLXRadiusMixin, MLXNeighborsMixin, BaseEstimator):
     """Unsupervised nearest-neighbor search, accelerated with MLX.
 
     A drop-in replacement for :class:`sklearn.neighbors.NearestNeighbors` for
-    exact brute-force Euclidean search. Parameters, fitted attributes and error
+    exact Euclidean search. Parameters, fitted attributes and error
     messages follow scikit-learn. Concrete sklearn neighbor subclass identity
     is preserved only by patched variants; direct instances expose their own
     ``kneighbors_graph`` and ``radius_neighbors_graph`` methods.
@@ -23,10 +22,10 @@ class NearestNeighbors(MLXNeighborsMixin, BaseEstimator):
     ----------
     n_neighbors : int, default=5
     radius : float, default=1.0
-        Used by :meth:`radius_neighbors`, which runs on scikit-learn — see Notes.
+        Used by :meth:`radius_neighbors`.
     algorithm : {"auto", "brute"}, default="auto"
-        Only brute-force search is accelerated. ``"kd_tree"`` and ``"ball_tree"``
-        raise :class:`~mlxlearn.exceptions.UnsupportedParameterError` on direct
+        Automatic radius search can use a CPU tree. Explicit ``"kd_tree"`` and
+        ``"ball_tree"`` raise :class:`~mlxlearn.exceptions.UnsupportedParameterError` on direct
         use and fall back to scikit-learn under ``patch_sklearn()``.
     leaf_size : int, default=30
         Accepted for signature compatibility; brute-force search does not use it.
@@ -50,15 +49,14 @@ class NearestNeighbors(MLXNeighborsMixin, BaseEstimator):
         The policy captured at fit. ``"auto"`` selects the owned CPU or GPU
         search for each query batch; explicit device choices are ``"fixed"``.
     last_query_backend_ : {"mlx", "cpu", "sklearn"}
-        Backend used by the most recent :meth:`kneighbors` call. Defined after
-        the first completed query. Delegated radius queries are not included.
+        Backend used by the most recent :meth:`kneighbors` or
+        :meth:`radius_neighbors` call. Defined after the first completed query.
 
     Notes
     -----
-    :meth:`radius_neighbors` delegates to scikit-learn and is **not**
-    accelerated. It uses the fitted float32 compatibility data on the CPU,
-    as the preceding inherited implementation did. ``sklearn.neighbors`` is
-    loaded only when that optional operation is requested.
+    :meth:`radius_neighbors` can use a CPU tree or screen candidates in bounded
+    CPU or Metal tiles. Automatic patched searches can also use stock
+    scikit-learn. Neighborhoods are ragged arrays with one row per query.
 
     Examples
     --------
@@ -99,13 +97,3 @@ class NearestNeighbors(MLXNeighborsMixin, BaseEstimator):
         if self._fit_neighbors(X, None) == "sklearn":
             self._fit_sklearn(X, y)
         return self
-
-    def radius_neighbors(self, X=None, radius=None, return_distance=True, sort_results=False):
-        """Find points within radius using sklearn's public CPU implementation."""
-        check_is_fitted(self)
-        return self._radius_delegate().radius_neighbors(X, radius, return_distance, sort_results)
-
-    def radius_neighbors_graph(self, X=None, radius=None, mode="connectivity", sort_results=False):
-        """Return sklearn's CSR radius graph, preserving self-query exclusion."""
-        check_is_fitted(self)
-        return self._radius_delegate().radius_neighbors_graph(X, radius, mode, sort_results)
