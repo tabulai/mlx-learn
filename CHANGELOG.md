@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **`mlxlearn.linear_model.LinearRegression`** supports dense ordinary least
+  squares with multi-output targets and `sample_weight`. CPU and Metal form
+  symmetric Gram systems, with a reduced system for centered wide designs and
+  direct float64 least squares when the rank needs a more accurate factorization.
+  Patched mode supports `positive=True` through scikit-learn.
+
 ## [0.1.6] — 2026-11-19
 
 ### Added

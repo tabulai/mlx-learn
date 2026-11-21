@@ -18,13 +18,14 @@ from sklearn.datasets import make_classification
 
 from mlxlearn._common.config import tuning_context
 from mlxlearn.decomposition import PCA
-from mlxlearn.linear_model import LogisticRegression
+from mlxlearn.linear_model import LinearRegression, LogisticRegression
 from mlxlearn.neighbors import KNeighborsClassifier, KNeighborsRegressor, NearestNeighbors
 from mlxlearn.svm import SVC
 
 SUPERVISED = [
     (KNeighborsClassifier, {"n_neighbors": 5}),
     (KNeighborsRegressor, {"n_neighbors": 5}),
+    (LinearRegression, {}),
     (LogisticRegression, {}),
     (SVC, {}),
 ]

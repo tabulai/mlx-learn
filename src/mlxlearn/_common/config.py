@@ -152,6 +152,11 @@ class Tuning:
     logreg_tall_min_samples: int = 250_000
     logreg_tall_min_work: int = 8_000_000
     #
+    # CPU OLS wins at the measured 8,000 x 64 and 16,000 x 128 fits.
+    # Keep a floor on automatic dispatch to avoid overhead on tiny problems.
+    linreg_min_samples: int = 2_048
+    linreg_min_work: int = 262_144
+    #
     # SVC is the same story again, and worse -- but the axis that matters is
     # *width*, not height. Over a 64-configuration grid at d in {10, 20} mlxlearn
     # was slower in 58 of 64, worst 0.013x. What separates the wins is the cost of

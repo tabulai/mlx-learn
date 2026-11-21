@@ -26,7 +26,7 @@ import pytest
 from sklearn.utils.estimator_checks import check_estimator
 
 from mlxlearn.decomposition import PCA
-from mlxlearn.linear_model import LogisticRegression
+from mlxlearn.linear_model import LinearRegression, LogisticRegression
 from mlxlearn.neighbors import KNeighborsClassifier, KNeighborsRegressor, NearestNeighbors
 from mlxlearn.patching import _estimators as patched
 from mlxlearn.svm import SVC
@@ -59,11 +59,20 @@ INHERITED_FAILURES: dict[str, set[str]] = {
 #:   C -- the check asserts random_state=None varies, which deterministic=True denies
 EXPECTED_XFAILS: dict[tuple[str, str], str] = {}
 
-LAYER1 = [NearestNeighbors, KNeighborsClassifier, KNeighborsRegressor, LogisticRegression, PCA, SVC]
+LAYER1 = [
+    NearestNeighbors,
+    KNeighborsClassifier,
+    KNeighborsRegressor,
+    LinearRegression,
+    LogisticRegression,
+    PCA,
+    SVC,
+]
 LAYER2 = [
     patched.NearestNeighbors,
     patched.KNeighborsClassifier,
     patched.KNeighborsRegressor,
+    patched.LinearRegression,
     patched.LogisticRegression,
     patched.PCA,
     patched.SVC,
@@ -164,3 +173,10 @@ def test_layer1_tags_narrow_what_layer2_allows():
     assert strict.target_tags.multi_output is False
     assert lenient.input_tags.sparse is True
     assert lenient.target_tags.multi_output is True
+
+    lin_strict = get_tags(LinearRegression())
+    lin_lenient = get_tags(patched.LinearRegression())
+    assert lin_strict.input_tags.sparse is False
+    assert lin_strict.target_tags.multi_output is True
+    assert lin_lenient.input_tags.sparse is True
+    assert lin_lenient.target_tags.multi_output is True

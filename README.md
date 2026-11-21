@@ -46,12 +46,13 @@ stock inheritance. See the [compatibility details](docs/support_matrix.md).
 | `mlxlearn.neighbors.KNeighborsClassifier` | 0.1.0 |
 | `mlxlearn.neighbors.KNeighborsRegressor` | 0.1.0 |
 | `mlxlearn.linear_model.LogisticRegression` | 0.1.0 |
+| `mlxlearn.linear_model.LinearRegression` | 0.1.0 |
 | `mlxlearn.svm.SVC` (exact) | 0.1.0 |
 | `mlxlearn.decomposition.PCA` | 0.1.2 |
 | `mlxlearn.cluster.EMeans` | 0.1.3; Metal GPU, paper/Faiss recipes |
 | `mlxlearn.cluster.KMeans` | 0.1.3; Metal GPU, Lloyd clustering; Metal k-means++ seeding since 0.1.6 |
 | `mlxlearn.cluster.OMeans` | 0.1.5; Metal GPU, e-means with a two-level centroid search |
-| `LinearRegression`, `Ridge`, `DBSCAN`, `TSNE` | planned, 0.2.x |
+| `Ridge`, `DBSCAN`, `TSNE` | planned, 0.2.x |
 | `SVR`, `NuSVR`, `NuSVC` | deferred — will not ship until they implement the true objective |
 | tree ensembles | out of scope |
 
