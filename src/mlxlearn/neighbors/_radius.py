@@ -18,7 +18,7 @@ class RadiusNeighborsClassifier(MLXRadiusMixin, MLXNeighborsMixin, ClassifierMix
     """Radius-neighbors classifier, accelerated with MLX.
 
     A drop-in replacement for :class:`sklearn.neighbors.RadiusNeighborsClassifier`
-    for exact brute-force Euclidean search on dense, single-output data. Every
+    for exact Euclidean radius search on dense, single-output data. Every
     training row within ``radius`` of a query votes; an empty neighborhood is
     handled by ``outlier_label``.
 
@@ -29,7 +29,7 @@ class RadiusNeighborsClassifier(MLXRadiusMixin, MLXNeighborsMixin, ClassifierMix
         A callable is not implemented on the MLX path.
     algorithm : {"auto", "brute"}, default="auto"
     leaf_size : int, default=30
-        Accepted for signature compatibility; unused by brute-force search.
+        Accepted for signature compatibility.
     p : float, default=2
     metric : {"euclidean", "l2", "minkowski"}, default="minkowski"
         ``"minkowski"`` at ``p=2`` only.
@@ -201,7 +201,7 @@ class RadiusNeighborsRegressor(MLXRadiusMixin, MLXNeighborsMixin, RegressorMixin
     """Radius-neighbors regressor, accelerated with MLX.
 
     A drop-in replacement for :class:`sklearn.neighbors.RadiusNeighborsRegressor`
-    for exact brute-force Euclidean search on dense, single-output data.
+    for exact Euclidean radius search on dense, single-output data.
 
     Parameters
     ----------

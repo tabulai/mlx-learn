@@ -8,10 +8,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
-- **Radius-neighbor search** in tiled MLX direct-difference scans.
-  `NearestNeighbors.radius_neighbors` now runs on the fitted backend instead of
-  delegating to scikit-learn's CPU path. Neighborhoods are ragged object arrays of
-  1-d index and distance rows, matching scikit-learn's return layout.
+- **Radius-neighbor search** with CPU trees for low-dimensional data and bounded
+  candidate screening on CPU and Metal. Automatic patched queries can use stock
+  search for cold or dense batches. Neighborhoods are ragged arrays of indices
+  and distances.
 - **`mlxlearn.neighbors.RadiusNeighborsClassifier`** and
   **`RadiusNeighborsRegressor`** — Layer 1 estimators and Layer 2 patched
   twins. Votes and averages use every training row inside `radius`; empty

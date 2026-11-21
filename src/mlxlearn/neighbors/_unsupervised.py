@@ -13,7 +13,7 @@ class NearestNeighbors(MLXRadiusMixin, MLXNeighborsMixin, BaseEstimator):
     """Unsupervised nearest-neighbor search, accelerated with MLX.
 
     A drop-in replacement for :class:`sklearn.neighbors.NearestNeighbors` for
-    exact brute-force Euclidean search. Parameters, fitted attributes and error
+    exact Euclidean search. Parameters, fitted attributes and error
     messages follow scikit-learn. Concrete sklearn neighbor subclass identity
     is preserved only by patched variants; direct instances expose their own
     ``kneighbors_graph`` and ``radius_neighbors_graph`` methods.
@@ -24,8 +24,8 @@ class NearestNeighbors(MLXRadiusMixin, MLXNeighborsMixin, BaseEstimator):
     radius : float, default=1.0
         Used by :meth:`radius_neighbors`.
     algorithm : {"auto", "brute"}, default="auto"
-        Only brute-force search is accelerated. ``"kd_tree"`` and ``"ball_tree"``
-        raise :class:`~mlxlearn.exceptions.UnsupportedParameterError` on direct
+        Automatic radius search can use a CPU tree. Explicit ``"kd_tree"`` and
+        ``"ball_tree"`` raise :class:`~mlxlearn.exceptions.UnsupportedParameterError` on direct
         use and fall back to scikit-learn under ``patch_sklearn()``.
     leaf_size : int, default=30
         Accepted for signature compatibility; brute-force search does not use it.
@@ -54,9 +54,9 @@ class NearestNeighbors(MLXRadiusMixin, MLXNeighborsMixin, BaseEstimator):
 
     Notes
     -----
-    :meth:`radius_neighbors` runs on the same MLX backend as the fitted index.
-    Membership is decided on refined Euclidean distances; each row is returned
-    as a 1-d array because neighborhoods are ragged.
+    :meth:`radius_neighbors` can use a CPU tree or screen candidates in bounded
+    CPU or Metal tiles. Automatic patched searches can also use stock
+    scikit-learn. Neighborhoods are ragged arrays with one row per query.
 
     Examples
     --------

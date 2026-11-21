@@ -143,6 +143,19 @@ def test_radius_empty_neighborhoods_are_empty_arrays(backend):
     assert dist[0].dtype == np.float64
 
 
+@pytest.mark.parametrize("backend", BACKENDS)
+def test_radius_keeps_every_candidate_when_compact_capacity_is_exceeded(backend):
+    X = np.full((640, 4), 0.5, dtype=np.float32)
+    X[-10:] = 0.75
+    Q = np.zeros((2, 4), dtype=np.float32)
+    index = build_index(X, backend=backend)
+    dist, idx = index.query_radius(Q, 1.0, sort_results=True)
+    assert index.last_query_backend == backend
+    for row_dist, row_idx in zip(dist, idx, strict=True):
+        np.testing.assert_array_equal(row_idx, np.arange(630))
+        np.testing.assert_array_equal(row_dist, np.ones(630))
+
+
 def test_negative_radius_raises():
     X = np.array([[0.0], [1.0]], dtype=np.float32)
     with pytest.raises(ValueError, match="non-negative"):
@@ -166,6 +179,91 @@ def test_nearest_neighbors_radius_matches_sklearn(classification_data, rng):
     ref_dist, ref_idx = ref.radius_neighbors(query, sort_results=True)
     assert_radius_parity(mlx_idx, ref_idx, mlx_dist, ref_dist, radius=radius)
     assert mlx.execution_backend_ == "mlx" and mlx.last_query_backend_ == "mlx"
+
+
+def test_patched_large_cold_radius_query_defers_metal_setup(rng, monkeypatch):
+    from mlxlearn._common import device
+    from mlxlearn.patching._estimators import NearestNeighbors as Patched
+
+    X = rng.normal(size=(32_768, 16)).astype(np.float32)
+    Q = X[:64] + np.float32(0.01)
+
+    def unexpected_probe():
+        pytest.fail("a stock-routed first query should stay on the host")
+
+    monkeypatch.setattr(device, "gpu_available", unexpected_probe)
+    model = Patched(radius=1.5).fit(X)
+    model.radius_neighbors(Q)
+    assert model.execution_backend_ == "cpu"
+    assert model.last_query_backend_ == "sklearn"
+    assert model._index_._device_index is None
+
+
+def test_patched_large_sparse_radius_uses_stock_then_metal(rng):
+    from mlxlearn.patching._estimators import NearestNeighbors as Patched
+
+    X = rng.normal(size=(16_384, 16)).astype(np.float32)
+    Q = X[:128] + np.float32(0.01)
+    nn = Patched(radius=1.5).fit(X)
+    first_dist, first_idx = nn.radius_neighbors(Q)
+    assert nn.last_query_backend_ == "sklearn"
+    warm_dist, warm_idx = nn.radius_neighbors(Q)
+    assert nn.last_query_backend_ == "mlx"
+    ref_dist, ref_idx = sk_reference(X, radius=1.5).radius_neighbors(Q.astype(np.float64))
+    assert_radius_parity(first_idx, ref_idx, first_dist, ref_dist, radius=1.5)
+    assert_radius_parity(warm_idx, ref_idx, warm_dist, ref_dist, radius=1.5)
+
+    # The warm index still hands dense searches to the stock implementation.
+    nn.radius_neighbors(np.zeros_like(Q), radius=6.0, return_distance=False)
+    assert nn.last_query_backend_ == "sklearn"
+
+
+def test_patched_low_dimensional_radius_reuses_a_cpu_tree(rng):
+    import pickle
+
+    from mlxlearn.patching._estimators import NearestNeighbors as Patched
+
+    X = rng.normal(size=(4096, 4)).astype(np.float32)
+    Q = X[:64] + np.float32(0.01)
+    nn = Patched(radius=0.2).fit(X)
+    first_dist, first_idx = nn.radius_neighbors(Q)
+    assert nn.last_query_backend_ == "sklearn"
+    warm_dist, warm_idx = nn.radius_neighbors(Q)
+    assert nn.last_query_backend_ == "cpu"
+    tree = nn._index_._radius_search._tree
+    nn.radius_neighbors(Q)
+    assert nn._index_._radius_search._tree is tree
+    restored = pickle.loads(pickle.dumps(nn))
+    restored_dist, restored_idx = restored.radius_neighbors(Q)
+    assert_radius_parity(warm_idx, first_idx, warm_dist, first_dist, radius=0.2)
+    assert_radius_parity(restored_idx, first_idx, restored_dist, first_dist, radius=0.2)
+
+
+def test_stock_radius_route_checks_boundary_and_tie_order():
+    from mlxlearn.patching._estimators import NearestNeighbors as Patched
+
+    X = np.array([[3.0], [1.0], [2.0], [4.0]], dtype=np.float32)
+    Q = np.array([[100.0], [2.0], [100.0], [3.0]], dtype=np.float32)
+    model = Patched(radius=1.0, algorithm="brute").fit(X)
+    dist, idx = model.radius_neighbors(Q, sort_results=True)
+    assert model.last_query_backend_ == "sklearn"
+    np.testing.assert_array_equal(idx[0], [])
+    np.testing.assert_array_equal(idx[1], [2, 0, 1])
+    np.testing.assert_array_equal(dist[1], [0.0, 1.0, 1.0])
+    np.testing.assert_array_equal(idx[2], [])
+    np.testing.assert_array_equal(idx[3], [0, 2, 3])
+    np.testing.assert_array_equal(dist[3], [0.0, 1.0, 1.0])
+
+
+def test_patched_radius_avoids_uncertain_stock_gram_at_large_offsets():
+    from mlxlearn.patching._estimators import NearestNeighbors as Patched
+
+    X = np.array([[2e12, 0.0], [2e12, 0.5], [2e12, 4.0]], dtype=np.float32)
+    model = Patched(radius=1.0, algorithm="brute").fit(X)
+    dist, idx = model.radius_neighbors(X[:1], sort_results=True)
+    assert model.last_query_backend_ == "cpu"
+    np.testing.assert_array_equal(idx[0], [0, 1])
+    np.testing.assert_array_equal(dist[0], [0.0, 0.5])
 
 
 def test_radius_self_query_matches_sklearn(classification_data):

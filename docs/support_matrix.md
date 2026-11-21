@@ -67,8 +67,11 @@ The latest release benchmarks use MLX 0.32.4.
 | `svm.SVC` | 0.1.0 | exact SMO, linear/poly/rbf/sigmoid | `kernel="precomputed"`, callable kernels, `probability=True`, sparse |
 | `decomposition.PCA` | 0.1.2 | dense covariance and randomized PCA, CPU/GPU projection | sparse input, values outside float32 range |
 
-`radius_neighbors` and `radius_neighbors_graph` run on the same fitted backend as
-`kneighbors`, in tiled direct-difference scans. Neighborhoods are ragged object arrays of 1-d rows, matching scikit-learn.
+`radius_neighbors` and `radius_neighbors_graph` use CPU tree search or bounded
+CPU and Metal screening with direct distance refinement. Automatic patched
+fits keep training data on the host until a query selects Metal. They can use
+stock search on the first eligible batch and for dense neighborhoods.
+Neighborhoods are ragged object arrays of 1-d rows.
 
 Direct KNN classes use public sklearn estimator mixins without inheriting stock
 `sklearn.neighbors` classes. They preserve the estimator API, but an `isinstance`

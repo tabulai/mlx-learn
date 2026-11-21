@@ -341,7 +341,12 @@ class MLXNeighborsMixin(BackendMixin):
 
         if automatic:
             n_samples, n_features = X_checked.shape
-            if ((n_samples <= 2048 and n_features <= 64)
+            # A patched radius query can start on stock search even for large
+            # fits. Radius-only estimators also select a device per query.
+            defer_radius = isinstance(self, MLXRadiusMixin) and (
+                self._mlxlearn_allow_fallback or self.n_neighbors is None
+            )
+            if (defer_radius or (n_samples <= 2048 and n_features <= 64)
                     or (n_samples <= 16384 and n_features <= 32)):
                 backend = "cpu"
                 gpu_available = None
@@ -448,7 +453,7 @@ class MLXNeighborsMixin(BackendMixin):
         self._set_query_backend(backend)
         if self.execution_policy_ == "auto":
             record_event(type(self).__name__, operation, backend,
-                         reason="auto-query", shape=shape)
+                         reason="auto-query", shape=shape, fallback=backend == "sklearn")
         else:
             self._note_inference(operation, shape=shape)
 
@@ -548,7 +553,7 @@ class MLXRadiusMixin:
         return_distance : bool, default=True
             Whether to return distances alongside indices.
         sort_results : bool, default=False
-            If True, each row is ordered by increasing distance. ``True`` with
+            If True, each row is ordered by distance, then training index. ``True`` with
             ``return_distance=False`` is an error, matching scikit-learn.
 
         Returns
@@ -587,9 +592,15 @@ class MLXRadiusMixin:
                 return_distance=return_distance,
                 exclude_self=query_is_train,
                 sort_results=sort_results,
+                tree_allowed=self.algorithm == "auto",
+                stock_factory=self._stock_radius_index if self._mlxlearn_allow_fallback else None,
             )
         self._record_neighbor_query("radius_neighbors", Q.shape)
         return result
+
+    def _stock_radius_index(self):
+        factory = _stock_neighbor_class("NearestNeighbors")
+        return factory(algorithm="brute", metric="euclidean", n_jobs=self.n_jobs)
 
     def radius_neighbors_graph(self, X=None, radius=None, mode="connectivity", sort_results=False):
         """Return the CSR graph of neighbors within ``radius``, excluding self for X=None."""
