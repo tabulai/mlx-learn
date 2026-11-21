@@ -29,8 +29,9 @@ round well past float32 epsilon, so that factorization alone leaves an error a
 caller can see. It is used as a preconditioner instead: float64 iterative
 refinement against the original design recovers the solution, and each step
 costs only host matrix-vector products. A step that stops reducing the residual
-ends the refinement. If the normal equations still do not hold, the Gram was too
-ill-conditioned to precondition and the host runs the float64 ``lstsq``.
+ends the refinement. The host runs float64 ``lstsq`` on the design if the Gram
+cannot resolve the full spectrum or if the refined solution fails the
+normal-equation residual check.
 
 A fit is a pure function of its arguments. Nothing about a previous fit in the
 same process can reach this one.
@@ -225,7 +226,7 @@ def _lstsq_products(
     """Min-norm least squares from a device GEMM of the Gram, refined in float64.
 
     ``X`` is ``(n, p)``, ``y`` is ``(n, k)``, both float64. Returns ``coef.T`` as
-    ``(p, k)``, the rank, and the singular values of ``X`` implied by the Gram.
+    ``(p, k)``, the rank, and the singular values of ``X``.
     """
     import mlx.core as mx
 
@@ -243,7 +244,17 @@ def _lstsq_products(
         mx.eval(gram)
         gram_np = np.asarray(gram, dtype=np.float64)
 
+    if not np.isfinite(gram_np).all():
+        return _lstsq_direct(X, y, rcond=rcond)
     apply_inverse, rank, singular = _factor_gram(gram_np, rcond=rcond)
+
+    # The residual check depends on y and can pass with missing singular
+    # directions. Allow for float32 dot-product roundoff in the squared
+    # singular value ratios as well as the requested least-squares cutoff.
+    gram_roundoff = float(np.finfo(NUMPY_FLOAT).eps) * max(n_samples, n_features)
+    reliable_cutoff = math.hypot(rcond, math.sqrt(gram_roundoff)) * float(singular[0])
+    if singular[-1] <= reliable_cutoff:
+        return _lstsq_direct(X, y, rcond=rcond)
 
     def step(residual):
         # The dual solve keeps every iterate in the row space: the minimum norm.
@@ -252,7 +263,12 @@ def _lstsq_products(
     coef, residual = _refine(X, y, step)
     limit = _STATIONARITY_TOL * float(singular[0]) * float(np.linalg.norm(y))
     if np.linalg.norm(X.T @ residual) > limit:
-        coef, _, rank, singular = np.linalg.lstsq(X, y, rcond=rcond)
+        return _lstsq_direct(X, y, rcond=rcond)
+    return coef, rank, singular
+
+
+def _lstsq_direct(X: np.ndarray, y: np.ndarray, *, rcond: float) -> tuple[np.ndarray, int, np.ndarray]:
+    coef, _, rank, singular = np.linalg.lstsq(X, y, rcond=rcond)
     return coef, int(rank), singular
 
 

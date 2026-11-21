@@ -75,8 +75,9 @@ class LinearRegression(BackendMixin, _SkLinearRegression):
     -----
     **Precision.** The device computes the float32 Gram product of the
     (centered, weighted) design. The small factorization that follows is
-    host-side, because MLX's SVD is not implemented on the GPU, and float64
-    iterative refinement against the input removes the float32 rounding.
+    host-side, with float64 iterative refinement against the input. A direct
+    float64 least-squares fit handles an unresolved Gram spectrum or a residual
+    that refinement cannot bring within tolerance.
 
     **No caches.** ``fit`` is a pure function of ``(X, y, sample_weight, params)``.
 

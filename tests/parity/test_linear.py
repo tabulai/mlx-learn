@@ -148,6 +148,27 @@ def test_refinement_survives_an_ill_conditioned_gram(backend, n_samples, n_featu
     assert j_mlx == pytest.approx(j_ref, rel=OBJECTIVE_RTOL, abs=1e-8)
 
 
+@pytest.mark.parametrize("backend", ["mlx", "cpu"])
+@pytest.mark.parametrize("transpose", [False, True], ids=["tall", "wide"])
+def test_rank_survives_a_singular_direction_lost_in_the_gram(backend, transpose):
+    u = np.array([1.0, 1.0, -1.0, -1.0])
+    v = np.array([1.0, -1.0, 1.0, -1.0])
+    X = np.column_stack((u + 2**-16 * v, u - 2**-16 * v))
+    if transpose:
+        X = X.T
+    # The normal-equation residual can pass even after both Gram columns round
+    # to the same values. Verify the factorization as well as the solution.
+    y = X[:, 0]
+    with tuning_context(force_backend=backend):
+        model = LinearRegression(fit_intercept=False).fit(X, y)
+    ref = SkLinearRegression(fit_intercept=False).fit(X, y)
+
+    assert model.execution_backend_ == backend
+    assert model.rank_ == ref.rank_ == 2
+    np.testing.assert_allclose(model.singular_, ref.singular_, rtol=1e-8)
+    np.testing.assert_allclose(model.coef_, ref.coef_, atol=1e-10)
+
+
 def test_no_centering_without_an_intercept():
     X, y = _data(n_samples=2000, n_features=8)
     X = X + 5.0
