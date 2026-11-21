@@ -90,12 +90,11 @@ def assert_neighbor_parity(mlx_dist, mlx_idx, ref_dist, ref_idx, *, atol=1e-6):
     )
 
 
-def assert_radius_parity(mlx_idx, ref_idx, mlx_dist=None, ref_dist=None, *, atol=1e-6):
-    """Compare ragged radius-neighbor results.
+def assert_radius_parity(mlx_idx, ref_idx, mlx_dist=None, ref_dist=None, *, radius, atol=1e-6):
+    """Compare ragged radius-neighbor results at the supplied search radius.
 
-    Neighborhoods are variable-length, so each query is an independent 1-d
-    array. Membership is the claim: every neighbor strictly inside the farthest
-    shared distance must agree, matching :func:`assert_neighbor_parity`.
+    Membership must agree unless the mismatched neighbor's distance is within
+    tolerance of the radius. Without distances, require exact membership.
     """
     assert len(mlx_idx) == len(ref_idx), f"{len(mlx_idx)} queries vs {len(ref_idx)}"
     for row in range(len(mlx_idx)):
@@ -109,33 +108,23 @@ def assert_radius_parity(mlx_idx, ref_idx, mlx_dist=None, ref_dist=None, *, atol
 
         md = np.asarray(mlx_dist[row], dtype=np.float64)
         rd = np.asarray(ref_dist[row], dtype=np.float64)
-        if mine.size == 0 and theirs.size == 0:
-            continue
-        if mine.size == 0 or theirs.size == 0:
-            raise AssertionError(
-                f"row {row}: mlxlearn returned {mine.size} neighbors, "
-                f"scikit-learn returned {theirs.size}"
-            )
-
-        # Distances of the shared set must agree; extras must sit on the boundary.
         mine_map = {int(i): float(d) for i, d in zip(mine, md, strict=True)}
         theirs_map = {int(i): float(d) for i, d in zip(theirs, rd, strict=True)}
         shared = set(mine_map) & set(theirs_map)
-        boundary = max(max(md), max(rd))
         for index in shared:
             assert abs(mine_map[index] - theirs_map[index]) <= atol + atol * abs(theirs_map[index]), (
                 f"row {row}: distance for index {index} differs: "
                 f"{mine_map[index]} vs {theirs_map[index]}"
             )
         for extra in set(mine_map) - set(theirs_map):
-            assert abs(mine_map[extra] - boundary) <= atol, (
+            assert np.isclose(mine_map[extra], radius, atol=atol, rtol=atol), (
                 f"row {row}: mlxlearn returned index {extra} at {mine_map[extra]}, "
-                f"not a boundary tie (boundary={boundary})"
+                f"outside the tolerance band for radius {radius}"
             )
         for missing in set(theirs_map) - set(mine_map):
-            assert abs(theirs_map[missing] - boundary) <= atol, (
+            assert np.isclose(theirs_map[missing], radius, atol=atol, rtol=atol), (
                 f"row {row}: scikit-learn returned index {missing} at {theirs_map[missing]}, "
-                f"not a boundary tie (boundary={boundary})"
+                f"outside the tolerance band for radius {radius}"
             )
 
 

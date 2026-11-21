@@ -34,6 +34,14 @@ def sk_reference(X, *, radius):
     ).fit(np.asarray(X, dtype=np.float64))
 
 
+def test_radius_parity_rejects_a_missing_farthest_neighbor_inside_the_radius():
+    radius = 4e19
+    with pytest.raises(AssertionError, match="index 1"):
+        assert_radius_parity([[0]], [[0, 1]], [[0.0]], [[0.0, 2e19]], radius=radius)
+
+    assert_radius_parity([[0]], [[0, 1]], [[0.0]], [[0.0, radius]], radius=radius)
+
+
 # ----------------------------------------------------------------------------------
 # kernel level
 # ----------------------------------------------------------------------------------
@@ -50,7 +58,7 @@ def test_kernel_radius_matches_sklearn(backend, n_train, n_features, n_query, ra
 
     dist, idx = build_index(X, backend=backend).query_radius(Q, radius)
     ref_dist, ref_idx = sk_reference(X, radius=radius).radius_neighbors(Q.astype(np.float64))
-    assert_radius_parity(idx, ref_idx, dist, ref_dist)
+    assert_radius_parity(idx, ref_idx, dist, ref_dist, radius=radius)
 
 
 @pytest.mark.parametrize("backend", BACKENDS)
@@ -72,12 +80,27 @@ def test_radius_keeps_neighbors_in_distant_clusters(backend):
     X = np.vstack([grid + offset, grid - offset])
     Q = X[:4] + np.float32(0.25)
 
-    dist, idx = build_index(X, backend=backend).query_radius(Q, 0.75, sort_results=True)
-    ref_dist, ref_idx = sk_reference(X, radius=0.75).radius_neighbors(
+    radius = 0.75
+    dist, idx = build_index(X, backend=backend).query_radius(Q, radius, sort_results=True)
+    ref_dist, ref_idx = sk_reference(X, radius=radius).radius_neighbors(
         Q.astype(np.float64), sort_results=True
     )
-    assert_radius_parity(idx, ref_idx, dist, ref_dist)
+    assert_radius_parity(idx, ref_idx, dist, ref_dist, radius=radius)
     assert len(idx[0]) == 4
+
+
+@pytest.mark.parametrize("backend", BACKENDS)
+@pytest.mark.parametrize("scale", [2e19, 1e-30], ids=["overflow", "underflow"])
+def test_radius_handles_distances_outside_the_float32_squared_range(backend, scale):
+    X = np.array([[0.0], [scale], [3 * scale]], dtype=np.float32)
+    Q = np.array([[0.0]], dtype=np.float32)
+    with tuning_context(force_backend=backend):
+        model = NearestNeighbors(radius=2 * scale).fit(X)
+        dist, idx = model.radius_neighbors(Q, sort_results=True)
+
+    assert model.last_query_backend_ == backend
+    np.testing.assert_array_equal(idx[0], [0, 1])
+    np.testing.assert_allclose(dist[0], X[:2, 0].astype(np.float64), atol=0, rtol=1e-7)
 
 
 @pytest.mark.parametrize("backend", BACKENDS)
@@ -141,7 +164,7 @@ def test_nearest_neighbors_radius_matches_sklearn(classification_data, rng):
     ref = sk_neighbors.NearestNeighbors(radius=radius, algorithm="brute").fit(X)
     mlx_dist, mlx_idx = mlx.radius_neighbors(query, sort_results=True)
     ref_dist, ref_idx = ref.radius_neighbors(query, sort_results=True)
-    assert_radius_parity(mlx_idx, ref_idx, mlx_dist, ref_dist)
+    assert_radius_parity(mlx_idx, ref_idx, mlx_dist, ref_dist, radius=radius)
     assert mlx.execution_backend_ == "mlx" and mlx.last_query_backend_ == "mlx"
 
 
@@ -152,7 +175,7 @@ def test_radius_self_query_matches_sklearn(classification_data):
     ref = sk_neighbors.NearestNeighbors(radius=radius, algorithm="brute").fit(X)
     mlx_dist, mlx_idx = mlx.radius_neighbors()
     ref_dist, ref_idx = ref.radius_neighbors()
-    assert_radius_parity(mlx_idx, ref_idx, mlx_dist, ref_dist)
+    assert_radius_parity(mlx_idx, ref_idx, mlx_dist, ref_dist, radius=radius)
 
 
 @pytest.mark.parametrize("weights", ["uniform", "distance"])

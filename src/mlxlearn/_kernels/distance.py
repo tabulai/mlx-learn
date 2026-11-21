@@ -315,6 +315,8 @@ class NeighborIndex:
         identity. ``query`` screens with Gram tiles because it certifies its
         selection and rescans, but a radius has no selection to certify and
         Metal's float32 matmul rounds far enough to lose true neighbors.
+        Pairs at risk of float32 overflow or underflow are recomputed from
+        their coordinates in float64 before the radius comparison.
         """
         import mlx.core as mx
 
@@ -363,13 +365,15 @@ class NeighborIndex:
             )
 
             for q_start in range(0, n_query, plan.query_rows):
-                block = query[q_start:q_start + plan.query_rows, None, :]
+                query_block = query[q_start:q_start + plan.query_rows]
 
                 for t_start in range(0, n_train, train_cols):
-                    diff = block - train[t_start:t_start + train_cols][None, :, :]
+                    train_block = train[t_start:t_start + train_cols]
+                    diff = query_block[:, None, :] - train_block[None, :, :]
                     tile = mx.sum(diff * diff, axis=2)
                     mx.eval(tile)
                     tile_np = np.asarray(tile, dtype=np.float64)
+                    _refine_radius_tile(tile_np, query_block, train_block)
                     local_rows, local_cols = np.nonzero(tile_np <= radius_sq)
                     if local_rows.size == 0:
                         continue
@@ -398,6 +402,26 @@ class NeighborIndex:
         if return_distance:
             return neigh_dist, neigh_ind
         return neigh_ind
+
+
+def _refine_radius_tile(squared: np.ndarray, query, train) -> None:
+    """Recover squared distances outside the reliable float32 range in place."""
+    # A tile entry can overflow during subtraction, squaring or summation.
+    # At the small end, each summand can round to a subnormal or zero.
+    small_sum = float(np.finfo(NUMPY_FLOAT).tiny) * train.shape[1]
+    unsafe = ~np.isfinite(squared) | (squared < small_sum)
+    rows = np.flatnonzero(unsafe.any(axis=1))
+    if rows.size == 0:
+        return
+
+    query = np.asarray(query)
+    train = np.asarray(train)
+    # Work one query row at a time to bound the float64 scratch space.
+    for row in rows:
+        cols = unsafe[row]
+        diff = train[cols].astype(np.float64)
+        diff -= query[row]
+        squared[row, cols] = np.einsum("ij,ij->i", diff, diff)
 
 
 def _pack_radius_results(
