@@ -899,7 +899,7 @@ def test_patched_positive_falls_back():
 @pytest.mark.parametrize(
     "shape, backend",
     [
-        ((200, 4), "sklearn"),
+        ((200, 4), "cpu"),
         ((4096, 256), "cpu"),
         ((8000, 64), "cpu"),
         ((20000, 64), "cpu"),
@@ -927,6 +927,38 @@ def test_patched_wide_float32_preserves_stock_rank():
     assert patched.execution_backend_ == "sklearn"
     assert patched.rank_ == ref.rank_
     np.testing.assert_array_equal(patched.coef_, ref.coef_)
+
+
+def test_patched_small_fit_preserves_copy_x_false():
+    from mlxlearn.patching._estimators import LinearRegression as Patched
+
+    X, y = _data(n_samples=100, n_features=4)
+    stock_X = X.copy()
+    ref = SkLinearRegression(copy_X=False).fit(stock_X, y)
+    patched = Patched(copy_X=False).fit(X, y)
+    np.testing.assert_array_equal(X, stock_X)
+    np.testing.assert_array_equal(patched.coef_, ref.coef_)
+
+
+@pytest.mark.parametrize("invalid", ["nan-X", "nan-y", "empty-y", "mismatched-y"])
+def test_small_numpy_fit_preserves_validation_errors(invalid):
+    from mlxlearn.patching._estimators import LinearRegression as Patched
+
+    X, y = _data(n_samples=64, n_features=8)
+    if invalid == "nan-X":
+        X[-1, -1] = np.nan
+    elif invalid == "nan-y":
+        y[-1] = np.nan
+    elif invalid == "empty-y":
+        y = np.empty((len(X), 0))
+    else:
+        y = y[:-1]
+
+    with pytest.raises(ValueError) as stock:
+        SkLinearRegression().fit(X, y)
+    with pytest.raises(ValueError) as ours:
+        Patched().fit(X, y)
+    assert str(ours.value) == str(stock.value)
 
 
 @pytest.mark.parametrize("n_targets, backend", [(16, "cpu"), (64, "cpu"), (65, "sklearn")])

@@ -27,7 +27,7 @@ from .._common.base import BackendMixin, mlx_guard
 from .._common.config import get_config, get_tuning
 from .._common.diagnostics import record_event
 from .._common.validation import check_is_fitted, require_dense, validate_data
-from .._solvers.ols import OLSConfig, solve_ols
+from .._solvers.ols import _SMALL_WORK, OLSConfig, solve_ols
 from ..exceptions import UnsupportedParameterError
 
 __all__ = ["LinearRegression"]
@@ -158,7 +158,23 @@ class LinearRegression(BackendMixin, _SkLinearRegression):
         """Apply measured size floors to automatic fits."""
         tuning = get_tuning()
         work = n_samples * n_features
-        if n_samples < n_features:
+        if n_features == 1:
+            below = (
+                n_samples < max(4096, tuning.linreg_min_samples)
+                or dtype not in (np.float32, np.float64)
+                or self.copy_X is not True
+            )
+        elif (
+            1 < n_features <= n_samples
+            and dtype == np.float64
+            and self.copy_X is True
+            and n_targets <= n_features
+            and n_samples * (n_features + n_targets) ** 2 <= _SMALL_WORK
+        ):
+            # One small gelsd call reproduces stock's fit with less validation
+            # and copying. copy_X=False keeps stock's in-place semantics here.
+            below = False
+        elif n_samples < n_features:
             # Keep the dual eigensolve small. With narrow working precision,
             # stock's rounding band often forces the exact solve after the Gram.
             below = (
@@ -240,6 +256,7 @@ class LinearRegression(BackendMixin, _SkLinearRegression):
         # Validate as stock does: numeric first (MLX float32 stays float32, strings
         # are rejected), keeping the caller's memory layout (the exact fallback
         # reproduces stock's column means, whose rounding depends on it).
+        checked_arrays = _checked_small_arrays(X, y)
         X_checked, y_checked = validate_data(
             self,
             X,
@@ -249,6 +266,7 @@ class LinearRegression(BackendMixin, _SkLinearRegression):
             multi_output=True,
             ensure_min_samples=1,
             reset=True,
+            skip_check_array=checked_arrays,
         )
         weights = None
         if sample_weight is not None:
@@ -260,7 +278,12 @@ class LinearRegression(BackendMixin, _SkLinearRegression):
         # check where it can fail.
         if X_checked.dtype not in (np.float64, np.float32, np.float16):
             X_checked = check_array(X_checked, dtype=[np.float64, np.float32, np.float16])
-        y_arr = _targets_as_stock(y_checked, X_checked.dtype)
+        if y_checked is y and type(y) is np.ndarray and y.dtype == X_checked.dtype:
+            # validate_data already checked this same floating array. Cast or
+            # converted targets can newly contain nonfinite values.
+            y_arr = y_checked
+        else:
+            y_arr = _targets_as_stock(y_checked, X_checked.dtype)
         if weights is not None and self.fit_intercept and float(np.sum(weights, dtype=np.float64)) == 0.0:
             # Where stock's weighted mean (np.average) raises it, after the y
             # checks (1.7 and 1.8; 1.9 rejects all-zero weights during
@@ -355,6 +378,19 @@ def _safe_shape(X) -> tuple[int, ...] | None:
     if shape is None or len(shape) != 2:
         return None
     return (int(shape[0]), int(shape[1]))
+
+
+def _checked_small_arrays(X, y) -> bool:
+    """Check the ordinary NumPy case while sklearn still resets feature metadata."""
+    return (
+        type(X) is np.ndarray and type(y) is np.ndarray
+        and X.ndim == 2 and y.ndim in (1, 2)
+        and X.size > 0 and y.size > 0 and X.shape[0] == y.shape[0]
+        and X.size + y.size <= 65_536
+        and X.dtype in (np.float64, np.float32) and y.dtype == X.dtype
+        and X.dtype.metadata is None and y.dtype.metadata is None
+        and np.isfinite(X).all() and np.isfinite(y).all()
+    )
 
 
 def _count_targets(y) -> int:

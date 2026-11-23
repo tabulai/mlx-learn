@@ -913,15 +913,33 @@ def test_weighted_float32_on_a_certified_path():
     _check(sol, X, y, 1e-6, sample_weight=w, coef_rtol=1e-9)
 
 
-def test_wide_designs_with_many_repeated_rows_leave_the_dual_path():
-    """Half the rows repeated: the screen refuses before the eigensolver."""
+@pytest.mark.parametrize("fit_intercept", [True, False])
+@pytest.mark.parametrize("weighted", [True, False])
+def test_wide_repeated_rows_solve_the_smaller_dual_system(fit_intercept, weighted):
     rng = np.random.default_rng(45)
     base = rng.standard_normal((100, 800))
-    X = np.vstack([base, base])
-    y = rng.standard_normal(200)
-    sol = solve_ols(X, y, config=OLSConfig(rcond=1e-6))
-    assert sol.method == "lstsq"
-    _check(sol, X, y, 1e-6)
+    group = rng.permutation(np.repeat(np.arange(100), 1 + np.arange(100) % 4))
+    X = base[group]
+    y = rng.standard_normal((len(group), 3))
+    weights = None
+    if weighted:
+        w = rng.uniform(0.5, 2, len(base))
+        w[::7] = 0
+        weights = w[group]
+    sol = solve_ols(X, y, sample_weight=weights, config=OLSConfig(rcond=1e-6, fit_intercept=fit_intercept))
+    assert sol.method == ("dual" if fit_intercept else "gram")
+    _check(sol, X, y, 1e-6, sample_weight=weights, fit_intercept=fit_intercept)
+
+
+def test_wide_row_compression_checks_all_features_and_target_cancellation():
+    rng = np.random.default_rng(74)
+    X = np.tile(rng.standard_normal((80, 300)), (2, 1))
+    y = rng.standard_normal((80, 1))
+    assert ols._compress_repeated_rows(X, np.vstack([y, -y]), None) is None
+    tiny = np.full_like(y, np.nextafter(0.0, 1.0))
+    assert ols._compress_repeated_rows(X, np.vstack([tiny, -tiny]), None) is None
+    X[-1, -1] = np.nextafter(X[-1, -1], np.inf)
+    assert ols._compress_repeated_rows(X, np.vstack([y, y]), None) is None
 
 
 @pytest.mark.parametrize("weighted", [False, True])
@@ -997,3 +1015,36 @@ def test_a_measured_knife_edge_skips_the_tiled_qr(monkeypatch):
     assert "_tall_svd" in calls and "_qr_tall" not in calls and calls[-1] == "_stock_lstsq"
     assert sol.method == "lstsq"
     _check(sol, X, y, rcond, fit_intercept=False, coef_rtol=1e-6)
+
+
+@pytest.mark.parametrize("dtype", [np.float32, np.float64])
+@pytest.mark.parametrize("fit_intercept,weighted", [(False, False), (True, True)])
+def test_one_feature_projection_matches_stock(dtype, fit_intercept, weighted):
+    from sklearn.linear_model import LinearRegression as Stock
+
+    rng = np.random.default_rng(457)
+    X = rng.normal(size=(8192, 2)).astype(dtype)[:, 1:]
+    y = (X * np.array([0.3, -1.2]) + rng.normal(size=(len(X), 2)) * 0.1).astype(dtype)
+    w = rng.uniform(0, 2, len(X)).astype(dtype) if weighted else None
+    ref = Stock(fit_intercept=fit_intercept).fit(X, y, sample_weight=w)
+    sol = solve_ols(X, y, sample_weight=w, config=OLSConfig(fit_intercept=fit_intercept))
+    assert sol.method == "projection"
+    assert sol.rank == ref.rank_ == 1
+    tol = 3e-5 if dtype == np.float32 else 1e-12
+    np.testing.assert_allclose(sol.coef, ref.coef_, rtol=tol)
+    np.testing.assert_allclose(sol.singular, ref.singular_, rtol=tol)
+    np.testing.assert_allclose(sol.intercept, ref.intercept_, atol=tol)
+
+
+@pytest.mark.parametrize("case", ["constant", "orthogonal", "extreme"])
+def test_uncertain_single_feature_takes_exact_path(case):
+    X = np.tile([1.0, -1.0], 2048)[:, None]
+    y = np.tile([1.0, 1.0, -1.0, -1.0], 1024)
+    if case == "constant":
+        X.fill(1.0)
+    elif case == "extreme":
+        X *= 1e-160
+        y = X[:, 0] * 2.0
+    sol = solve_ols(X, y, config=OLSConfig())
+    assert sol.method == "lstsq"
+    _check(sol, X, y, 1e-6)

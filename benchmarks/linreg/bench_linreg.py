@@ -31,6 +31,11 @@ def make_data(cfg, seed=0):
     kind = cfg["data"]
     if kind == "gauss":
         X = rng.standard_normal((n, d))
+    elif kind == "repeated_rows":
+        rows = rng.standard_normal((max(1, n // 2), d))
+        X = rows[rng.integers(len(rows), size=n)]
+    elif kind == "scaled_columns":
+        X = rng.standard_normal((n, d)) * np.geomspace(1.0, 1e-9, d)
     elif kind == "offset":
         X = rng.standard_normal((n, d)) + 1e3
     elif kind.startswith("cond"):
@@ -218,7 +223,18 @@ def grid_options():
     return cfgs
 
 
-GRIDS = {"core": grid_core, "hard": grid_hard, "options": grid_options,
+def grid_specialized():
+    return [
+        {"data": "gauss", "n": 100, "d": 4},
+        {"data": "gauss", "n": 256_000, "d": 1},
+        {"data": "gauss", "n": 128_000, "d": 1, "sw": True, "k": 4},
+        {"data": "repeated_rows", "n": 512, "d": 2048},
+        {"data": "scaled_columns", "n": 8_000, "d": 64},
+        {"data": "scaled_columns", "n": 16_000, "d": 512},
+    ]
+
+
+GRIDS = {"specialized": grid_specialized, "core": grid_core, "hard": grid_hard, "options": grid_options,
          "smoke": lambda: [{"data": "gauss", "n": 20_000, "d": 64}, {"data": "cond10", "n": 10_000, "d": 64}]}
 
 

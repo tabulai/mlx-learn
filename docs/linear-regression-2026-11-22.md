@@ -179,6 +179,21 @@ measurements recovered substantial speedups on common dense designs.
 An ill-conditioned design that needs the exact fallback can still pay for a
 failed attempt at rank certification.
 
+The automatic route also accepts long, single-feature float32 and float64
+arrays, and small tall float64 fits within the exact solver's work budget.
+Both additions require the default copying behavior. A single feature has one
+singular value, its centered and weighted norm. Projecting the targets onto
+that unit vector gives the slopes directly. Zero or poorly resolved projections
+use the exact solve.
+
+Two other reductions use structure in the preprocessed design. In a wide
+design, exactly repeated rows can be combined by multiplicity, with their
+targets projected onto the same groups. In a tall design whose columns differ
+greatly in scale, a well-conditioned normalized Gram matrix can supply a small
+triangular factor. Its singular values and rank cutoff are evaluated back in
+the original units. The specialized cases can be reproduced with
+`python benchmarks/linreg/bench_linreg.py specialized --out results.jsonl`.
+
 The M5 Ultra and M1 Ultra results below used the original crossover of at
 least 8,192 samples, `n * d >= 2^19` and at least 32 samples per feature
 for tall designs. That crossover sent all wide fits to scikit-learn.

@@ -191,10 +191,10 @@ class OLSSolution:
     singular : ndarray of shape (min(n_samples, n_features),), float64
         Singular values of that design, descending.
     method : str
-        Which path produced the solution: ``"gram"`` (certified full rank),
+        Which path produced the solution: ``"projection"`` (one feature), ``"gram"`` (certified full rank),
         ``"ritz"`` (certified, with small directions measured on the data),
         ``"dual"`` (wide design with an intercept, through the deflated dual
-        Gram), ``"qr"`` (tiled QR, then ``gelsd`` on the triangular factor),
+        Gram), ``"qr"`` (tiled QR), ``"cholqr"`` (column-equilibrated Cholesky QR),
         ``"lstsq"`` (scikit-learn's own arithmetic, bit for bit) or ``"gelss"``
         (that arithmetic with ``gelss``, after ``gelsd`` returned an implausible
         result).
@@ -278,7 +278,10 @@ def solve_ols(
         # a rounding-level cutoff that only stock's own arithmetic reproduces.
         # float16 input keeps scikit-learn's float16 arithmetic, as stock does.
         return _stock_lstsq(X, y_work, sw_work, config.fit_intercept, rcond, threads)
-    if n_samples * columns ** 2 <= _SMALL_WORK:
+    # One nonzero column has a single singular value. Projection onto its
+    # normalized direction avoids factorization even for very long vectors.
+    single_feature = n_features == 1 and n_samples >= 4096 and rcond <= 0.5
+    if not single_feature and n_samples * columns ** 2 <= _SMALL_WORK:
         # Tiny problems: one gelsd call beats a dozen small BLAS/LAPACK calls,
         # and stock's arithmetic without its extra copies is bit-identical.
         return _stock_lstsq(X, y_work, sw_work, config.fit_intercept, rcond, threads)
@@ -288,7 +291,9 @@ def solve_ols(
         return _stock_lstsq(X, y_work, sw_work, config.fit_intercept, rcond, threads)
     with np.errstate(all="ignore"):
         prep = _stock_offsets(X, y_work, sw_work, config.fit_intercept)
-        if n_samples >= n_features:
+        if single_feature:
+            out = _solve_one_feature(X, prep)
+        elif n_samples >= n_features:
             out = _solve_tall(X, prep, sw, rcond, eps, threads)
         else:
             out = _solve_wide(X, prep, sw, rcond, eps, threads)
@@ -307,6 +312,34 @@ def solve_ols(
         singular=np.ascontiguousarray(singular, dtype=np.float64),
         method=method,
     )
+
+
+def _solve_one_feature(X, prep):
+    x = X[:, 0]
+    y = prep.y
+    if prep.x_off is not None or prep.root is not None:
+        offset = None if prep.x_off is None else prep.x_off[0]
+        x = _stock_targets(x, offset, prep.root)
+        y = _stock_targets(y, prep.y_off, prep.root)
+
+    x = np.asarray(x, dtype=np.float64)
+    singular = _fast_norm(x)
+    if not 1e-120 < singular < min(1e120, float(np.finfo(X.dtype).max)):
+        return None
+    projection = (x / singular) @ y
+    coef = projection / singular
+    # Near orthogonality, the slope depends on rounding in the projection.
+    # Let the exact path handle cancellation and extreme working magnitudes.
+    norms = _column_norms(y.astype(np.float64, copy=False))
+    error = 4 * math.sqrt(len(x)) * np.finfo(X.dtype).eps * norms
+    if (
+        not np.all((norms > 1e-120) & (norms < 1e120))
+        or not np.isfinite(coef).all()
+        or np.any(np.abs(projection) <= error)
+        or np.any(np.abs(coef) > np.finfo(X.dtype).max)
+    ):
+        return None
+    return coef.reshape(1, -1), 1, np.array([singular]), "projection"
 
 
 def _stock_lstsq(X, y, sw, fit_intercept, rcond, threads=1, prep=None) -> OLSSolution:
@@ -358,9 +391,7 @@ def _stock_lstsq_quiet(X, y, sw, fit_intercept, rcond, threads, prep) -> OLSSolu
     coef, _, rank, singular = linalg.lstsq(Xs, ys, cond=rcond, overwrite_a=tall)
     method = "lstsq"
     del Xs
-    cols = _plausible_columns(k)
-    checked = ys.reshape(ys.shape[0], -1)[:, cols].astype(np.float64)
-    if not _plausible_lstsq(X, x_off, root, checked, cols, coef, rank, singular):
+    if not _plausible_lstsq(X, x_off, root, ys, coef, rank, singular):
         # Accelerate's dgelsd on macOS 27.2 can return a garbage rank, unsorted
         # singular values and a solution worse than zero (its SVD does not
         # converge and nothing reports it). dgelss applies the same truncation
@@ -475,15 +506,7 @@ _MIN_STORE_COLUMNS = 8
 _INPLACE_MIN_FEATURES = 16
 
 
-def _plausible_columns(k: int) -> np.ndarray:
-    """The targets the residual test reads: at most _PLAUSIBLE_TARGETS, spread out.
-
-    One SVD serves every target, so a failed gelsd shows on any of them.
-    """
-    return np.unique(np.linspace(0, k - 1, min(k, _PLAUSIBLE_TARGETS)).astype(int))
-
-
-def _plausible_lstsq(X, x_off, root, target, cols, coef, rank, singular) -> bool:
+def _plausible_lstsq(X, x_off, root, target, coef, rank, singular) -> bool:
     """Cheap consistency checks a correct gelsd result always passes.
 
     The rank lies in range; singular values are finite, non-negative and
@@ -500,14 +523,21 @@ def _plausible_lstsq(X, x_off, root, target, cols, coef, rank, singular) -> bool
         return False
     if s.size > 1 and np.any(np.diff(s) > 1e-3 * s[0]):
         return False
-    coef64 = np.asarray(coef, dtype=np.float64).reshape(X.shape[1], -1)
-    if X.size * coef64.shape[1] < _PLAUSIBLE_RESIDUAL_WORK:
+    k = 1 if target.ndim == 1 else target.shape[1]
+    if X.size * k < _PLAUSIBLE_RESIDUAL_WORK:
         return True
+    coef64 = np.asarray(coef).reshape(X.shape[1], k)
     if not np.all(np.isfinite(coef64)):
         # Stock returns them too (a solution beyond float64 range); with a sane
         # rank and spectrum there is nothing more to check.
         return True
-    coef64 = coef64[:, cols]
+    target = target.reshape(X.shape[0], k)
+    if k > _PLAUSIBLE_TARGETS:
+        cols = np.linspace(0, k - 1, _PLAUSIBLE_TARGETS, dtype=int)
+        target = target[:, cols]
+        coef64 = coef64[:, cols]
+    target = np.asarray(target, dtype=np.float64)
+    coef64 = np.asarray(coef64, dtype=np.float64)
     # On stock's own centred matrix (no cancellation between X b and x_off b).
     pred = _centred_product64(X, x_off, coef64)
     if root is not None:
@@ -1030,15 +1060,19 @@ def _qr_tall(A: np.ndarray, d: int, rcond: float, band_of, threads: int):
     S = _tiled_r(A, threads)
     if not np.isfinite(S).all():
         return None  # never hand a non-finite matrix to LAPACK
-    R11, R12 = S[:d, :d], S[:d, d:]
+    return _reduced_lstsq(S[:d, :d], S[:d, d:], rcond, band_of, "qr")
+
+
+def _reduced_lstsq(R11, R12, rcond, band_of, method, relative_error=0.0):
+    """Solve for the original coefficients and certify truncation on a small factor."""
+    d = R11.shape[1]
     if d >= 1000:
         # Zero rows change neither the solution nor the singular values, and
         # keep Accelerate's gelsd off its slow square sizes.
         R11 = np.vstack([R11, np.zeros((8, d))])
         R12 = np.vstack([R12, np.zeros((8, R12.shape[1]))])
     coef, _, rank, singular = linalg.lstsq(R11, R12, cond=rcond, check_finite=False)
-    cols = _plausible_columns(R12.shape[1])
-    if not _plausible_lstsq(R11, None, None, R12[:, cols], cols, coef, rank, singular):
+    if not _plausible_lstsq(R11, None, None, R12, coef, rank, singular):
         # macOS 27.2's dgelsd can fail silently (see _stock_lstsq); dgelss
         # applies the same truncation rule (with gelsd's cutoff mapping).
         coef, _, rank, singular = linalg.lstsq(R11, R12, cond=_gelss_cond(rcond, R11.dtype), check_finite=False,
@@ -1047,11 +1081,12 @@ def _qr_tall(A: np.ndarray, d: int, rcond: float, band_of, threads: int):
         return None
     band = band_of(float(singular[0]))
     tau = rcond * float(singular[0])
-    if np.any(np.abs(singular - tau) <= 2 * band + rcond * band):
+    margin = (2 + rcond) * band + relative_error * (singular + tau)
+    if np.any(np.abs(singular - tau) <= margin):
         return None
     if not np.isfinite(coef).all():
         return None
-    return coef, int(rank), singular, "qr"
+    return coef, int(rank), singular, method
 
 
 # ------------------------------------------------------------------------ certification
@@ -1255,6 +1290,55 @@ def _hopeless(lmax_low: float, lmax_high: float, rcond: float, band_of) -> bool:
     return band >= rcond * (math.sqrt(max(lmax_low, 0.0)) - band)
 
 
+def _scaled_cholqr(G, C, depth, rcond, band_of, n, target_max):
+    """Recover a small QR factor when column units explain the weak spectrum.
+
+    For D = diag(column norms), H = D^-1 G D^-1 is the normalized Gram.
+    If H = U.T @ U then R = U @ D and Q.T @ y = U^-T D^-1 X.T @ y.
+    Passing R to the SVD applies the cutoff and minimum-norm rule in the
+    original units, including when some directions are discarded.
+    """
+    d = G.shape[0]
+    diagonal = G.diagonal()
+    smallest, largest = float(diagonal.min()), float(diagonal.max())
+    if smallest < 1e-200 or largest > 1e200 or smallest > 1e-6 * largest:
+        return None
+
+    scale = np.sqrt(diagonal)
+    H = G / scale[:, None] / scale
+    # Each normalized Gram entry has dot-product error bounded by gamma(depth)
+    # times the product of two unit column norms. Scaling and Cholesky add
+    # O(d*u) per entry. A positive shifted factor certifies a lower eigenvalue
+    # bound of 1/4, including factorization rounding. Thus the relative error
+    # below bounds the quadratic form in every direction, even after undoing
+    # the column scaling. It also bounds the relative singular-value error.
+    relative_error = 8 * d * _gamma(depth + d + 8)
+    if relative_error > 1e-5:
+        return None
+    shifted = H.copy()
+    shifted.flat[::d + 1] -= 0.5
+    try:
+        linalg.cholesky(shifted, check_finite=False, overwrite_a=True)
+        U = np.triu(linalg.cholesky(H, check_finite=False, overwrite_a=True))
+        qty = linalg.solve_triangular(U, C / scale[:, None], trans="T", check_finite=False)
+        if not np.isfinite(qty).all():
+            return None
+        solution = _reduced_lstsq(U * scale, qty, rcond, band_of, "cholqr", relative_error)
+    except np.linalg.LinAlgError:
+        return None
+    if solution is not None:
+        coef, rank, singular, _ = solution
+        # A target nearly orthogonal to the retained column space can lose its
+        # small projection to rounding in X.T @ y. The forward sensitivity of
+        # its coefficients to a relative perturbation of y is at most
+        # ||y|| / (sigma_min_kept * ||coef||). Require at least half of double
+        # precision to remain, using sqrt(n) * max|y| as a norm upper bound.
+        floor = math.sqrt(n * _U) * target_max
+        if rank and np.any((target_max > 0) & (singular[rank - 1] * _column_norms(coef) <= floor)):
+            return _STOCK
+    return solution
+
+
 def _gram_tall(A, M, d, rcond, threads, depth, band_of, top=None):
     G = np.ascontiguousarray(M[:d, :d])
     C = np.ascontiguousarray(M[:d, d:])
@@ -1263,14 +1347,18 @@ def _gram_tall(A, M, d, rcond, threads, depth, band_of, top=None):
         return None
     if not tr > 1e-250:
         return _STOCK  # a constant (or vanishing) design: stock's arithmetic decides
+    if top is None:
+        top = np.max(np.abs(A[:, d:]), axis=0)
     if _targets_out_of_range(A[:, d:], tr, top):
         return _STOCK
     fraction = _ritz_fraction(A.shape[0], d)
     if _too_many_small(G, tr, depth, fraction):
-        # Many small directions: the Ritz step would refuse. When the cutoff is
-        # inside stock's own rounding band, no QR answer could be accepted either.
+        # Once the Ritz step would refuse, try a scaled factor only if the
+        # cutoff clears stock's rounding band.
         lmax_low = float(np.max(np.diag(G)))
-        return _STOCK if _hopeless(lmax_low, tr, rcond, band_of) else None
+        if _hopeless(lmax_low, tr, rcond, band_of):
+            return _STOCK
+        return _scaled_cholqr(G, C, depth, rcond, band_of, A.shape[0], top)
     lam = _eigvalsh(G)
     lmax = float(lam[-1])
     E = _gamma(depth) * tr * (1 + 4 * _U) + 4 * d * _U * max(lmax, 0.0)
@@ -1286,8 +1374,10 @@ def _gram_tall(A, M, d, rcond, threads, depth, band_of, top=None):
         return sW, V0 @ Qt.T, epsW
 
     cert = _certify(lam, E, tr, rcond, measure, d, band_of, fraction)
-    if cert is None or cert is _STOCK:
-        return cert
+    if cert is None:
+        return _scaled_cholqr(G, C, depth, rcond, band_of, A.shape[0], top)
+    if cert is _STOCK:
+        return _STOCK
     residual, gradient = _fused_refinement_pass(A, d, threads)
 
     smax = math.sqrt(lmax)
@@ -1394,6 +1484,37 @@ def _ritz_solve(cert, V, rhs, residual, gradient, smax):
 # --------------------------------------------------------------------------- wide solve
 
 
+def _compress_repeated_rows(Xc, yc, q):
+    """Reduce identical rows by an orthogonal change of observation coordinates.
+
+    For a group of m identical rows, only their sum divided by sqrt(m) sees
+    the design. The other m-1 coordinates contribute a constant residual and
+    zero singular values. Detect candidates from one column, then verify every
+    feature against its representative before combining any observations.
+    """
+    n, d = Xc.shape
+    _, first, group, counts = np.unique(Xc[:, 0], return_index=True, return_inverse=True, return_counts=True)
+    if first.size < 2 or 4 * first.size > 3 * n:
+        return None
+    rows = max(1, (1 << 18) // d)
+    for a in range(0, n, rows):
+        sl = slice(a, a + rows)
+        if not np.array_equal(Xc[sl], Xc[first[group[sl]]]):
+            return None
+    order = np.argsort(group, kind="stable")
+    starts = np.r_[0, np.cumsum(counts[:-1])]
+    roots = np.sqrt(counts)
+    reduced_y = np.add.reduceat(yc[order], starts, axis=0) / roots[:, None]
+    # Strong cancellation in a grouped target can expose differences in the
+    # rounding of stock's orthogonal reduction, even for a full-rank subproblem.
+    if not np.isfinite(reduced_y).all() or np.any(1e4 * _column_norms(reduced_y) < _column_norms(yc)):
+        return None
+    if q is not None:
+        q = np.add.reduceat(q[order], starts) / roots
+        q /= _nrm2(q)
+    return Xc[first] * roots[:, None], reduced_y, q
+
+
 def _solve_wide(X, prep, sw, rcond, eps, threads):
     n, d = X.shape
     if prep.x_off is not None and rcond <= 4.0 * eps * math.sqrt(d):
@@ -1411,14 +1532,24 @@ def _solve_wide(X, prep, sw, rcond, eps, threads):
             return None
     frob = math.sqrt(max(float(np.einsum("ij,ij->", Xc, Xc)), 0.0))
 
-    def band_of(smax):
-        return _rounding_band(eps, n, d, smax, frob)
-
     q = None
     if prep.x_off is not None:
         # The weighted centring makes q = sqrt(sw)/||sqrt(sw)|| a left null vector.
         q = np.full(Xc.shape[0], 1.0) if sw is None else np.sqrt(sw)
         q /= _nrm2(q)
+    compression_error = 0.0
+    if Xc.shape[0] >= 64 and rcond > 4.0 * eps * math.sqrt(d):
+        reduced = _compress_repeated_rows(Xc, yc, q)
+        if reduced is not None:
+            Xc, yc, q = reduced
+            zero_rows = n - Xc.shape[0]
+            # Rounding sqrt(m) and its product with each representative moves
+            # the reduced design by at most gamma(2) times its Frobenius norm.
+            compression_error = _gamma(3) * frob
+
+    def band_of(smax):
+        return _rounding_band(eps, n, d, smax, frob) + compression_error
+
     out = _gram_wide(Xc, yc, rcond, threads, band_of, q, zero_rows)
     if out is None:
         return None
