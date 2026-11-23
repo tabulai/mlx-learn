@@ -20,6 +20,7 @@ ends up silently producing an answer from a different code path.
 
 from __future__ import annotations
 
+import sys
 from typing import Any
 
 import numpy as np
@@ -62,7 +63,10 @@ def is_sparse(X: Any) -> bool:
     """Whether ``X`` is a SciPy sparse matrix or array, without importing SciPy eagerly."""
     module = type(X).__module__
     if not module.startswith("scipy.sparse"):
-        return False
+        # A user subclass of a SciPy sparse class lives in the user's module;
+        # SciPy is then already imported, so asking it costs nothing.
+        sparse = sys.modules.get("scipy.sparse")
+        return bool(sparse is not None and sparse.issparse(X))
     from scipy import sparse
 
     return sparse.issparse(X)
@@ -198,9 +202,14 @@ def check_float32_range(X, *, name: str = "X") -> None:
     Only float64 (and wider) arrays are scanned; float32 input cannot overflow float32,
     and no integer dtype reaches 3.4e38.
     """
-    array = np.asarray(X) if not hasattr(X, "dtype") else X
+    array = X
     dtype = getattr(array, "dtype", None)
-    if dtype is None or dtype.kind != "f" or dtype.itemsize <= 4:
+    if not isinstance(dtype, np.dtype):
+        # Foreign arrays (mlx.core.array, torch, ...) carry dtypes without
+        # NumPy's .kind/.itemsize; convert first (zero-copy for MLX).
+        array = np.asarray(array)
+        dtype = array.dtype
+    if dtype.kind != "f" or dtype.itemsize <= 4:
         return
 
     array = np.asarray(array)

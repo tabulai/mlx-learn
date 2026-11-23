@@ -152,6 +152,17 @@ class Tuning:
     logreg_tall_min_samples: int = 250_000
     logreg_tall_min_work: int = 8_000_000
     #
+    # Host OLS. Keep the patched crossover conservative for small or near-square
+    # designs, where a failed rank certification can cost an extra pass.
+    linreg_min_samples: int = 4_096
+    linreg_min_features: int = 16
+    linreg_min_work: int = 262_144  # n_samples * n_features
+    linreg_max_features: int = 1_024
+    linreg_min_aspect: float = 16.0  # n_samples >= aspect * n_features for tall fits
+    linreg_wide_max_features: int = 4_096  # 0 disables the patched wide tier
+    linreg_max_target_ratio: float = 1.0  # n_targets <= ratio * n_features for tall fits
+    linreg_threads: int = 0  # host threads for OLS row passes; 0 chooses automatically
+    #
     # SVC is the same story again, and worse -- but the axis that matters is
     # *width*, not height. Over a 64-configuration grid at d in {10, 20} mlxlearn
     # was slower in 58 of 64, worst 0.013x. What separates the wins is the cost of
@@ -201,8 +212,8 @@ class Tuning:
     force_backend: Literal["", "mlx", "cpu", "sklearn"] = ""
     diagnostics_capacity: int = 512
     #: Force one radius-search engine ("tree", "brute", "metal", or "stock" for
-    #: patched estimators). Every engine returns the same neighbor sets; this
-    #: only selects which one runs. For tests and benchmarks.
+    #: patched estimators). The stock setting uses scikit-learn's own distance
+    #: arithmetic. For tests and benchmarks.
     radius_route: Literal["auto", "tree", "brute", "metal", "stock"] = "auto"
     #: Worker threads for host radius engines; 0 uses n_jobs, then all cores.
     radius_threads: int = 0

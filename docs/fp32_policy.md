@@ -27,6 +27,19 @@ accuracy actually available is described below, not by the output dtype.
 Feature coordinates that are finite in float64 but overflow float32 (`|x| > ~3.4e38`) are **rejected**
 with `UnsupportedInputError`, not silently converted to infinity.
 
+**Exception: `LinearRegression`.** Ordinary least squares runs on the host and
+never narrows float64 data to float32, so float64 values beyond float32 range
+are fitted, not rejected. Its accelerated paths compute in **float64**; float32
+input keeps its values (they are widened exactly). `y` is cast to the dtype of
+`X` first, as scikit-learn casts it, so float32 `X` with targets beyond float32
+range raises scikit-learn's own error. Its rank cutoff uses the eps of scikit-learn's working
+dtype on 1.7 and 1.8, as stock does. Tiny and near-square problems, and rank
+decisions that sit inside scikit-learn's own rounding (common for collinear
+float32 designs), run scikit-learn's arithmetic in the working dtype instead, so
+those results are stock's to the bit and `rank_` always matches stock. float16
+input is kept as float16, as scikit-learn keeps it (with float16's eps in the
+1.7/1.8 cutoff), and reproduces stock's computation exactly.
+
 ## 2. Where float32 actually costs accuracy
 
 ### 2.1 Squared distances via the expanded Gram identity
@@ -178,13 +191,13 @@ no worse." Both are tested.
 | Quantity | Comparison against scikit-learn | Rationale |
 |---|---|---|
 | Neighbor **sets** (per row) | `assert_array_equal` on the sorted row — exact | Which points are nearest is not a matter of opinion |
-| Radius-neighbor **membership** | exact: `S <= fl64(r**2)` for the exact squared distance `S` of the float32 coordinates, identical on every route; a disagreement with scikit-learn's float64 Gram arithmetic can only sit on the radius | Same claim as k-neighbor sets, for a threshold instead of a count; the band is resolved with integers (`radius_contract.py`) |
+| Radius-neighbor **membership** | CPU and Metal use `S <= fl64(r**2)` for the exact squared distance `S` of the float32 coordinates. Stock scikit-learn can disagree on translated inputs when its distance computation loses precision. | The radius search resolves uncertain membership with exact arithmetic (`radius_contract.py`). |
 | Neighbor **index order** | exact where distances are strictly separated; set equality where they tie | See §3.1 — scikit-learn does not define an order for exact ties |
 | Neighbor **distances** | `atol=1e-6, rtol=1e-6` | Refined float32, relative to the data scale |
 | Classifier **predictions** | ≥ 99.5% label agreement | Labels are discrete; disagreements concentrate at the decision boundary. Measured: 0.9975 worst case over 40 randomized logistic configurations, 1.0 typical |
 | Neighbor-vote **probabilities** | `atol=1e-5` | A sum of exact weights over an exact neighbor set |
 | Linear-model **probabilities** | `atol=2e-3` | These inherit the coefficient error rather than being computed independently, so they cannot be tighter than the coefficients allow. Measured: 3e-4 typical, 1.34e-3 worst (multiclass with a 10× sample weight) at default `tol`; 6e-5–1.9e-4 at `tol=1e-6` |
-| Linear **coefficients** | `atol=2e-3, rtol=5e-3` | Dominated by *where the solver stops*, not by arithmetic — and on a rank-deficient design only the penalty pins them down at all. Measured: 5e-4 typical, 1.15e-3 worst over the fixed grid |
+| Linear **coefficients** | `atol=2e-3, rtol=5e-3` | Dominated by *where the solver stops*, not by arithmetic — and on a rank-deficient design only the penalty pins them down at all. Measured: 5e-4 typical, 1.15e-3 worst over the fixed grid. Ordinary least squares uses symmetric Gram factorization with float64 residual checks and a direct float64 solve when the spectrum or solution is unresolved. |
 | **Objective value** at the solution | `rtol=1e-5` | The objective is far better conditioned than its argument — this is the assertion that actually catches a wrong solver. Measured: worst relative difference 2.9e-7 across every non-separable logistic case |
 | SVM **decision values** (PSD kernels) | `atol=2e-2, rtol=5e-3` | Dominated by the SMO stopping point, not by arithmetic: both solvers stop when the maximal KKT violation drops below the shared `tol` (default `1e-3`), and the dual variables still have freedom there. Measured worst 1.56e-2 on a ±4.5 value range (linear, C=10); rbf cases sit at 5e-7–7e-4 |
 | SVM **decision values** (`kernel="sigmoid"`) | not asserted — see §3.2.1 | The sigmoid kernel is indefinite, so the dual is non-convex and two correct solvers reach different local optima. Measured 3.95e-1, and it does not shrink with `tol` |

@@ -22,7 +22,7 @@ from packaging.version import Version
 from sklearn.datasets import make_classification
 
 from mlxlearn._common.config import tuning_context
-from mlxlearn.linear_model import LogisticRegression
+from mlxlearn.linear_model import LinearRegression, LogisticRegression
 from mlxlearn.neighbors import KNeighborsClassifier
 from mlxlearn.svm import SVC
 
@@ -43,7 +43,13 @@ def test_declared_range_is_what_is_installed():
 
 
 @pytest.mark.parametrize(
-    "cls, kwargs", [(KNeighborsClassifier, {"n_neighbors": 3}), (LogisticRegression, {}), (SVC, {})]
+    "cls, kwargs",
+    [
+        (KNeighborsClassifier, {"n_neighbors": 3}),
+        (LinearRegression, {}),
+        (LogisticRegression, {}),
+        (SVC, {}),
+    ],
 )
 def test_default_construction_fits(cls, kwargs, data):
     """A default-constructed estimator must fit on every supported version.

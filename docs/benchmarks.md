@@ -1,5 +1,50 @@
 # Benchmarks
 
+## 0.1.7 release measurements (2026-11-23)
+
+The full profile compared patched mlxlearn 0.1.7 with stock scikit-learn 1.9.1
+on an Apple M4 Max with 128 GiB of memory, macOS 26.6.2, Python 3.14.2, MLX
+0.32.4, NumPy 2.5.4 and SciPy 1.18.1. Each of the 165 cases used two warmups
+and seven interleaved, synchronized measurements per implementation. Speedup is
+the stock median divided by the mlxlearn median. The counts use the benchmark
+harness's significance test. [Full measurements and environment](../benchmarks/results/release-0.1.7-m4-max.json.gz)
+
+| Operation | Cases | Faster | Within noise | Slower | Median speedup range |
+|---|---:|---:|---:|---:|---:|
+| kNN fit | 54 | 1 | 11 | 42 | 0.39–1.09× |
+| kNN query (`kneighbors`) | 54 | 33 | 18 | 3 | 0.60–11.76× |
+| LogisticRegression fit | 12 | 4 | 2 | 6 | 0.69–4.31× |
+| LinearRegression fit | 12 | 7 | 4 | 1 | 0.67–18.01× |
+| PCA fit | 12 | 5 | 3 | 4 | 0.63–8.22× |
+| PCA transform | 9 | 3 | 2 | 4 | 0.70–1.55× |
+| SVC fit | 8 | 2 | 4 | 2 | 0.81–17.37× |
+| SVC predict | 4 | 1 | 3 | 0 | 1.00–86.36× |
+
+LinearRegression used dense float64 Gaussian designs with one target.
+At 2,000 rows × 16 features, fitting took 0.76 ms against stock's 0.51 ms.
+At 256,000 × 128 it took 24.1 ms against 433 ms (18.01×), and at
+256,000 × 1,024 it took 485 ms against 6,009 ms (12.40×).
+Separate benchmark panels cover cold starts, other OLS designs and radius
+search on CPU and Metal. [LinearRegression measurements](linear-regression-2026-11-22.md)
+and [radius-neighbor measurements](radius-neighbors-2026-11-22.md).
+
+The performance gate flagged eight cases against stock scikit-learn. Three were
+kNN queries on 64 features (500 rows with 1 or 4,096 queries, and 8,000 rows
+with 256 queries). One was a logistic regression fit at 100,000 × 128. The
+other four used PCA on 64 features, fitting at 10,000 and 50,000 rows and
+transforming at 50,000 and 100,000 rows. The gate uses a 5% tolerance at or above
+each operation's measured row-count crossover and exempts kNN fit.
+
+We also compared 0.1.6 and 0.1.7 directly on those eight workloads. Both
+versions used identical inputs and dependencies on the same Mac. After two
+warmups, each version ran 12 times in rotating order. The ratio of the 0.1.6
+median to the 0.1.7 median ranged from 0.990 to 1.016. On every workload,
+the middle half of paired timing ratios included 1.0. Both versions used
+Metal for the three kNN queries and delegated the logistic regression and PCA
+calls to scikit-learn. [Paired measurements](../benchmarks/results/release-0.1.7-m4-max-controls.json.gz)
+
+## Historical benchmark reports
+
 The [fused narrow-kernel rerun of the three original tall datasets](fused-narrow-kernel-2026-10-27.md)
 measures 11.8×, 5.8× and 2.7× sklearn speedups for 500,000 × 32,
 500,000 × 128 and 60,000 × 1,024, with every measured fit independently
@@ -97,11 +142,12 @@ MLX 0.31.2, scikit-learn 1.7.2, NumPy 2.5.1.
 | Algorithm / operation | Crossover | Best speedup | Threshold in `Tuning` |
 |---|---|---|---|
 | `knn/kneighbors` | ~250–1 000 samples | 17.4× | `knn_min_train_samples = 256`, `knn_min_work = 2048` |
-| `knn/radius_neighbors` | see `benchmarks/radius/` | — | state-free router in `_kernels/radius_router.py`; measured with `benchmarks/radius/bench_radius.py` |
+| `knn/radius_neighbors` | depends on shape, radius and data distribution | — | [CPU and Metal search measurements](radius-neighbors-2026-11-22.md) |
 | `knn/fit` | never | — | accepted regression, see below |
 | `svc/fit` | ~2 000 samples **and** ~10⁶ elements; never for `kernel="linear"` | 2.93× | `svc_min_samples = 2048`, `svc_min_work = 1_000_000` |
 | `logreg/fit` | ~20 000 samples **and** ~2·10⁷ elements | 1.34× | `logreg_min_samples = 20_000`, `logreg_min_work = 20_000_000` |
 | `pca/fit` | by solver: `covariance_eigh` ~8·10⁶ elements **or** 512 features; `randomized` ~8·10⁶ elements; `full` and `arpack` never | 14.3× | `pca_covariance_min_work = 8_000_000`, `pca_covariance_min_features = 512`, `pca_randomized_min_work = 8_000_000` |
+| `linreg/fit` | depends on shape, dtype and target count | — | [OLS routing and measured crossovers](linear-regression-2026-11-22.md#routing) |
 
 These feed `mlxlearn._common.config.Tuning`, which dispatch reads. That is the point: a
 published crossover the dispatcher ignores is a claim, not a mechanism.

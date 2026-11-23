@@ -1,15 +1,16 @@
-"""Linear models, accelerated with MLX.
+"""Linear models, accelerated with MLX and the host.
 
-0.1.0 ships one estimator, :class:`LogisticRegression`, and it covers one solver:
-L-BFGS on the L2-penalized (or unpenalized) multinomial/binomial log-loss. Every
-other ``solver`` scikit-learn offers raises rather than being quietly redirected to
-this one — ``liblinear`` and ``saga`` minimize the same objective by different
-routes and stop at different points, so serving them from here would return
-answers that are close enough to look right and different enough to matter.
+:class:`LogisticRegression` covers one solver: L-BFGS on the L2-penalized (or
+unpenalized) multinomial/binomial log-loss, on Metal. :class:`LinearRegression`
+covers dense ordinary least squares, including multi-output targets and sample
+weights, with a host solver that certifies scikit-learn's rank decisions.
+``positive=True`` raises rather than being quietly ignored — non-negative least
+squares is a different solver.
 """
 
 from __future__ import annotations
 
+from ._linear import LinearRegression
 from ._logistic import LogisticRegression
 
-__all__ = ["LogisticRegression"]
+__all__ = ["LinearRegression", "LogisticRegression"]

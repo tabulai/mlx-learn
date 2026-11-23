@@ -32,6 +32,7 @@ from sklearn.neighbors import RadiusNeighborsClassifier as _StockRadiusNeighbors
 from sklearn.neighbors import RadiusNeighborsRegressor as _StockRadiusNeighborsRegressor
 
 from ..decomposition import PCA as _PCA
+from ..linear_model import LinearRegression as _LinearRegression
 from ..linear_model import LogisticRegression as _LogisticRegression
 from ..neighbors import KNeighborsClassifier as _KNeighborsClassifier
 from ..neighbors import KNeighborsRegressor as _KNeighborsRegressor
@@ -47,6 +48,7 @@ __all__ = [
     "KNeighborsRegressor",
     "RadiusNeighborsClassifier",
     "RadiusNeighborsRegressor",
+    "LinearRegression",
     "LogisticRegression",
     "PCA",
     "SVC",
@@ -110,6 +112,10 @@ class RadiusNeighborsRegressor(_RadiusNeighborsRegressor, _StockRadiusNeighborsR
     _mlxlearn_allow_fallback = True
 
 
+class LinearRegression(_LinearRegression):
+    _mlxlearn_allow_fallback = True
+
+
 class LogisticRegression(_LogisticRegression):
     _mlxlearn_allow_fallback = True
 
@@ -128,6 +134,7 @@ for _cls, _name in (
     (KNeighborsRegressor, "KNeighborsRegressor"),
     (RadiusNeighborsClassifier, "RadiusNeighborsClassifier"),
     (RadiusNeighborsRegressor, "RadiusNeighborsRegressor"),
+    (LinearRegression, "LinearRegression"),
     (LogisticRegression, "LogisticRegression"),
     (PCA, "PCA"),
     (SVC, "SVC"),

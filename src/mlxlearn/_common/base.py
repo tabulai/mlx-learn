@@ -91,8 +91,8 @@ class BackendMixin:
     _execution_backend_: str
 
     #: Narrowed for Layer 1 by :meth:`__sklearn_tags__`. An estimator that
-    #: genuinely handles multi-output targets on the MLX path can set this
-    #: ``True``; none of the 0.1.0 estimators do.
+    #: genuinely handles multi-output targets on the MLX path sets this
+    #: ``True``; :class:`~mlxlearn.linear_model.LinearRegression` does.
     _mlxlearn_supports_multi_output: ClassVar[bool] = False
 
     # --------------------------------------------------------------------- tags
@@ -128,6 +128,7 @@ class BackendMixin:
         capability_check: Callable[[], None] | None = None,
         below_crossover: bool = False,
         crossover_detail: str = "",
+        prefer_cpu: bool = False,
         shape: tuple[int, ...] | None = None,
     ) -> Backend:
         """Choose the backend for a ``fit``, recording the decision.
@@ -146,6 +147,8 @@ class BackendMixin:
             "never slower" goal, not an admission of defeat.
         crossover_detail : str
             Human-readable size explanation for the diagnostics record.
+        prefer_cpu : bool, default=False
+            Select the CPU when device selection is automatic.
         shape : tuple of int, optional
             ``(n_samples, n_features)``, recorded so a threshold decision can be
             audited later.
@@ -201,7 +204,7 @@ class BackendMixin:
             return "cpu"
 
         try:
-            device = resolve_device(config.device)
+            device = "cpu" if prefer_cpu and config.device == "auto" else resolve_device(config.device)
         except DeviceError:
             # An explicit device="gpu" that cannot be honored is an error, and it
             # is not a capability mismatch scikit-learn could paper over.
