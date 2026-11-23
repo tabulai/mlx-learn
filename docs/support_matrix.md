@@ -63,22 +63,24 @@ The latest release benchmarks use MLX 0.32.4.
 | `neighbors.NearestNeighbors` | 0.1.0 | exact brute-force Euclidean | non-Euclidean metrics, `kd_tree`/`ball_tree`, `metric_params`, sparse |
 | `neighbors.KNeighborsClassifier` | 0.1.0 | as above | as above, plus callable `weights`, multi-output `y` |
 | `neighbors.KNeighborsRegressor` | 0.1.0 | as above | as above |
+| `neighbors.RadiusNeighborsClassifier` | unreleased | exact Euclidean radius search, class votes, uniform or distance weights | unsupported neighbor metrics and inputs, callable weights, multi-output targets |
+| `neighbors.RadiusNeighborsRegressor` | unreleased | exact Euclidean radius search, uniform or distance-weighted means | same as the radius classifier |
 | `linear_model.LogisticRegression` | 0.1.0 | L-BFGS, L2 / unpenalized | `l1`/`elasticnet`, non-`lbfgs` solvers, `dual=True`, sparse, `warm_start` |
+| `linear_model.LinearRegression` | unreleased | dense host OLS with rank certification, multi-output and `sample_weight` | `positive=True`, sparse inputs, and automatic patched fits outside the [measured size and dtype ranges](linear-regression-2026-11-22.md#routing) |
 | `svm.SVC` | 0.1.0 | exact SMO, linear/poly/rbf/sigmoid | `kernel="precomputed"`, callable kernels, `probability=True`, sparse |
 | `decomposition.PCA` | 0.1.2 | dense covariance and randomized PCA, CPU/GPU projection | sparse input, values outside float32 range |
 
 `radius_neighbors` and `radius_neighbors_graph` are exact for the float32 training
 and query coordinates: a training row is returned iff its exact squared distance is at
-most `fl64(radius**2)`. A state-free router picks a tree, host brute force or a certified
-Metal Gram screen per call; every engine returns the same neighbor sets, so routing only
-changes speed. Rows hold ascending training indices (or `(distance, index)` order with
+most `fl64(radius**2)`. CPU and Metal searches apply the same membership rule.
+Rows hold ascending training indices (or `(distance, index)` order with
 `sort_results=True`) and are ragged object arrays of 1-d rows. Under `patch_sklearn()`, a
 call goes to stock scikit-learn, configured as the user configured the estimator, when
 it uses something the owned engines do not implement (sparse queries, per-query or
-negative radii, values beyond float32, callable weights) or when the router predicts
-stock is faster (dense high-dimensional outputs); those calls return scikit-learn's own
-results. Layer 1 densifies sparse queries, rejects non-scalar, negative and NaN radii,
-and serves float32-unsafe rows with its exact host engine.
+negative radii, values beyond float32, callable weights). Automatic routing can also
+select stock when it predicts a faster search and certifies exact membership. Layer 1
+densifies sparse queries and rejects values outside float32 range and non-scalar,
+negative or NaN radii.
 
 Direct KNN classes use public sklearn estimator mixins without inheriting stock
 `sklearn.neighbors` classes. They preserve the estimator API, but an `isinstance`
@@ -101,7 +103,7 @@ graph helper inputs continue to work for those variants.
 | | |
 |---|---|
 | `SVR`, `NuSVR`, `NuSVC` | Deferred. They will ship when they implement their true objectives. The ancestor patched `SVR` with a ridge surrogate, so `sklearn.svm.SVR` solved a different optimization problem than its name promises. |
-| `LinearRegression`, `Ridge`, `Lasso`, `ElasticNet`, `KMeans`, `DBSCAN`, `TSNE` | Planned for 0.2.x, after `0.1.0a1` feedback. |
+| `Ridge`, `Lasso`, `ElasticNet`, `KMeans`, `DBSCAN`, `TSNE` | Planned for 0.2.x, after `0.1.0a1` feedback. |
 | Tree ensembles (`RandomForest*`, `ExtraTrees*`) | Out of scope. |
 | `EmpiricalCovariance`, `DummyRegressor`, `LocalOutlierFactor` | Out of scope — the ancestor registered these as pass-throughs that added no acceleration. |
 

@@ -21,12 +21,32 @@ All notable changes to this project are documented here. The format follows
   vectorized; empty neighborhoods follow scikit-learn (`outlier_label` or `NaN`).
 - Patched radius calls delegate whole calls to stock scikit-learn, configured
   like the user's estimator, for sparse queries, per-query or negative radii,
-  values beyond float32 and callable weights, and when the state-free router
-  predicts stock is faster. Routing depends only on the call, never on earlier
+  values beyond float32 and callable weights. Automatic routing can also use
+  stock when it predicts a faster search and certifies exact membership.
+  Routing depends only on the call, never on earlier
   calls, so repeated calls are bitwise reproducible.
 - `benchmarks/radius/`: a radius benchmark and calibration harness against
   scikit-learn's default, brute-force and `n_jobs=-1` configurations, with
   same-session controls of older sources.
+- **`mlxlearn.linear_model.LinearRegression`**: dense ordinary least squares
+  with multi-output targets and `sample_weight`. The certified paths solve on
+  the host in float64: a threaded pass centres and weights the data exactly as
+  scikit-learn does and accumulates a chunked Gram matrix; rank decisions are
+  certified against rigorous rounding bounds and scikit-learn's own rounding
+  band, with small singular directions measured on the data itself; graded
+  spectra go to a threaded tiled QR and LAPACK `gelsd` on the small factor.
+  Tiny and near-square problems, and ranks only scikit-learn's own rounding can
+  decide, run a bit-identical copy of stock's computation in the working dtype
+  (without stock's extra copies, so faster than stock on large fits). Every
+  `gelsd` result is checked for plausibility and recomputed with `gelss` when it
+  fails: Accelerate on macOS 27.2 can return garbage silently, and stock then
+  returns a wrong model. `rank_`, `singular_` and the minimum-norm `coef_`
+  follow the installed scikit-learn's cutoff (`tol` from 1.9,
+  `max(n_samples, n_features) * eps` on 1.7 and 1.8), and errors match stock's
+  on each version. With `device="gpu"` the solver runs on the host and
+  records a `host-solve` diagnostic. Patched mode delegates positive and
+  sparse fits to scikit-learn. For dense inputs, it selects a solver using
+  [measured crossovers](docs/linear-regression-2026-11-22.md#routing).
 
 ## [0.1.6] — 2026-11-19
 

@@ -495,4 +495,3 @@ def test_validate_radius_rejects_negative(value):
 def test_validate_radius_rejects_non_scalars_and_non_numbers(value):
     with pytest.raises(TypeError):
         rc.validate_radius(value)
-
