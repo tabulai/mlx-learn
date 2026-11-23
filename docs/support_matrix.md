@@ -63,10 +63,10 @@ The latest release benchmarks use MLX 0.32.4.
 | `neighbors.NearestNeighbors` | 0.1.0 | exact brute-force Euclidean | non-Euclidean metrics, `kd_tree`/`ball_tree`, `metric_params`, sparse |
 | `neighbors.KNeighborsClassifier` | 0.1.0 | as above | as above, plus callable `weights`, multi-output `y` |
 | `neighbors.KNeighborsRegressor` | 0.1.0 | as above | as above |
-| `neighbors.RadiusNeighborsClassifier` | unreleased | exact Euclidean radius search, class votes, uniform or distance weights | unsupported neighbor metrics and inputs, callable weights, multi-output targets |
-| `neighbors.RadiusNeighborsRegressor` | unreleased | exact Euclidean radius search, uniform or distance-weighted means | same as the radius classifier |
+| `neighbors.RadiusNeighborsClassifier` | 0.1.7 | exact Euclidean radius search, class votes, uniform or distance weights | unsupported neighbor metrics and inputs, callable weights, multi-output targets |
+| `neighbors.RadiusNeighborsRegressor` | 0.1.7 | exact Euclidean radius search, uniform or distance-weighted means | same as the radius classifier |
 | `linear_model.LogisticRegression` | 0.1.0 | L-BFGS, L2 / unpenalized | `l1`/`elasticnet`, non-`lbfgs` solvers, `dual=True`, sparse, `warm_start` |
-| `linear_model.LinearRegression` | unreleased | dense host OLS with rank certification, multi-output and `sample_weight` | `positive=True`, sparse inputs, and automatic patched fits outside the [measured size and dtype ranges](linear-regression-2026-11-22.md#routing) |
+| `linear_model.LinearRegression` | 0.1.7 | dense host OLS with rank certification, multi-output and `sample_weight` | `positive=True`, sparse inputs, and automatic patched fits outside the [measured size and dtype ranges](linear-regression-2026-11-22.md#routing) |
 | `svm.SVC` | 0.1.0 | exact SMO, linear/poly/rbf/sigmoid | `kernel="precomputed"`, callable kernels, `probability=True`, sparse |
 | `decomposition.PCA` | 0.1.2 | dense covariance and randomized PCA, CPU/GPU projection | sparse input, values outside float32 range |
 
