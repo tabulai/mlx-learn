@@ -67,16 +67,24 @@ The latest release benchmarks use MLX 0.32.4.
 | `svm.SVC` | 0.1.0 | exact SMO, linear/poly/rbf/sigmoid | `kernel="precomputed"`, callable kernels, `probability=True`, sparse |
 | `decomposition.PCA` | 0.1.2 | dense covariance and randomized PCA, CPU/GPU projection | sparse input, values outside float32 range |
 
-`radius_neighbors` and `radius_neighbors_graph` delegate lazily to scikit-learn and run
-unaccelerated on the CPU in float32. Correct, but not fast — stated here rather than left
-for a profiler to reveal.
+`radius_neighbors` and `radius_neighbors_graph` are exact for the float32 training
+and query coordinates: a training row is returned iff its exact squared distance is at
+most `fl64(radius**2)`. A state-free router picks a tree, host brute force or a certified
+Metal Gram screen per call; every engine returns the same neighbor sets, so routing only
+changes speed. Rows hold ascending training indices (or `(distance, index)` order with
+`sort_results=True`) and are ragged object arrays of 1-d rows. Under `patch_sklearn()`, a
+call goes to stock scikit-learn, configured as the user configured the estimator, when
+it uses something the owned engines do not implement (sparse queries, per-query or
+negative radii, values beyond float32, callable weights) or when the router predicts
+stock is faster (dense high-dimensional outputs); those calls return scikit-learn's own
+results. Layer 1 densifies sparse queries, rejects non-scalar, negative and NaN radii,
+and serves float32-unsafe rows with its exact host engine.
 
 Direct KNN classes use public sklearn estimator mixins without inheriting stock
 `sklearn.neighbors` classes. They preserve the estimator API, but an `isinstance`
 check against a stock neighbor class captured before patching is false. This
 startup-focused compatibility change avoids loading sklearn's neighbor stack
-for owned Euclidean search; radius operations and permitted fallback still load
-it when needed.
+for owned Euclidean search; permitted fallback still loads it when needed.
 
 This also affects APIs that identify a fitted neighbor object by concrete class:
 use `model.kneighbors_graph(...)` or `model.radius_neighbors_graph(...)` on a

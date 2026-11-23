@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-__all__ = ["assert_neighbor_parity", "logistic_objective"]
+__all__ = ["assert_neighbor_parity", "assert_radius_parity", "logistic_objective"]
 
 
 def assert_neighbor_parity(mlx_dist, mlx_idx, ref_dist, ref_idx, *, atol=1e-6):
@@ -88,6 +88,44 @@ def assert_neighbor_parity(mlx_dist, mlx_idx, ref_dist, ref_idx, *, atol=1e-6):
         "index order differs where distances are strictly separated at "
         f"{np.argwhere(violations)[:5].tolist()}"
     )
+
+
+def assert_radius_parity(mlx_idx, ref_idx, mlx_dist=None, ref_dist=None, *, radius, atol=1e-6):
+    """Compare ragged radius-neighbor results at the supplied search radius.
+
+    Membership must agree unless the mismatched neighbor's distance is within
+    tolerance of the radius. Without distances, require exact membership.
+    """
+    assert len(mlx_idx) == len(ref_idx), f"{len(mlx_idx)} queries vs {len(ref_idx)}"
+    for row in range(len(mlx_idx)):
+        mine = np.asarray(mlx_idx[row])
+        theirs = np.asarray(ref_idx[row])
+        if mlx_dist is None:
+            np.testing.assert_array_equal(
+                np.sort(mine), np.sort(theirs), err_msg=f"row {row}: neighbor sets differ"
+            )
+            continue
+
+        md = np.asarray(mlx_dist[row], dtype=np.float64)
+        rd = np.asarray(ref_dist[row], dtype=np.float64)
+        mine_map = {int(i): float(d) for i, d in zip(mine, md, strict=True)}
+        theirs_map = {int(i): float(d) for i, d in zip(theirs, rd, strict=True)}
+        shared = set(mine_map) & set(theirs_map)
+        for index in shared:
+            assert abs(mine_map[index] - theirs_map[index]) <= atol + atol * abs(theirs_map[index]), (
+                f"row {row}: distance for index {index} differs: "
+                f"{mine_map[index]} vs {theirs_map[index]}"
+            )
+        for extra in set(mine_map) - set(theirs_map):
+            assert np.isclose(mine_map[extra], radius, atol=atol, rtol=atol), (
+                f"row {row}: mlxlearn returned index {extra} at {mine_map[extra]}, "
+                f"outside the tolerance band for radius {radius}"
+            )
+        for missing in set(theirs_map) - set(mine_map):
+            assert np.isclose(theirs_map[missing], radius, atol=atol, rtol=atol), (
+                f"row {row}: scikit-learn returned index {missing} at {theirs_map[missing]}, "
+                f"outside the tolerance band for radius {radius}"
+            )
 
 
 def assert_ties_break_on_smallest_index(dist, idx, *, atol=1e-6):

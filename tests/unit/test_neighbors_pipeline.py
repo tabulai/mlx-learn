@@ -107,12 +107,14 @@ def test_lazy_gpu_host_mirror_supports_radius_pickle_and_refit():
     assert "_fit_X" in restored.__dict__
     assert restored._index_._device_index is None
     expected = SkNeighbors(n_neighbors=3, radius=2.0, algorithm="brute").fit(X)
-    actual_radius = restored.radius_neighbors(Q, sort_results=True)
-    expected_radius = expected.radius_neighbors(Q, sort_results=True)
-    for actual, reference in zip(actual_radius[0], expected_radius[0], strict=True):
-        np.testing.assert_allclose(actual, reference, atol=1e-6, rtol=1e-6)
-    for actual, reference in zip(actual_radius[1], expected_radius[1], strict=True):
-        np.testing.assert_array_equal(actual, reference)
+    distances, indices = restored.radius_neighbors(Q, sort_results=True)
+    ref_distances, ref_indices = expected.radius_neighbors(Q, sort_results=True)
+    for dist, idx, ref_dist, ref_idx in zip(distances, indices, ref_distances, ref_indices, strict=True):
+        # Stock can permute identical training rows. Our public tie order is
+        # (distance, training index), including after a pickle round trip.
+        order = np.lexsort((ref_idx, ref_dist))
+        np.testing.assert_array_equal(idx, ref_idx[order])
+        np.testing.assert_allclose(dist, ref_dist[order], atol=1e-6, rtol=1e-6)
     np.testing.assert_array_equal(restored.kneighbors(Q, return_distance=False),
                                   model.kneighbors(Q, return_distance=False))
     # A prior explicit/sklearn assignment must not mask a subsequent MLX fit.

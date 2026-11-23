@@ -6,6 +6,28 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Radius-neighbor search** (`radius_neighbors`, `radius_neighbors_graph`) on
+  owned engines: a tree for low-dimensional data, a certified Metal Gram screen on
+  centred coordinates, and exact host brute force for small calls. Membership is
+  exact for the float32 coordinates (`S <= fl64(radius**2)`, ties resolved with
+  integers) and identical on every engine; rows hold ascending training indices,
+  or `(distance, index)` order with `sort_results=True`. Results are assembled as
+  CSR batches, so graphs and predictions never build per-row Python objects.
+- **`mlxlearn.neighbors.RadiusNeighborsClassifier`** and
+  **`RadiusNeighborsRegressor`** — Layer 1 estimators and Layer 2 patched
+  twins. Votes and averages use every training row inside `radius` and are
+  vectorized; empty neighborhoods follow scikit-learn (`outlier_label` or `NaN`).
+- Patched radius calls delegate whole calls to stock scikit-learn, configured
+  like the user's estimator, for sparse queries, per-query or negative radii,
+  values beyond float32 and callable weights, and when the state-free router
+  predicts stock is faster. Routing depends only on the call, never on earlier
+  calls, so repeated calls are bitwise reproducible.
+- `benchmarks/radius/`: a radius benchmark and calibration harness against
+  scikit-learn's default, brute-force and `n_jobs=-1` configurations, with
+  same-session controls of older sources.
+
 ## [0.1.6] — 2026-11-19
 
 ### Added

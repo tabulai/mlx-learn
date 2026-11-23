@@ -136,7 +136,7 @@ def test_large_gaussian_fit_keeps_gpu_selection_and_only_one_private_conversion(
     from mlxlearn._common import base
     from mlxlearn.neighbors import _base
 
-    X = np.zeros((50000, 32), np.float64)
+    X = np.random.default_rng(92).normal(size=(50000, 32))
     conversions, selections, builds = [], [], []
 
     def convert(values):
