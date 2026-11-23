@@ -218,6 +218,18 @@ All notable changes to this project are documented here. The format follows
   comparison held the pass budget equal, which makes the two runtimes equal by
   construction. These are single-seed, single-fit results and DINO was not
   run; see the [Lloyd-25 addendum](docs/k-means-lloyd25-reference-2026-11-17.md).
+- Reran the MNIST, Fashion-MNIST and Kannada-MNIST benchmarks for
+  LogisticRegression, KNeighborsClassifier, SVC and PCA on an M1 Ultra, an M4
+  Max and an M5 Ultra, with an identical software stack, at `aa729e5`, before
+  the SVC and kNN changes above. Converged logistic regression fit
+  **15.4–20.7×**, **7.1–12.5×** and **9.5–14.4×** faster than scikit-learn.
+  KNN prediction was **14.3–15.7×**, **11.6–12.2×** and **13.2–14.5×**
+  faster, and SVC fits at the default cache were **18.2–23.6×**,
+  **13.0–17.4×** and **15.4–19.6×** faster. Every KNN neighbor set was exact on
+  every machine, and SVC predictions agreed with scikit-learn's on 99.98–100% of
+  rows. On the M5, binary32 PCA fits take about 1.3× as long as the earlier TF32
+  ones, with components about 100× closer to a float64 reference. See the
+  [three-machine results](benchmarks/experiments/mnist-family-2026-11-16/README.md).
 
 ## [0.1.3] — 2026-11-15
 

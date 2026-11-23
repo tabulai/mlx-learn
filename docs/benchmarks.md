@@ -444,6 +444,9 @@ cases. Raw samples are available for the [scaling panel](../benchmarks/results/p
 [18-case replay](../benchmarks/results/pca-replay-2026-11-10.json.gz),
 [isolated query check](../benchmarks/results/pca-query-2026-11-10.json.gz), and
 [image panel](../benchmarks/experiments/mnist-family-2026-11-02/results/pca-2026-11-10.json.gz).
+On 2026-11-16 the image panel was rerun on an M1 Ultra, an M4 Max and an M5 Ultra. The
+[three-machine results](../benchmarks/experiments/mnist-family-2026-11-16/README.md) also
+cover the M5's binary32-versus-TF32 trade-off.
 
 From the repository root, the synthetic panels can be repeated with:
 

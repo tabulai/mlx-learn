@@ -660,6 +660,32 @@ Three unrelated single-threaded processes and other applications' GPU work (abou
 utilization at idle) were running throughout. Under that load, back-to-back mlxlearn KNN
 predictions on MNIST varied between 0.11 and 0.22 s.
 
+**Across M1 Ultra, M4 Max and M5 Ultra.** On 2026-11-16 every benchmark above was rerun at
+`aa729e5` on three Apple Silicon generations with the same software stack. Each cell gives
+MNIST / Fashion-MNIST / Kannada-MNIST speedups over scikit-learn, with the same inputs and
+settings as the tables above.
+
+| Benchmark | M1 Ultra (64-core GPU) | M4 Max (40-core GPU) | M5 Ultra (80-core GPU) |
+|---|---|---|---|
+| `LogisticRegression` fit, `max_iter=5000` | 20.3× / 20.7× / 15.4× | 12.5× / 7.1× / 8.1× | 14.4× / 13.3× / 9.5× |
+| `KNeighborsClassifier` predict | 15.7× / 14.3× / 15.6× | 11.6× / 12.2× / 11.8× | 14.5× / 13.2× / 14.4× |
+| `SVC` fit, default 200 MB cache | 18.2× / 23.6× / 19.2× | 13.0× / 17.4× / 14.9× | 15.4× / 19.6× / 15.9× |
+| `SVC` predict | 240× / 197× / 244× | 298× / 286× / 326× | 315× / 277× / 320× |
+| `PCA` fit, default solver, float32 / float64 | 1.7–1.9× / 2.9–3.2× | 1.8–2.0× / 2.1–2.5× | 1.7–1.8× / 2.2–2.7× |
+
+- **Correctness:** every KNN neighbor set from every machine is exact. SVC predictions agree with
+  scikit-learn on 99.98–100% of rows, and every converged logistic regression matches
+  scikit-learn's test accuracy within 0.15 pp.
+- **Absolute speed:** the M5 Ultra is fastest. It predicts KNN in 52–57 ms against 101–109 ms on
+  the other two machines, and fits SVC in 4.4–5.3 s against 7.7–9.8 s at the default cache.
+- **M1 Ultra:** it shows the largest ratios. Its GPU keeps pace with the M4 Max for KNN and
+  SVC, while scikit-learn runs 1.2–2.3× slower on its CPU.
+- **M5 PCA trade-off:** on the M5, PCA now keeps float32 matrix products in binary32 instead of
+  MLX's default TF32. Fits take about 1.3× as long as with TF32, and components are about 100×
+  closer to the float64 reference.
+
+[Machines, background load, all timings and raw results](benchmarks/experiments/mnist-family-2026-11-16/)
+
 ## Precision
 
 MLX computes in float32 on the GPU. mlxlearn's parity tests are written to float32
