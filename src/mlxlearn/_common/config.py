@@ -152,10 +152,22 @@ class Tuning:
     logreg_tall_min_samples: int = 250_000
     logreg_tall_min_work: int = 8_000_000
     #
-    # CPU OLS wins at the measured 8,000 x 64 and 16,000 x 128 fits.
-    # Keep a floor on automatic dispatch to avoid overhead on tiny problems.
-    linreg_min_samples: int = 2_048
-    linreg_min_work: int = 262_144
+    # Host OLS (see LinearRegression._below_crossover). Patched dispatch must not
+    # lose on any data, so these floors are calibrated on the slowest data kind
+    # per shape (one-hot, mixed scales, cond 1e10; benchmarks/linreg/crossover.py)
+    # on the M5 Ultra (scikit-learn 1.9, scipy 1.18) and the M1 Ultra (1.8, scipy
+    # 1.17, where the exact fallback has no copy advantage), not on Gaussian data,
+    # where the certified Gram path wins at almost every size. Inside these
+    # floors every kind measured at least 1.38x on the M5 Ultra and at least
+    # parity on the (busier) M1 Ultra.
+    linreg_min_samples: int = 8_192
+    linreg_min_features: int = 16
+    linreg_min_work: int = 524_288  # n_samples * n_features
+    linreg_max_features: int = 1_024
+    linreg_min_aspect: float = 32.0  # n_samples >= aspect * n_features for tall fits
+    linreg_wide_max_features: int = 0  # wide fits with more features go to scikit-learn
+    linreg_max_target_ratio: float = 1.0  # n_targets <= ratio * n_features for tall fits
+    linreg_threads: int = 0  # host threads for OLS row passes; 0 chooses automatically
     #
     # SVC is the same story again, and worse -- but the axis that matters is
     # *width*, not height. Over a 64-configuration grid at d in {10, 20} mlxlearn

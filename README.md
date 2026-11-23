@@ -46,7 +46,7 @@ stock inheritance. See the [compatibility details](docs/support_matrix.md).
 | `mlxlearn.neighbors.KNeighborsClassifier` | 0.1.0 |
 | `mlxlearn.neighbors.KNeighborsRegressor` | 0.1.0 |
 | `mlxlearn.linear_model.LogisticRegression` | 0.1.0 |
-| `mlxlearn.linear_model.LinearRegression` | 0.1.0 |
+| `mlxlearn.linear_model.LinearRegression` | unreleased; host float64 solver with certified rank |
 | `mlxlearn.svm.SVC` (exact) | 0.1.0 |
 | `mlxlearn.decomposition.PCA` | 0.1.2 |
 | `mlxlearn.cluster.EMeans` | 0.1.3; Metal GPU, paper/Faiss recipes |

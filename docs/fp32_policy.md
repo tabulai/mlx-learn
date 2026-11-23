@@ -27,6 +27,19 @@ accuracy actually available is described below, not by the output dtype.
 Feature coordinates that are finite in float64 but overflow float32 (`|x| > ~3.4e38`) are **rejected**
 with `UnsupportedInputError`, not silently converted to infinity.
 
+**Exception: `LinearRegression`.** Ordinary least squares runs on the host and
+never narrows float64 data to float32, so float64 values beyond float32 range
+are fitted, not rejected. Its accelerated paths compute in **float64**; float32
+input keeps its values (they are widened exactly). `y` is cast to the dtype of
+`X` first, as scikit-learn casts it, so float32 `X` with targets beyond float32
+range raises scikit-learn's own error. Its rank cutoff uses the eps of scikit-learn's working
+dtype on 1.7 and 1.8, as stock does. Tiny and near-square problems, and rank
+decisions that sit inside scikit-learn's own rounding (common for collinear
+float32 designs), run scikit-learn's arithmetic in the working dtype instead, so
+those results are stock's to the bit and `rank_` always matches stock. float16
+input is kept as float16, as scikit-learn keeps it (with float16's eps in the
+1.7/1.8 cutoff), and reproduces stock's computation exactly.
+
 ## 2. Where float32 actually costs accuracy
 
 ### 2.1 Squared distances via the expanded Gram identity

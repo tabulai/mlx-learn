@@ -64,7 +64,7 @@ The latest release benchmarks use MLX 0.32.4.
 | `neighbors.KNeighborsClassifier` | 0.1.0 | as above | as above, plus callable `weights`, multi-output `y` |
 | `neighbors.KNeighborsRegressor` | 0.1.0 | as above | as above |
 | `linear_model.LogisticRegression` | 0.1.0 | L-BFGS, L2 / unpenalized | `l1`/`elasticnet`, non-`lbfgs` solvers, `dual=True`, sparse, `warm_start` |
-| `linear_model.LinearRegression` | 0.1.0 | dense OLS, multi-output, `sample_weight` | `positive=True`, sparse |
+| `linear_model.LinearRegression` | unreleased | dense OLS on the host (certified float64 paths; stock's own arithmetic for tiny, near-square and rounding-band cases), multi-output, `sample_weight` | `positive=True`, sparse; patched mode also wide designs and tall fits under 8,192 samples or 16 features, over 1,024 features, under 32 samples per feature, or with more targets than features |
 | `svm.SVC` | 0.1.0 | exact SMO, linear/poly/rbf/sigmoid | `kernel="precomputed"`, callable kernels, `probability=True`, sparse |
 | `decomposition.PCA` | 0.1.2 | dense covariance and randomized PCA, CPU/GPU projection | sparse input, values outside float32 range |
 

@@ -53,3 +53,29 @@ def test_float32_nonfinite_and_large_integer_inputs_do_not_raise_capability_erro
 def test_array_like_float64_overflow_is_detected():
     with pytest.raises(UnsupportedInputError, match="float32"):
         check_float32_range([[0.0, 1e300]])
+
+
+def test_foreign_arrays_with_non_numpy_dtypes_are_converted_first():
+    """An mlx.core.array's dtype has no .kind; the helper must not crash on it."""
+    mx = pytest.importorskip("mlx.core")
+    check_float32_range(mx.array(np.ones((4, 3), dtype=np.float32)))
+    with pytest.raises(UnsupportedInputError):
+
+        class Foreign:
+            dtype = "not a numpy dtype"
+
+            def __array__(self, dtype=None, copy=None):
+                return np.array([[1e300, 0.0]])
+
+        check_float32_range(Foreign())
+
+
+def test_sparse_subclasses_outside_scipy_are_sparse():
+    sparse = __import__("pytest").importorskip("scipy.sparse")
+    from mlxlearn._common.validation import is_sparse
+
+    class UserCSR(sparse.csr_matrix):
+        pass
+
+    assert is_sparse(UserCSR(np.eye(3)))
+    assert not is_sparse(np.eye(3))

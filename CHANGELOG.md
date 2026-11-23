@@ -8,11 +8,27 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
-- **`mlxlearn.linear_model.LinearRegression`** supports dense ordinary least
-  squares with multi-output targets and `sample_weight`. CPU and Metal form
-  symmetric Gram systems, with a reduced system for centered wide designs and
-  direct float64 least squares when the rank needs a more accurate factorization.
-  Patched mode supports `positive=True` through scikit-learn.
+- **`mlxlearn.linear_model.LinearRegression`**: dense ordinary least squares
+  with multi-output targets and `sample_weight`. The certified paths solve on
+  the host in float64: a threaded pass centres and weights the data exactly as
+  scikit-learn does and accumulates a chunked Gram matrix; rank decisions are
+  certified against rigorous rounding bounds and scikit-learn's own rounding
+  band, with small singular directions measured on the data itself; graded
+  spectra go to a threaded tiled QR and LAPACK `gelsd` on the small factor.
+  Tiny and near-square problems, and ranks only scikit-learn's own rounding can
+  decide, run a bit-identical copy of stock's computation in the working dtype
+  (without stock's extra copies, so faster than stock on large fits). Every
+  `gelsd` result is checked for plausibility and recomputed with `gelss` when it
+  fails: Accelerate on macOS 27.2 can return garbage silently, and stock then
+  returns a wrong model. `rank_`, `singular_` and the minimum-norm `coef_`
+  follow the installed scikit-learn's cutoff (`tol` from 1.9,
+  `max(n_samples, n_features) * eps` on 1.7 and 1.8), and errors match stock's
+  on each version. There is no Metal path; `device="gpu"` solves on the host
+  and records a `host-solve` diagnostic. Patched mode hands to scikit-learn
+  `positive=True`, sparse input, wide designs, and tall fits with fewer than
+  8,192 samples or 16 features, more than 1,024 features, fewer than 32 samples
+  per feature, or more targets than features: the shapes where some data kind
+  measured slower than stock.
 
 ## [0.1.6] — 2026-11-19
 
