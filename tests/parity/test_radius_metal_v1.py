@@ -765,3 +765,71 @@ def test_bitmap_validates_dimensions_before_launch(monkeypatch):
             mask((2, 1), 2, 1, offset)
     with pytest.raises(ValueError, match="grid limit"):
         mask((1, 2**31 - 1), 1, 1)
+
+
+@pytest.mark.parametrize("rows,width,depth", [(1, 7, 1), (67, 129, 31), (128, 192, 64)])
+def test_fused_gram_bitmap_matches_materialized_binary32_at_cutoff(rows, width, depth):
+    import mlx.core as mx
+
+    from mlxlearn_device._binary32 import float32_matmul
+    from mlxlearn_device._neighbors_general import _gram_lower_from_products
+    from mlxlearn_device._radius import fused_mask_gram, mask_gram
+
+    rng = np.random.default_rng(1391)
+    offset = 5
+    train = mx.array(rng.standard_normal((width, depth), dtype=np.float32))
+    queries = mx.array(rng.standard_normal((rows + offset, depth), dtype=np.float32))
+    block = queries[offset:]
+    with mx.stream(mx.gpu):
+        qnorm = mx.sum(queries * queries, axis=1)
+        xnorm = mx.sum(train * train, axis=1)
+        # One unsafe norm exercises unconditional candidate admission.
+        xnorm = mx.where(mx.arange(width) == 0, mx.inf, xnorm)
+        products = float32_matmul(block, train, transpose_b=True, stream=mx.gpu)
+        thr = thresholds(depth, 1.0)
+        lower = _gram_lower_from_products(block, products, xnorm, thr.gram_factor, thr.gram_floor)
+        edge = np.float32(lower[-1, -1].item())
+        cuts = [np.nextafter(edge, np.float32(-np.inf)), edge,
+                np.nextafter(edge, np.float32(np.inf))]
+        for cut in cuts:
+            settings = {"cut": float(cut), "factor": thr.gram_factor, "floor": thr.gram_floor,
+                        "row_offset": offset, "stream": mx.gpu}
+            wanted = mask_gram(products, qnorm, xnorm, **settings)
+            got = fused_mask_gram(block, train, qnorm, xnorm, **settings)
+            np.testing.assert_array_equal(np.asarray(got), np.asarray(wanted))
+            # The last valid bit changes exactly at the inclusive cutoff.
+            word = int(np.asarray(got)[-1, -1])
+            assert bool(word & (1 << ((width - 1) % 32))) == bool(cut >= edge)
+
+
+@pytest.mark.parametrize("bitmap", [True, False], ids=["bitmap", "column-tiles"])
+def test_prediction_reduces_native_metal_blocks_in_query_order(monkeypatch, bitmap):
+    from mlxlearn._kernels.radius_reduce import mean_of_parts, votes_of_parts
+
+    native = metal._native_finisher()
+    if native is None:
+        pytest.skip("native finisher unavailable")
+    rng = np.random.default_rng(55)
+    X, Q = _gaussian(rng, 519, 149, 4)
+    Q[::3] = X[:len(Q[::3])]
+    Q[64:128] = 100.0  # A whole empty block can finish before an earlier rescan.
+    monkeypatch.setattr(metal, "_TILE_ELEMENTS", 64 * len(X))
+    if not bitmap:
+        monkeypatch.setattr(metal, "_COLUMN_TILE", 129)
+        monkeypatch.setattr(metal, "_FORCE_CAPACITY", 2)
+    codes = rng.integers(0, 5, len(X))
+    y = rng.normal(size=len(X))
+    ref = _query(X, Q, 3.0, cap_hint=300)
+
+    def unexpected_csr(*args, **kwargs):
+        pytest.fail("predictors must consume the native result directly")
+
+    monkeypatch.setattr(native.NativeResult, "to_csr", unexpected_csr)
+    parts = _query(X, Q, 3.0, cap_hint=300, raw=True)
+    assert [part.n_query for part in parts] == [64, 64, 21]
+    for weighted in (False, True):
+        for reduce, args in ((votes_of_parts, (codes, 5)), (mean_of_parts, (y,))):
+            expected = reduce([ref], *args, weighted=weighted)
+            actual = reduce(parts, *args, weighted=weighted)
+            for a, b in zip(actual, expected, strict=True):
+                np.testing.assert_array_equal(a, b)

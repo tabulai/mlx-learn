@@ -626,6 +626,69 @@ PyObject* py_finish_mask(PyObject*, PyObject* args) {
     return Py_BuildValue("NL", capsule, static_cast<long long>(total));
 }
 
+// The caller certifies that all coordinates are integers and 4*d*max_abs^2
+// is at most 2^24. Norms, dot products and every distance below are exact
+// binary32 integers, including under cancellation at the radius boundary.
+PyObject* py_integer_gram(PyObject*, PyObject* args) {
+    PyObject *dot_object, *xnorm_object, *qnorm_object, *thr_object;
+    Py_ssize_t q_offset, threads;
+    int exclude_self, mode;
+    if (!PyArg_ParseTuple(args, "OOOOnpin:integer_gram", &dot_object, &xnorm_object,
+                          &qnorm_object, &thr_object, &q_offset, &exclude_self, &mode, &threads))
+        return nullptr;
+    Buffer dots, xnorm, qnorm;
+    Thr thr;
+    if (!get_buffer(dot_object, dots, false, "dots", DType::f32, 2) ||
+        !get_buffer(xnorm_object, xnorm, false, "training norms", DType::f32, 1) ||
+        !get_buffer(qnorm_object, qnorm, false, "query norms", DType::f32, 1) ||
+        !parse_thresholds(thr_object, thr) || !check_mode(mode)) return nullptr;
+    const auto m = dots.dim(0), n = dots.dim(1);
+    if (m != qnorm.dim(0) || n != xnorm.dim(0) || n > INT32_MAX ||
+        q_offset < 0 || q_offset > PY_SSIZE_T_MAX - m) {
+        PyErr_SetString(PyExc_ValueError, "invalid integer Gram dimensions or offset");
+        return nullptr;
+    }
+    const float cut = float(std::min(std::floor(thr.R2), double(1 << 24)));
+    const float* xn = xnorm.data<const float>();
+    const float* qn = qnorm.data<const float>();
+    const float* products = dots.data<const float>();
+    std::unique_ptr<Result> result;
+    std::exception_ptr error;
+    Py_BEGIN_ALLOW_THREADS
+    try {
+        const int workers = clamp_threads(threads);
+        const auto bounds = uniform_bounds(m, std::max<std::int64_t>(1, m / (4 * workers)));
+        result = run_rows(m, n, thr, mode, {}, bounds, workers, double(m) * n,
+            [&](std::int64_t row, RowSink& sink, SortScratch&) {
+                const float* dot = products + row * n;
+                const auto self = exclude_self ? q_offset + row : -1;
+                Py_ssize_t col = 0;
+#if defined(__aarch64__)
+                const auto norm = vdupq_n_f32(qn[row]);
+                for (; col + 4 <= n; col += 4) {
+                    const auto sums = vaddq_f32(norm, vld1q_f32(xn + col));
+                    const auto s = vsubq_f32(sums, vmulq_n_f32(vld1q_f32(dot + col), 2.0f));
+                    if (!vmaxvq_u32(vcleq_f32(s, vdupq_n_f32(cut)))) continue;
+                    float values[4];
+                    vst1q_f32(values, s);
+                    for (int j = 0; j < 4; ++j)
+                        if (values[j] >= 0 && values[j] <= cut && col + j != self)
+                            sink.add(std::int32_t(col + j), values[j]);
+                }
+#endif
+                for (; col < n; ++col) {
+                    const float s = qn[row] + xn[col] - 2.0f * dot[col];
+                    if (s >= 0 && s <= cut && col != self) sink.add(std::int32_t(col), s);
+                }
+            }, 0, true);
+    } catch (...) {
+        error = std::current_exception();
+    }
+    Py_END_ALLOW_THREADS
+    if (error) return raise_exception(error);
+    return wrap_result(std::move(result));
+}
+
 PyObject* py_brute_query(PyObject*, PyObject* args) {
     PyObject *train_object, *query_object, *thr_object;
     Py_ssize_t q_offset, threads;
@@ -978,6 +1041,7 @@ PyObject* py_fpcr(PyObject*, PyObject* args) {
 }
 
 PyMethodDef methods[] = {
+    {"integer_gram", py_integer_gram, METH_VARARGS, "Select neighbors from exact integer dot products."},
     {"finish_mask", py_finish_mask, METH_VARARGS, "Refine a Metal candidate bitmap in column order."},
     {"build_tree", py_build_tree, METH_VARARGS, "build_tree(train_f32, leaf_size, threads) -> tree"},
     {"tree_info", py_tree_info, METH_VARARGS, "tree_info(tree) -> (n, d, leaf_size, depth, n_nodes)"},

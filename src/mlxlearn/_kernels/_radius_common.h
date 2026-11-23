@@ -604,6 +604,31 @@ struct SortScratch {
     std::vector<Item> items;
 };
 
+// For dense integer neighborhoods, stable counting sort avoids comparing
+// tied distances. The input columns are already in ascending training order.
+inline void sort_integer_row(std::int32_t* cols, double* d2, std::size_t count,
+                             std::size_t bins, SortScratch& scratch) {
+    auto& positions = scratch.word_offsets;
+    positions.assign(bins, 0);
+    for (std::size_t i = 0; i < count; ++i) ++positions[std::size_t(d2[i])];
+    std::uint32_t prefix = 0;
+    for (auto& position : positions) {
+        const auto size = position;
+        position = prefix;
+        prefix += size;
+    }
+    auto& entries = scratch.keys;
+    entries.resize(count);
+    for (std::size_t i = 0; i < count; ++i) {
+        const auto bin = std::uint32_t(d2[i]);
+        entries[positions[bin]++] = (std::uint64_t(bin) << 32) | std::uint32_t(cols[i]);
+    }
+    for (std::size_t i = 0; i < count; ++i) {
+        cols[i] = std::int32_t(std::uint32_t(entries[i]));
+        d2[i] = double(entries[i] >> 32);
+    }
+}
+
 inline void sort_row(std::int32_t* cols, double* d2, std::size_t count, bool by_distance,
                      double R2, SortScratch& scratch, std::size_t unique_columns = 0) {
     if (count <= 1) return;
@@ -981,7 +1006,8 @@ template <class RowFn>
 std::unique_ptr<Result> run_rows(Py_ssize_t n_query, Py_ssize_t n_train, const Thr& thr,
                                  int mode, const std::vector<std::int64_t>& order,
                                  const std::vector<std::int64_t>& bounds, int threads,
-                                 double estimated_ns, RowFn&& fn, std::size_t unique_columns = 0) {
+                                 double estimated_ns, RowFn&& fn, std::size_t unique_columns = 0,
+                                 bool ordered_integers = false) {
     auto result = std::make_unique<Result>();
     result->n_query = n_query;
     result->n_train = n_train;
@@ -1014,8 +1040,14 @@ std::unique_ptr<Result> run_rows(Py_ssize_t n_query, Py_ssize_t n_train, const T
             fn(row, sink, scratch);
             if (!count_only) {
                 const std::size_t count = out.cols.size() - begin;
-                sort_row(out.cols.data() + begin, keep_d2 ? out.d2.data() + begin : nullptr, count,
-                         by_distance, thr.R2, scratch, unique_columns);
+                if (ordered_integers && by_distance && count >= 64 && thr.R2 < 4096
+                    && thr.R2 < double(count)) {
+                    sort_integer_row(out.cols.data() + begin, out.d2.data() + begin, count,
+                                     std::size_t(thr.R2) + 1, scratch);
+                } else if (!ordered_integers || by_distance) {
+                    sort_row(out.cols.data() + begin, keep_d2 ? out.d2.data() + begin : nullptr,
+                             count, by_distance, thr.R2, scratch, unique_columns);
+                }
             }
             raw->row_task[row] = std::int32_t(task);
             raw->row_off[row] = std::int64_t(begin);

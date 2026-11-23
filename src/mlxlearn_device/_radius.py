@@ -27,7 +27,7 @@ from functools import cache
 
 import mlx.core as mx
 
-__all__ = ["compact_gram", "mask_gram"]
+__all__ = ["compact_gram", "fused_mask_gram", "mask_gram"]
 
 #: Threads per threadgroup, columns per thread and rows per thread.
 _THREADS = 128
@@ -208,24 +208,30 @@ def _mask_kernel():
     )
 
 
+def _mask_layout(rows, width, query_norms, train_norms, row_offset):
+    if query_norms.ndim != 1 or train_norms.ndim != 1:
+        raise ValueError("expected one-dimensional norm arrays")
+    if query_norms.dtype != mx.float32 or train_norms.dtype != mx.float32:
+        raise ValueError("products and norms must be float32")
+    row_offset = operator.index(row_offset)
+    if not 0 <= row_offset < 2**32 or row_offset + rows > 2**32:
+        raise ValueError("query norm indices must fit in uint32")
+    if row_offset + rows > query_norms.size or width > train_norms.size:
+        raise ValueError("query and training norms must cover the product tile")
+    return row_offset, (width + 31) // 32
+
+
 def mask_gram(products, query_norms, train_norms, *, cut, factor, floor, row_offset, stream):
     """Store the certified candidates in column order, one bit per training row."""
-    if products.ndim != 2 or query_norms.ndim != 1 or train_norms.ndim != 1:
-        raise ValueError("expected a product matrix and one-dimensional norm arrays")
-    if any(array.dtype != mx.float32 for array in (products, query_norms, train_norms)):
-        raise ValueError("products and norms must be float32")
+    if products.ndim != 2 or products.dtype != mx.float32:
+        raise ValueError("expected a float32 product matrix")
     rows, width = products.shape
-    row_offset = operator.index(row_offset)
     # Grid extents are signed ints in MLX. The kernel computes norm indices
     # in uint32, and linear product/mask offsets in size_t.
     grid_width = ((width + 127) // 128) * 128
     if grid_width >= 2**31 or rows >= 2**31:
         raise ValueError("tile dimensions exceed the Metal kernel grid limit")
-    if not 0 <= row_offset < 2**32 or row_offset + rows > 2**32:
-        raise ValueError("query norm indices must fit in uint32")
-    if row_offset + rows > query_norms.size or width > train_norms.size:
-        raise ValueError("query and training norms must cover the product tile")
-    words = (width + 31) // 32
+    row_offset, words = _mask_layout(rows, width, query_norms, train_norms, row_offset)
     if rows == 0 or width == 0:
         return mx.zeros((rows, words), dtype=mx.uint32, stream=stream)
     shape = mx.array([width, words, row_offset, 0, 0, 0, 0, 0], dtype=mx.uint32)
@@ -234,6 +240,89 @@ def mask_gram(products, query_norms, train_norms, *, cut, factor, floor, row_off
         inputs=[_padded(products, stream), _padded(query_norms, stream),
                 _padded(train_norms, stream), shape, settings],
         grid=(grid_width, rows, 1),
+        threadgroup=(128, 1, 1),
+        output_shapes=[(rows, words)],
+        output_dtypes=[mx.uint32],
+        stream=stream,
+    )[0]
+
+
+# In an Apple 8x8 matrix fragment, lanes differing in bit zero or bit three
+# share fm, the fragment row. Each of those four lanes owns a different
+# adjacent pair of columns in every 8-column fragment. Shuffle the decisions
+# within that row to assemble its 32-bit word without atomics or shared stores.
+_MASK_PRODUCT = r"""
+const int words = (N + 31) / 32;
+const int word = (col0 + sn) / 32;
+#pragma clang loop unroll(full)
+for (int i = 0; i < 4; ++i) {
+    const int r = row0 + sm + i * 8 + fm;
+    const float qsq = r < M ? query_norms[shape[4] + uint(r)] : 0.0f;
+    uint bits = 0;
+    #pragma clang loop unroll(full)
+    for (int j = 0; j < 4; ++j) {
+        const int c = col0 + sn + j * 8 + fn;
+        const auto values = acc[i][j].thread_elements();
+        #pragma clang loop unroll(full)
+        for (int t = 0; t < 2; ++t) {
+            if (c + t < N) {
+                const bool hit = is_radius_candidate(qsq, train_norms[c + t], values[t],
+                                                     settings[0], settings[1], settings[2]);
+                bits |= uint(hit) << (j * 8 + fn + t);
+            }
+        }
+    }
+    bits |= metal::simd_shuffle_xor(bits, ushort(1));
+    bits |= metal::simd_shuffle_xor(bits, ushort(8));
+    if (fn == 0 && r < M && word < words)
+        masks[size_t(r) * words + word] = bits;
+}
+"""
+
+
+@cache
+def _fused_mask_kernel():
+    from ._binary32 import GEMM_TILE_HEADER, GEMM_TILE_SOURCE
+
+    return mx.fast.metal_kernel(
+        name="mlxlearn_radius_fused_gram_mask",
+        input_names=["a", "b", "shape", "query_norms", "train_norms", "settings"],
+        output_names=["masks"],
+        header=GEMM_TILE_HEADER + _GRAM_HEADER,
+        source=GEMM_TILE_SOURCE + _MASK_PRODUCT,
+    )
+
+
+def fused_mask_gram(queries, train, query_norms, train_norms, *, cut, factor, floor,
+                    row_offset, stream):
+    """Screen a binary32 matrix product inside the GEMM, emitting only candidate bits.
+
+    Both operands contain centered rows. This uses the same binary32 fragment
+    arithmetic as the exact GEMM on TF32-capable GPUs. The product stays in
+    registers until the existing conservative Gram bound has consumed it.
+    """
+    if queries.ndim != 2 or train.ndim != 2 or queries.shape[1] != train.shape[1]:
+        raise ValueError("expected query and training matrices with matching feature counts")
+    if queries.dtype != mx.float32 or train.dtype != mx.float32:
+        raise ValueError("query and training coordinates must be float32")
+    rows, depth = queries.shape
+    width = train.shape[0]
+    grid_width = ((width + 63) // 64) * 128
+    # The shared GEMM computes 64-aligned row/column ends and 16-aligned
+    # feature ends as signed int. MLX also takes signed grid extents.
+    if grid_width >= 2**31 or rows > 2**31 - 65 or depth > 2**31 - 17:
+        raise ValueError("tile dimensions exceed the Metal kernel grid limit")
+    row_offset, words = _mask_layout(rows, width, query_norms, train_norms, row_offset)
+    if rows == 0 or width == 0:
+        return mx.zeros((rows, words), dtype=mx.uint32, stream=stream)
+    shape = mx.array([rows, width, depth, depth, row_offset, 0, 0, 0], dtype=mx.uint32)
+    settings = mx.array([cut, factor, floor, 0, 0, 0, 0, 0], dtype=mx.float32)
+    aligned = depth % 4 == 0
+    return _fused_mask_kernel()(
+        inputs=[_padded(queries, stream), _padded(train, stream), shape,
+                _padded(query_norms, stream), _padded(train_norms, stream), settings],
+        template=[("TA", False), ("TB", True), ("VA", aligned), ("VB", aligned)],
+        grid=(grid_width, (rows + 63) // 64, 1),
         threadgroup=(128, 1, 1),
         output_shapes=[(rows, words)],
         output_dtypes=[mx.uint32],

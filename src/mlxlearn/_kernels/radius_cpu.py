@@ -409,6 +409,35 @@ def finish_pairs(train32, queries32, rows, cols, thr: Thresholds, *, exclude_sel
     return NativeResult(capsule, workers)
 
 
+# A 16 MiB product tile amortizes BLAS dispatch and allows a complete
+# 128-query panel at 32k training rows on Apple Silicon.
+_INTEGER_GRAM_TILE_ELEMENTS = 1 << 22
+
+
+def integer_gram_parts(train, queries, train_norms, thr, *, q_offset, exclude_self,
+                       need_distance, sort, threads):
+    """Use the certified float32 Gram matrix directly, in query-row tiles."""
+    native = _require()
+    workers = _threads(threads)
+    mode = _mode(thr, need_distance=need_distance, sort=sort)
+    params = threshold_tuple(thr)
+    limit = max(1, _INTEGER_GRAM_TILE_ELEMENTS // len(train))
+    block_rows = min(len(queries), (limit // 32) * 32 if limit >= 32 else limit)
+    if not block_rows:
+        return []
+    products = np.empty((block_rows, len(train)), dtype=np.float32)
+    parts = []
+    for start in range(0, len(queries), block_rows):
+        block = queries[start:start + block_rows]
+        norms = np.einsum("ij,ij->i", block, block)
+        tile = products[:len(block)]
+        np.matmul(block, train.T, out=tile)
+        capsule = native.integer_gram(tile, train_norms, norms, params,
+                                      q_offset + start, exclude_self, mode, workers)
+        parts.append(NativeResult(capsule, workers))
+    return parts
+
+
 def finish_mask(train32, queries32, mask, thr, *, q_offset, exclude_self, need_distance,
                 sort, threads):
     """Refine candidate bits in ascending training order."""

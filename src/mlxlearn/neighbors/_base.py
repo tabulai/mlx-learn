@@ -39,6 +39,7 @@ from .._common.validation import (
     validate_data,
 )
 from .._kernels.distance import build_index
+from .._kernels.radius import prefer_integer_host_storage
 from ..exceptions import CapabilityError, UnsupportedParameterError
 
 __all__ = ["MLXNeighborsMixin", "MLXRadiusMixin", "SUPPORTED_METRICS"]
@@ -343,8 +344,9 @@ class MLXNeighborsMixin(BackendMixin):
             n_samples, n_features = X_checked.shape
             # At up to eight features auto radius queries run on the host for
             # every batch size. A later k-neighbor query can still select Metal.
-            host_radius_fit = (isinstance(self, MLXRadiusMixin) and self.algorithm == "auto"
-                               and n_features <= 8 and n_samples < 2**31)
+            host_radius_fit = isinstance(self, MLXRadiusMixin) and (
+                (self.algorithm == "auto" and n_features <= 8 and n_samples < 2**31)
+                or prefer_integer_host_storage(X_checked))
             if (host_radius_fit or (n_samples <= 2048 and n_features <= 64)
                     or (n_samples <= 16384 and n_features <= 32)):
                 backend = "cpu"

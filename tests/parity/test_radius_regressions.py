@@ -68,6 +68,9 @@ def test_automatic_stock_respects_the_squared_cutoff(metric, radius, cython_redu
     X[1, :3] = 1
     X[2:, 0] = 4
     Q = np.zeros((1024, 16), dtype=np.float32)
+    # Keep the stock fallback under test: the squared Gram intermediates fit
+    # exactly in binary64 but exceed the bounded-integer binary32 fast path.
+    X[:, -1] = Q[:, -1] = 2048
     with config_context(device="cpu"), sklearn_config_context(
         enable_cython_pairwise_dist=cython_reductions,
     ):

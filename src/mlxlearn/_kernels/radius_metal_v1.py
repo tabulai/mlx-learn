@@ -263,7 +263,7 @@ class _Query:
     """
 
     def __init__(self, device_index, train32, queries32, thr, *, exclude_self, q_offset,
-                 need_distance, cap_hint, threads, sort=False):
+                 need_distance, cap_hint, threads, sort=False, raw=False):
         import mlx.core as mx
 
         from mlxlearn_device._binary32 import matmul
@@ -276,6 +276,7 @@ class _Query:
         # The native finisher orders every row by column itself; the NumPy
         # refinement needs rows that are already ascending.
         self.sort_rows = _native_finisher() is None
+        self.raw = raw and not self.sort_rows
         self.train32 = train32
         self.queries32 = queries32
         self.thr = thr
@@ -301,12 +302,16 @@ class _Query:
             self.train_tiles = mx.split(train, list(range(self.width, n, self.width)),
                                         axis=0, stream=self.gpu)
         self.n_tiles = len(self.train_tiles)
+        # A substantial batch amortizes the 64-by-64 product tiles. Capping
+        # the depth leaves wide products to the device's general GEMM.
+        self.fuse_mask = (self.n_tiles == 1 and n >= 2048 and self.n_query >= 128
+                          and 16 <= train.shape[1] <= 256 and n * self.n_query >= 2**20)
 
         # q0 -> [q1, per-tile (lengths, cols) or None, tiles still missing]
         self.blocks: dict[int, list] = {}
         self.rescans: list[_Rescan] = []
         self.ready: list = []
-        self.done: dict[int, tuple] = {}
+        self.done = {}
 
     # -- device work ------------------------------------------------------------
 
@@ -335,10 +340,11 @@ class _Query:
         # A bitmap costs one bit for every training row, even when no candidate
         # survives. Use it when a per-row index list would occupy similar space.
         return (not self.sort_rows and _FORCE_CAPACITY is None and self.n_tiles == 1
-                and self.cap_hint is not None and self.cap_hint >= max(256, self.n / 128))
+                and (self.fuse_mask or (self.cap_hint is not None
+                                        and self.cap_hint >= max(256, self.n / 128))))
 
     def _run_mask(self, blocks, norms_all, starts):
-        from mlxlearn_device._radius import mask_gram
+        from mlxlearn_device._radius import fused_mask_gram, mask_gram
 
         native = _native_finisher()
         parts = []
@@ -352,12 +358,16 @@ class _Query:
                 need_distance=self.need_distance, sort=self.sort, threads=self.threads,
             )
             debug.add(candidates=candidates)
-            parts.append(result.to_csr(need_distance=self.need_distance, route=ROUTE))
+            parts.append(result if self.raw else result.to_csr(need_distance=self.need_distance, route=ROUTE))
 
         for start, block in zip(starts, blocks, strict=True):
-            products = self.matmul(block, self.train_tiles[0], transpose_b=True, stream=self.gpu)
-            mask = mask_gram(products, norms_all, self.train_sq, cut=self.cut, factor=self.factor,
-                             floor=self.floor, row_offset=start, stream=self.gpu)
+            options = {"cut": self.cut, "factor": self.factor, "floor": self.floor,
+                       "row_offset": start, "stream": self.gpu}
+            if self.fuse_mask:
+                mask = fused_mask_gram(block, self.train_tiles[0], norms_all, self.train_sq, **options)
+            else:
+                products = self.matmul(block, self.train_tiles[0], transpose_b=True, stream=self.gpu)
+                mask = mask_gram(products, norms_all, self.train_sq, **options)
             self.mx.async_eval(mask)
             queued.append((start, start + block.shape[0], mask))
             if len(queued) == _PIPELINE_WAVES:
@@ -365,9 +375,9 @@ class _Query:
         while queued:
             finish()
         debug.add(calls=1, screened_pairs=self.n_query * self.n, waves=len(starts), tiles=len(starts))
-        return concatenate(parts)
+        return parts if self.raw else concatenate(parts)
 
-    def run(self) -> RadiusCSR:
+    def run(self) -> RadiusCSR | list:
         mx, gpu = self.mx, self.gpu
         nq, rows = self.n_query, self.block_rows
         centred_all, norms_all = self._centred(self.queries32)
@@ -495,31 +505,25 @@ class _Query:
         if not self.ready:
             return
         ready, self.ready = self.ready, []
+        native = _native_finisher()
+        if native is not None:
+            # A completed query block already contains every column tile. Keep
+            # its native rows for fused prediction, or convert once for callers
+            # that need indices. Rescanned blocks can finish out of order.
+            for q0, q1, rows, cols in ready:
+                result = native.finish_pairs(
+                    self.train32, self.queries32[q0:q1], rows - q0, cols, self.thr,
+                    presorted=True, need_distance=self.need_distance, sort=self.sort,
+                    threads=self.threads,
+                )
+                self.done[q0] = (result if self.raw
+                                 else result.to_csr(need_distance=self.need_distance, route=ROUTE))
+            return
         if len(ready) == 1:
             rows, cols = ready[0][2], ready[0][3]
         else:
             rows = np.concatenate([item[2] for item in ready])
             cols = np.concatenate([item[3] for item in ready])
-        native = _native_finisher()
-        if native is not None:
-            # Rows arrive grouped in query order (columns unordered within a
-            # row; the finisher sorts them) with self pairs already dropped.
-            # Only the flushed span of queries is passed, so a call's host work
-            # stays linear in its query count.
-            lo = min(item[0] for item in ready)
-            hi = max(item[1] for item in ready)
-            csr = native.finish_pairs(
-                self.train32, self.queries32[lo:hi], rows - lo, cols, self.thr,
-                presorted=True, need_distance=self.need_distance, sort=self.sort,
-                threads=self.threads,
-            ).to_csr(need_distance=self.need_distance, route=ROUTE)
-            for q0, q1, _, _ in ready:
-                a, b = int(csr.indptr[q0 - lo]), int(csr.indptr[q1 - lo])
-                self.done[q0] = (
-                    np.diff(csr.indptr[q0 - lo:q1 - lo + 1]), csr.indices[a:b],
-                    None if csr.distances is None else csr.distances[a:b],
-                )
-            return
         keep, squared = refine(self.train32, self.queries32, rows, cols, self.thr,
                                need_distance=self.need_distance, threads=self.threads)
         distances = None if squared is None else np.sqrt(squared)
@@ -527,19 +531,16 @@ class _Query:
         for q0, q1, block_rows, _ in ready:
             stop = start + len(block_rows)
             kept = keep[start:stop]
-            self.done[q0] = (
+            self.done[q0] = from_grouped(
                 np.bincount(block_rows[kept] - q0, minlength=q1 - q0),
                 cols[start:stop][kept],
-                None if distances is None else distances[start:stop][kept],
+                None if distances is None else distances[start:stop][kept], route=ROUTE,
             )
             start = stop
 
-    def _result(self) -> RadiusCSR:
+    def _result(self) -> RadiusCSR | list:
         parts = [self.done[q0] for q0 in sorted(self.done)]
-        lengths = np.concatenate([p[0] for p in parts]).astype(INDEX_DTYPE, copy=False)
-        cols = np.concatenate([p[1] for p in parts]).astype(INDEX_DTYPE, copy=False)
-        distances = (np.concatenate([p[2] for p in parts]) if self.need_distance else None)
-        return from_grouped(lengths, cols, distances, route=ROUTE)
+        return parts if self.raw else concatenate(parts)
 
 
 def _native_finisher():
@@ -550,7 +551,8 @@ def _native_finisher():
 
 def metal_query(device_index, train32: np.ndarray, queries32: np.ndarray, thr: Thresholds, *,
                 exclude_self: bool = False, q_offset: int = 0, need_distance: bool = True,
-                cap_hint=0, threads: int | None = 1, sort: bool = False) -> RadiusCSR | None:
+                cap_hint=0, threads: int | None = 1, sort: bool = False,
+                raw: bool = False) -> RadiusCSR | list | None:
     """Radius neighbours of ``queries32`` through the interim Metal screen.
 
     Parameters
@@ -575,11 +577,15 @@ def metal_query(device_index, train32: np.ndarray, queries32: np.ndarray, thr: T
         capacity. Too small only costs a rescan of the rows that overflow.
     threads : int or None
         Host threads for refinement.
+    raw : bool
+        Allow a list of native result blocks for fused class votes and means.
 
     Returns
     -------
     RadiusCSR with ``route="metal"``, rows in query order and ascending
-    training indices within each row; or ``None`` when the Gram screen cannot
+    training indices within each row (distance order when sorting). With
+    ``raw=True``, native blocks can be returned in query order instead.
+    Returns ``None`` when the Gram screen cannot
     be certified for this dimension (``thr.gram_cut is None``), in which case
     the caller must use another route.
 
@@ -600,7 +606,7 @@ def metal_query(device_index, train32: np.ndarray, queries32: np.ndarray, thr: T
         try:
             return _Query(device_index, train32, queries32, thr, exclude_self=exclude_self,
                           q_offset=q_offset, need_distance=need_distance, cap_hint=cap_hint,
-                          threads=threads, sort=sort).run()
+                          threads=threads, sort=sort, raw=raw).run()
         finally:
             _bound_buffer_cache()
 

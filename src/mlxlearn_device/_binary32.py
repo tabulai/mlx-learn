@@ -68,7 +68,7 @@ def matmul_may_round_float32() -> bool:
 # no scratch. Split launches (grid z) cover consecutive 16-aligned K ranges and
 # write partial products for a separate sum. Inputs with fewer than eight
 # elements arrive in the constant address space.
-_HEADER = r"""
+GEMM_TILE_HEADER = r"""
 #include <metal_simdgroup_matrix>
 inline float4 b32_load4(const device float* p) { return *(const device float4*)p; }
 inline float4 b32_load4(const constant float* p) { return *(const constant float4*)p; }
@@ -137,7 +137,10 @@ struct b32_loader {
 };
 """
 
-_SOURCE = r"""
+# A shared 64-by-64 binary32 product. Consumers supply the output step.
+# Each SIMD group holds a 32-by-32 fragment in acc, and each lane owns
+# adjacent column pairs (fn, fn + 1) for fragment row fm.
+GEMM_TILE_SOURCE = r"""
 constexpr int BM = 64, BN = 64, BK = 16;
 constexpr int LDA = TA ? BM + 4 : BK + 4;
 constexpr int LDB = TB ? BK + 4 : BN + 4;
@@ -194,6 +197,9 @@ for (int k0 = k_begin; k0 < k_end; k0 += BK) {
 const int quad = lane / 4;
 const int fm = (quad & 4) + (lane / 2) % 4;
 const int fn = (quad & 2) * 2 + (lane % 2) * 2;
+"""
+
+_STORE_PRODUCT = r"""
 device float* target = out + size_t(threadgroup_position_in_grid.z) * size_t(M) * size_t(N);
 // Interior tiles with an even row length store each lane's adjacent pair as
 // one aligned float2 (fn is even); other tiles check every element.
@@ -237,8 +243,8 @@ def _kernel(epilogue: bool):
         name="mlxlearn_binary32_gemm_axpby" if epilogue else "mlxlearn_binary32_gemm",
         input_names=inputs,
         output_names=["out"],
-        source=(_AXPBY if epilogue else "#define STORE(value) (value)\n") + _SOURCE,
-        header=_HEADER,
+        source=(_AXPBY if epilogue else "#define STORE(value) (value)\n") + GEMM_TILE_SOURCE + _STORE_PRODUCT,
+        header=GEMM_TILE_HEADER,
     )
 
 

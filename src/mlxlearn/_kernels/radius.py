@@ -118,6 +118,10 @@ class _TrainStats:
         return _max_abs(self.train)
 
     @cached_property
+    def integer_norms(self):
+        return np.einsum("ij,ij->i", self.train, self.train)
+
+    @cached_property
     def center(self):
         return self.train.mean(axis=0, dtype=np.float64)
 
@@ -137,11 +141,11 @@ def _all_integral(values):
     flat = values.reshape(-1)
     # A short prefix typically disproves this optional certificate on real data.
     prefix = flat[:128]
-    if not np.array_equal(prefix, np.rint(prefix)):
+    if not np.array_equal(prefix.view(np.uint32), np.rint(prefix).view(np.uint32)):
         return False
     for start in range(len(prefix), flat.size, 1 << 20):
         block = flat[start:start + (1 << 20)]
-        if not np.array_equal(block, np.rint(block)):
+        if not np.array_equal(block.view(np.uint32), np.rint(block).view(np.uint32)):
             return False
     return True
 
@@ -150,15 +154,25 @@ def _max_abs(values):
     return max(-float(values.min(initial=0.0)), float(values.max(initial=0.0)))
 
 
-def _batch_integer_exact(stats: _TrainStats, queries: np.ndarray, *, self_query: bool) -> bool:
+def _integer_distance_bound(stats: _TrainStats, queries: np.ndarray, *, self_query=False) -> float:
+    """Bound every integer partial sum in the Gram identity, or decline with infinity."""
     if not stats.integral:
-        return False
+        return math.inf
     largest = stats.max_abs
     if not self_query:
         if not _all_integral(queries):
-            return False
+            return math.inf
         largest = max(largest, _max_abs(queries))
-    return stats.d * (2.0 * largest) ** 2 < 2.0**53
+    return stats.d * (2.0 * largest) ** 2
+
+
+def prefer_integer_host_storage(train):
+    """A cheap fit-time hint. The query path independently certifies all rows."""
+    n, d = train.shape
+    if not (512 <= n <= 131072 and 9 <= d <= 128):
+        return False
+    prefix = train.reshape(-1)[:128]
+    return _all_integral(prefix) and 4 * d * _max_abs(prefix) ** 2 <= 2.0**24
 
 
 def _centered_norms_fit(values, center):
@@ -187,7 +201,8 @@ class RadiusSearch:
         self._lock = threading.Lock()
         self._train = None
         self._stats = None
-        self._tree = None
+        self._trees = {}
+        self._pilot_tree = None
         self._brute = None
         self._lookup = None
         self.last_plan: RoutePlan | None = None
@@ -226,21 +241,40 @@ class RadiusSearch:
                     self._lookup = RowLookup(train)
         return self._lookup
 
-    def _ensure_tree(self, threads=None):
-        tree = self._tree
+    def _ensure_tree(self, threads=None, leaf_size=0):
+        tree = self._trees.get(leaf_size)
         if tree is None:
             native = native_engine()
             train = self.train
             with self._lock:
-                if self._tree is None:
+                tree = self._trees.get(leaf_size)
+                if tree is None:
                     if native is not None:
-                        self._tree = native.build_tree(train, threads=threads)
+                        tree = native.build_tree(train, leaf_size=leaf_size, threads=threads)
                     else:
                         from .radius_host import build_tree
 
-                        self._tree = build_tree(train)
-                tree = self._tree
+                        tree = build_tree(train)
+                    self._trees[leaf_size] = tree
         return tree
+
+    def _coarse_tree_selective(self, queries, R2, native):
+        # Sampled cell visits predict work only. The full tree tests every
+        # potentially intersecting box and refines candidates on the owned rows.
+        pilot = self._pilot_tree
+        if pilot is None:
+            train = self.train
+            with self._lock:
+                if self._pilot_tree is None:
+                    # Deterministic sampling also works for interleaved clusters.
+                    sample = np.random.default_rng(0).choice(len(train), 1024, replace=False)
+                    self._pilot_tree = native.build_tree(train[sample], leaf_size=16, threads=1)
+                pilot = self._pilot_tree
+        sample = np.linspace(0, len(queries) - 1, 8, dtype=np.intp)
+        visits = native.tree_pilot(pilot, queries[sample], R2, visit_cap=128, threads=1)[:, 1]
+        # Reject the route if any probe hit the visit cap. This bounds planning
+        # on diffuse inputs while allowing inexpensive scans of compact cells.
+        return visits.max() < 128 and visits.sum() <= 8 * 96
 
     def _ensure_brute(self):
         brute = self._brute
@@ -268,7 +302,24 @@ class RadiusSearch:
         if (R2 < 2.0**-298 and algorithm == "auto" and forced in ("", "auto")
                 and fixed != "mlx" and nq >= 512 and nq * 16 >= n):
             return RoutePlan("row-lookup", "exact coordinate matches")
+        if (forced in ("", "auto") and fixed != "mlx" and 0 < R2 < math.inf
+                and 9 <= d <= 128 and 512 <= n <= 131072 and 16 <= nq
+                and 2**16 <= n * nq <= 2**26 and native_engine() is not None
+                and _integer_distance_bound(stats, queries) <= 2.0**24):
+            # Wide, multi-billion-term batches use Metal's higher matrix
+            # throughput when available. Host-only fits still use the certificate.
+            if fixed == "cpu" or n * nq * d <= 2**30 or not has_gpu():
+                return RoutePlan("integer-gram", "exact float32 integer dot products")
         small = n * nq * d <= SMALL_WORK or math.isinf(R2) or nq == 0
+        # In higher dimensions a coarse tree is worthwhile only when the data
+        # separate into a few cells per query. Limit full-index build cost and
+        # amortize its construction and the bounded pilot over a substantial batch.
+        if (not small and 16 < d <= 128 and n >= 8192 and nq >= 64
+                and n * nq >= 2**21 and n * d <= 2**25 and algorithm == "auto"
+                and fixed != "mlx" and forced in ("", "auto")):
+            native = native_engine()
+            if native is not None and self._coarse_tree_selective(queries, R2, native):
+                return RoutePlan("tree", "selective coarse cells", leaf_size=128)
         gpu = False
         if fixed != "cpu" and (forced == "metal" or fixed == "mlx"
                                or (not small and forced in ("", "auto")
@@ -316,7 +367,7 @@ class RadiusSearch:
             # Stock's non-Cython paths may square the radius in its input
             # dtype or compare a rounded square root against it (metric="l2").
             if (d <= 15 or not sklearn_config()["enable_cython_pairwise_dist"]
-                    or not _batch_integer_exact(stats, queries, self_query=exclude_self)):
+                    or _integer_distance_bound(stats, queries, self_query=exclude_self) >= 2.0**53):
                 plan = plan_radius(replace(ctx, patched=False))
         return plan
 
@@ -358,20 +409,25 @@ class RadiusSearch:
                                 q_offset=q_offset, exclude_self=exclude_self)], plan
         threads = resolve_threads(n_jobs)
         stats = self.stats
-        integer_exact = 0 < R2 < math.inf and _batch_integer_exact(stats, queries, self_query=exclude_self)
+        integer_exact = plan.route == "integer-gram" or (
+            0 < R2 < math.inf and _integer_distance_bound(stats, queries, self_query=exclude_self) < 2.0**53)
         thr = thresholds(stats.d, R2, integer_exact=integer_exact)
         train = self.train
         native = native_engine()
         sorted_natively = native is not None
-        if plan.route == "tree":
+        if plan.route == "integer-gram":
+            parts = native.integer_gram_parts(
+                train, queries, stats.integer_norms, thr, q_offset=q_offset, exclude_self=exclude_self,
+                need_distance=need_distance, sort=sort_results, threads=threads)
+        elif plan.route == "tree":
             parts = self._tree_parts(train, queries, thr, plan, q_offset=q_offset,
                                      exclude_self=exclude_self, need_distance=need_distance,
                                      sort_results=sort_results, threads=threads)
         elif plan.route == "metal":
             index = device_index() if callable(device_index) else device_index
-            parts = [self._metal(index, train, queries, thr, plan, q_offset=q_offset,
-                                 exclude_self=exclude_self, need_distance=need_distance,
-                                 sort_results=sort_results, threads=threads)]
+            parts = self._metal_parts(index, train, queries, thr, plan, q_offset=q_offset,
+                                      exclude_self=exclude_self, need_distance=need_distance,
+                                      sort_results=sort_results, threads=threads, raw=raw)
         elif native is not None and (stats.d <= 16
                                      or stats.n * nq * stats.d <= _GEMM_SCREEN_WORK):
             parts = [native.brute_query(train, queries, thr, exclude_self=exclude_self,
@@ -399,7 +455,7 @@ class RadiusSearch:
     def _tree_parts(self, train, queries, thr, plan, *, q_offset, exclude_self,
                     need_distance, sort_results, threads):
         native = native_engine()
-        tree = self._ensure_tree(threads)
+        tree = self._ensure_tree(threads, plan.leaf_size)
         nq = len(queries)
         if native is not None:
             # The native result holds at most ~32 B per pair; one call.
@@ -415,13 +471,13 @@ class RadiusSearch:
                            need_distance=need_distance, threads=threads)
                 for start in range(0, nq, batch)]
 
-    def _metal(self, device_index, train, queries, thr, plan, *, q_offset, exclude_self,
-               need_distance, sort_results, threads):
+    def _metal_parts(self, device_index, train, queries, thr, plan, *, q_offset, exclude_self,
+                     need_distance, sort_results, threads, raw):
         from .radius_metal_v1 import metal_query
 
         result = metal_query(device_index, train, queries, thr, exclude_self=exclude_self,
                              q_offset=q_offset, need_distance=need_distance,
-                             cap_hint=plan.cap_hint, threads=threads, sort=sort_results)
+                             cap_hint=plan.cap_hint, threads=threads, sort=sort_results, raw=raw)
         if result is None:
             from .radius_host import brute_host
 
@@ -429,7 +485,7 @@ class RadiusSearch:
                                 exclude_self=exclude_self, q_offset=q_offset,
                                 need_distance=need_distance, sort=sort_results,
                                 threads=threads)
-        return result
+        return result if isinstance(result, list) else [result]
 
 
 def lengths_of(parts: list[RadiusCSR]) -> np.ndarray:

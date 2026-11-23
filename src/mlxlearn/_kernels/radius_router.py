@@ -74,6 +74,7 @@ class RoutePlan:
     route: str
     reason: str
     cap_hint: float = 0.0
+    leaf_size: int = 0
 
 
 def density_sample(sample: TrainSample, queries: np.ndarray, R2: float, *,

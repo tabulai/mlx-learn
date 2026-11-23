@@ -251,3 +251,46 @@ and 4.06× warm. Stock won 14 of 22 cold cases, including every high-dimensional
 Metal search. The new warm median was lower than stock in all 22 cases.
 The very dense integer sort delegated to stock and finished
 within 2% of it.
+
+## 8. Reusing the kNN and clustering optimizations
+
+The kNN binary32 matrix kernel now also supports radius screening on Metal.
+It writes a candidate bit as soon as a dot product is available. For a
+256-query block over 128,000 training rows, the intermediate uses 3.91 MiB,
+down from 125 MiB for the float32 products. The existing exact refinement
+decides membership. On CPU, bounded integer coordinates use the kNN exact
+dot-product shortcut after a full check of the training and query values.
+Dense sorted results use a stable counting sort when the squared distances
+span a small range.
+
+For well-separated data, the router borrows the grouping idea from O-means
+and the lower-bound pruning used in Lloyd's k-means. Eight sample queries
+estimate whether a coarse tree is worth building. The full query skips a
+group only when its bounding box lies outside the radius. For prediction,
+the native query blocks feed class votes and weighted sums directly, applying
+the same early reduction used in kNN and E-means.
+
+The benchmark compares the public estimators against `478572a` and stock
+scikit-learn 1.9.1 on the M4 Max. Cold timings include fit and the first call
+in three fresh processes, after imports and data generation. Warm medians use
+27 search calls or 24 prediction calls. Each workload has equal weight in
+the geometric mean.
+
+| Public operation | Cases | Cold speedup vs previous | Warm speedup vs previous | Cold speedup vs stock | Warm speedup vs stock |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Radius search | 28 | 1.27× | 1.23× | 1.07× | 4.42× |
+| Radius classifier probabilities and regressor predictions | 12 | 1.19× | 2.93× | 0.54× | 3.51× |
+
+The dense sorted integer search fell from 43.56 to 9.04 ms cold and from
+5.92 to 2.02 ms warm. For 128,000 rows in 128 separated clusters, the warm
+search fell from 3.74 to 1.14 ms. Dense distance-weighted regression fell
+from 35.62 to 4.37 ms warm. Stock led on 16 of 28 cold searches and all 12
+cold predictions. The patched estimators led on every warm comparison with stock.
+
+All 28 search workloads returned identical neighbor sets across the three
+implementations. Direct float64 distances were checked on sampled rows.
+All 12 prediction outputs matched the previous commit exactly, including the
+positions of missing values. Stock also matched within tolerance except that,
+for distance weighting, exact copies of training rows were checked against
+their known targets or labels because stock can return a tiny positive
+distance for identical float32 inputs.

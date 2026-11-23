@@ -205,7 +205,8 @@ def test_patched_radius_routing_is_state_free(rng):
     _bitwise_equal(first[1], second[1])
 
 
-def test_patched_sparse_high_d_radius_stays_owned_and_dense_output_uses_stock(rng):
+def test_patched_sparse_and_dense_integer_radius_routes(rng):
+    from mlxlearn._kernels import radius_cpu
     from mlxlearn.patching._estimators import NearestNeighbors as Patched
 
     X = rng.normal(size=(16_384, 16)).astype(np.float32)
@@ -219,11 +220,14 @@ def test_patched_sparse_high_d_radius_stays_owned_and_dense_output_uses_stock(rn
     _bitwise_equal(first_idx, warm_idx)
     _bitwise_equal(first_dist, warm_dist)
 
-    # Bounded integer coordinates give stock exact squared distances. Nearly
-    # every row lies inside radius 6, so the dense-output rule can delegate.
-    nn = Patched(radius=6.0, algorithm="brute").fit(np.rint(X))
-    nn.radius_neighbors(np.zeros_like(Q), return_distance=False)
-    assert nn.last_query_backend_ == "sklearn"
+    integers = np.rint(X)
+    nn = Patched(radius=6.0, algorithm="brute").fit(integers)
+    rows = nn.radius_neighbors(np.zeros_like(Q), return_distance=False)
+    expected = np.flatnonzero(np.einsum("ij,ij->i", integers, integers) <= 36)
+    for row in rows:
+        np.testing.assert_array_equal(np.sort(row), expected)
+    if radius_cpu.AVAILABLE:
+        assert nn._index_._radius_search.last_plan.route == "integer-gram"
 
 
 def test_patched_low_dimensional_radius_reuses_a_cpu_tree(rng):
@@ -237,9 +241,9 @@ def test_patched_low_dimensional_radius_reuses_a_cpu_tree(rng):
     first_dist, first_idx = nn.radius_neighbors(Q)
     assert nn.last_query_backend_ == "cpu"
     assert nn._index_._radius_search.last_plan.route == "tree"
-    tree = nn._index_._radius_search._tree
+    tree = nn._index_._radius_search._trees[0]
     warm_dist, warm_idx = nn.radius_neighbors(Q)
-    assert nn._index_._radius_search._tree is tree
+    assert nn._index_._radius_search._trees[0] is tree
     restored = pickle.loads(pickle.dumps(nn))
     restored_dist, restored_idx = restored.radius_neighbors(Q)
     _bitwise_equal(warm_idx, first_idx)
