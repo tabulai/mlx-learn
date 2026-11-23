@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.7] — 2026-11-23
+
 ### Added
 
 - **Radius-neighbor search** (`radius_neighbors`, `radius_neighbors_graph`) on
@@ -821,7 +823,8 @@ Each of these is now covered by a regression test:
   shape, making `fit` a non-pure function of its arguments.
 - `except Exception:` around the accelerated path, rerunning silently on scikit-learn.
 
-[Unreleased]: https://github.com/tabulai/mlx-learn/compare/v0.1.6...HEAD
+[Unreleased]: https://github.com/tabulai/mlx-learn/compare/v0.1.7...HEAD
+[0.1.7]: https://github.com/tabulai/mlx-learn/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/tabulai/mlx-learn/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/tabulai/mlx-learn/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/tabulai/mlx-learn/compare/v0.1.3...v0.1.4

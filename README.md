@@ -38,17 +38,17 @@ stock inheritance. See the [compatibility details](docs/support_matrix.md).
 
 ## Status
 
-**`0.1.6` — alpha.** The API may change. See [CHANGELOG.md](CHANGELOG.md).
+**`0.1.7` — alpha.** The API may change. See [CHANGELOG.md](CHANGELOG.md).
 
 | Estimator | Status |
 |---|---|
 | `mlxlearn.neighbors.NearestNeighbors` | 0.1.0 |
 | `mlxlearn.neighbors.KNeighborsClassifier` | 0.1.0 |
 | `mlxlearn.neighbors.KNeighborsRegressor` | 0.1.0 |
-| `mlxlearn.neighbors.RadiusNeighborsClassifier` | unreleased |
-| `mlxlearn.neighbors.RadiusNeighborsRegressor` | unreleased |
+| `mlxlearn.neighbors.RadiusNeighborsClassifier` | 0.1.7 |
+| `mlxlearn.neighbors.RadiusNeighborsRegressor` | 0.1.7 |
 | `mlxlearn.linear_model.LogisticRegression` | 0.1.0 |
-| `mlxlearn.linear_model.LinearRegression` | unreleased; host float64 solver with certified rank |
+| `mlxlearn.linear_model.LinearRegression` | 0.1.7, dense host solver with certified rank |
 | `mlxlearn.svm.SVC` (exact) | 0.1.0 |
 | `mlxlearn.decomposition.PCA` | 0.1.2 |
 | `mlxlearn.cluster.EMeans` | 0.1.3; Metal GPU, paper/Faiss recipes |
@@ -60,6 +60,11 @@ stock inheritance. See the [compatibility details](docs/support_matrix.md).
 
 ## Recent benchmark highlights
 
+- **Radius neighbors (0.1.7).** On an M4 Max, repeated radius searches were
+  4.42× faster than scikit-learn across 28 workloads, and repeated radius
+  predictions were 3.51× faster across 12 workloads (geometric means).
+  Including fit and the first call, the speedups were 1.07× for search and
+  0.54× for prediction. [Benchmark results](docs/radius-neighbors-2026-11-22.md#8-reusing-the-knn-and-clustering-optimizations)
 - **K-means++ seeding on the GPU (0.1.6).** `KMeans(init="k-means++")` now
   chooses its starting centers with a Metal screen, and for a given
   `random_state` it selects the same rows as `sklearn.cluster.kmeans_plusplus`.
@@ -215,7 +220,7 @@ CI tests only valid pairs — see [`docs/support_matrix.md`](docs/support_matrix
 pip install mlx-learn
 ```
 
-Version `0.1.6` provides Apple silicon wheels for Python 3.10–3.13 with Metal
+Version `0.1.7` provides Apple silicon wheels for Python 3.10–3.13 with Metal
 and C++ CPU extensions. Source builds can also include these optional extensions.
 The KNN CPU extension handles small workloads and is compiled at build time;
 fitting or querying never invokes the C++ compiler. A compatible wheel includes

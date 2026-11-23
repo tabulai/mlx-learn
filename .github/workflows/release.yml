@@ -47,7 +47,8 @@ jobs:
               assert any(n.endswith("/_metal_loop.abi3.so") for n in wheel.namelist())
               cpu = "mlxlearn/_kernels/_neighbors_cpu_native" + sysconfig.get_config_var("EXT_SUFFIX")
               assert cpu in wheel.namelist(), cpu
-              for module in ("_solvers/_smo_native", "_solvers/_smo_block_native", "_kernels/_svc_cpu_native"):
+              for module in ("_solvers/_smo_native", "_solvers/_smo_block_native",
+                             "_kernels/_svc_cpu_native", "_kernels/_radius_cpu_native"):
                   native = "mlxlearn/" + module + sysconfig.get_config_var("EXT_SUFFIX")
                   assert native in wheel.namelist(), native
           PY
@@ -71,7 +72,7 @@ jobs:
           import numpy as np
           import mlxlearn
           from mlxlearn._solvers import _metal_loop, _smo_native, _smo_block_native
-          from mlxlearn._kernels import _neighbors_cpu_native, _svc_cpu_native
+          from mlxlearn._kernels import _neighbors_cpu_native, _radius_cpu_native, _svc_cpu_native
           from mlxlearn.cluster import EMeans, KMeans, OMeans
           from mlxlearn.decomposition import PCA
 
@@ -83,10 +84,24 @@ jobs:
           model = PCA(n_components=3).fit(X)
           np.testing.assert_allclose(model.transform(X), (X - model.mean_) @ model.components_.T, rtol=1e-12, atol=1e-12)
           import sklearn.decomposition
+          import sklearn.linear_model
+          import sklearn.neighbors
           original = sklearn.decomposition.PCA
           mlxlearn.patch_sklearn()
           assert sklearn.decomposition.PCA is not original
           assert sklearn.decomposition.PCA(n_components=3).fit_transform(X).shape == (64, 3)
+          with mlxlearn.config_context(device="cpu"):
+              y = 2 * X[:, 0] - X[:, 1] + 0.5
+              linear = sklearn.linear_model.LinearRegression().fit(X, y)
+              assert linear.execution_backend_ == "cpu" and linear.rank_ == X.shape[1]
+              np.testing.assert_allclose(linear.predict(X[:4]), y[:4], atol=1e-12)
+              points = np.arange(4, dtype=np.float32).reshape(-1, 1)
+              queries = np.array([[0.5], [2.5]], dtype=np.float32)
+              classifier = sklearn.neighbors.RadiusNeighborsClassifier(radius=0.5).fit(points, [0, 0, 1, 1])
+              regressor = sklearn.neighbors.RadiusNeighborsRegressor(radius=0.5).fit(points, [0, 2, 4, 6])
+              np.testing.assert_array_equal(classifier.predict(queries), [0, 1])
+              np.testing.assert_array_equal(regressor.predict(queries), [1, 5])
+              assert classifier.last_query_backend_ == regressor.last_query_backend_ == "cpu"
           mlxlearn.unpatch_sklearn()
           assert sklearn.decomposition.PCA is original
           X32 = X.astype(np.float32)
