@@ -21,7 +21,7 @@ import sklearn
 from sklearn.datasets import make_regression
 from sklearn.linear_model import LinearRegression as SkLinearRegression
 
-from mlxlearn import config_context, get_backend_diagnostics
+from mlxlearn import config_context, get_backend_diagnostics, gpu_available
 from mlxlearn._common.config import tuning_context
 from mlxlearn._solvers.ols import reference_objective
 from mlxlearn.exceptions import SparseInputError, UnsupportedParameterError
@@ -428,10 +428,10 @@ def test_extreme_targets_on_an_ordinary_design(scale, kind):
 
 @pytest.mark.parametrize("n_samples", [1500, 40000])  # the second runs threaded
 def test_fits_raise_no_runtime_warnings_on_hard_designs(n_samples):
-    with warnings.catch_warnings(), np.errstate(all="raise"):
-        warnings.simplefilter("error")
-        for kind in ("cond14", "rankdef", "onehot", "mixed"):
-            X, y = _design(kind, n_samples, 30)
+    for kind in ("cond14", "rankdef", "onehot", "mixed"):
+        X, y = _design(kind, n_samples, 30)
+        with warnings.catch_warnings(), np.errstate(all="raise"):
+            warnings.simplefilter("error")
             LinearRegression().fit(X, y)
             LinearRegression().fit(X[:20], y[:20])
 
@@ -752,14 +752,14 @@ def test_a_gpu_request_is_solved_on_the_host(request_gpu, small_classification_d
         with tuning_context(force_backend="mlx"):
             model = LinearRegression().fit(X, y.astype(float))
     else:
-        try:
-            with config_context(device="gpu"):
-                model = LinearRegression().fit(X, y.astype(float))
-        except Exception as exc:  # noqa: BLE001 - no Metal device on this runner
-            pytest.skip(f"no GPU: {exc}")
+        if not gpu_available():
+            pytest.skip("no Metal device")
+        with config_context(device="gpu"):
+            model = LinearRegression().fit(X, y.astype(float))
     assert model.execution_backend_ == "cpu"
     events = [e for e in get_backend_diagnostics() if e.operation == "fit"]
     assert any(e.reason == "host-solve" for e in events)
+    _assert_same_model(model, SkLinearRegression().fit(X, y), X, y)
 
 
 @pytest.mark.parametrize("kind, method", [("gauss", "ols-gram"), ("onehot", "ols-ritz")])
@@ -778,6 +778,19 @@ def test_ragged_lists_raise_what_stock_raises():
     with pytest.raises(ValueError) as stock:
         SkLinearRegression().fit(X, y)
     assert type(ours.value) is type(stock.value)
+
+
+def test_ragged_targets_do_not_preempt_design_validation():
+    from mlxlearn.patching._estimators import LinearRegression as Patched
+
+    X = np.empty((0, 2))
+    y = [[1.0], [2.0, 3.0]]
+    with pytest.raises(ValueError) as stock:
+        SkLinearRegression().fit(X, y)
+    for estimator in (LinearRegression, Patched):
+        with pytest.raises(ValueError) as ours:
+            estimator().fit(X, y)
+        assert str(ours.value) == str(stock.value)
 
 
 def test_positive_raises():
@@ -885,13 +898,35 @@ def test_patched_positive_falls_back():
 
 @pytest.mark.parametrize(
     "shape, backend",
-    [((200, 4), "sklearn"), ((20000, 64), "cpu"), ((20000, 2000), "sklearn"), ((300, 3000), "sklearn")],
+    [
+        ((200, 4), "sklearn"),
+        ((4096, 256), "cpu"),
+        ((8000, 64), "cpu"),
+        ((20000, 64), "cpu"),
+        ((20000, 2000), "sklearn"),
+        ((512, 2048), "cpu"),
+        ((512, 1024), "sklearn"),
+    ],
 )
 def test_patched_crossover_routes_by_shape(shape, backend):
     from mlxlearn.patching._estimators import LinearRegression as Patched
 
     X, y = _design("gauss", *shape)
     assert Patched().fit(X, y).execution_backend_ == backend
+
+
+def test_patched_wide_float32_preserves_stock_rank():
+    from mlxlearn.patching._estimators import LinearRegression as Patched
+
+    X, y = _design("gauss", 256, 1024)
+    X, y = X.astype(np.float32), y.astype(np.float32)
+    weights = np.linspace(0.5, 1.5, len(X), dtype=np.float32)
+    weights[::20] = 0
+    ref = SkLinearRegression().fit(X, y, sample_weight=weights)
+    patched = Patched().fit(X, y, sample_weight=weights)
+    assert patched.execution_backend_ == "sklearn"
+    assert patched.rank_ == ref.rank_
+    np.testing.assert_array_equal(patched.coef_, ref.coef_)
 
 
 @pytest.mark.parametrize("n_targets, backend", [(16, "cpu"), (64, "cpu"), (65, "sklearn")])

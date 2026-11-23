@@ -250,7 +250,7 @@ def solve_ols(
         raise ValueError(f"y must have {n_samples} samples to match X, got shape {y_work.shape}")
     if y_work.ndim not in (1, 2):
         raise ValueError(f"y must be 1d or 2d, got shape {y_work.shape}")
-    y2 = y_work.astype(np.float64).reshape(n_samples, -1)
+    n_targets = 1 if y_work.ndim == 1 else y_work.shape[1]
     sw_work = sw = None
     if sample_weight is not None:
         # Keep the dtype scikit-learn's _check_sample_weight chose (the estimator
@@ -260,7 +260,7 @@ def solve_ols(
             sw_work = sw_work.astype(np.float64)
         if sw_work.shape[0] != n_samples:
             raise ValueError(f"sample_weight has {sw_work.shape[0]} elements but X has {n_samples} samples.")
-        sw = sw_work.astype(np.float64)
+        sw = sw_work.astype(np.float64, copy=False)
         if not np.isfinite(sw).all():
             # Only reachable with NaN or infinite weights (a NaN scalar weight, or
             # assume_finite): stock's arithmetic then raises its own error.
@@ -269,7 +269,8 @@ def solve_ols(
             # The weighted means are undefined; np.average raises the same.
             raise ZeroDivisionError("Weights sum to zero, can't be normalized")
 
-    threads = _thread_count(n_samples * (n_features + y2.shape[1]), config.threads)
+    columns = n_features + n_targets
+    threads = _thread_count(n_samples * columns, config.threads)
     rcond = float(config.rcond)
     eps = float(np.finfo(working).eps)
     if not 0.0 < rcond < 1.0 or working == np.float16:
@@ -277,7 +278,7 @@ def solve_ols(
         # a rounding-level cutoff that only stock's own arithmetic reproduces.
         # float16 input keeps scikit-learn's float16 arithmetic, as stock does.
         return _stock_lstsq(X, y_work, sw_work, config.fit_intercept, rcond, threads)
-    if n_samples * (n_features + y2.shape[1]) ** 2 <= _SMALL_WORK:
+    if n_samples * columns ** 2 <= _SMALL_WORK:
         # Tiny problems: one gelsd call beats a dozen small BLAS/LAPACK calls,
         # and stock's arithmetic without its extra copies is bit-identical.
         return _stock_lstsq(X, y_work, sw_work, config.fit_intercept, rcond, threads)
@@ -298,7 +299,7 @@ def solve_ols(
         if config.fit_intercept:
             intercept = prep.y_off64 - coef_T @ prep.x_off64
         else:
-            intercept = np.zeros(y2.shape[1])
+            intercept = np.zeros(n_targets)
     return OLSSolution(
         coef=coef_T,
         intercept=np.asarray(intercept, dtype=np.float64),
@@ -429,7 +430,7 @@ def _stock_design(X, x_off, root, threads=1, order="F"):
     """
     n, d = X.shape
     transpose = order == "F"
-    Xs = np.empty(X.shape, dtype=X.dtype, order="F") if transpose else np.empty_like(X, order="K")
+    Xs = np.empty_like(X, order=order)
 
     def fill(blocks):
         # Every write is final, so a block computed twice cannot be scaled twice.
@@ -862,7 +863,7 @@ def _stock_block(X, prep, a, b, out):
 def _prepare_tall(X, prep, threads):
     """Stock's centred, weighted augmented design A = [Xc | yc] and its chunked Gram.
 
-    Returns ``(A, M, depth, top)``: ``M[:d]`` holds ``X^T X`` and ``X^T Y``, and
+    Returns ``(A, M, depth, top)``: ``M`` holds ``X^T X`` and ``X^T Y``, and
     ``top`` the largest magnitude of each target column (for
     :func:`_targets_out_of_range`, gathered while the chunk is in cache). With
     few targets one SYRK on the augmented block is cheapest; with many, the
@@ -883,7 +884,7 @@ def _prepare_tall(X, prep, threads):
     augmented = k <= max(8, d // 4)
 
     def fill(chunks):
-        M = np.zeros((width, width))
+        M = np.zeros((width, width) if augmented else (d, c))
         top = np.zeros(k)
         for a, b in chunks:
             block = A[a:b]
@@ -905,14 +906,13 @@ def _prepare_tall(X, prep, threads):
         top = part_top if top is None else np.maximum(top, part_top)
     # Rows per chunk inside one product, then the chunk and thread sums.
     depth = min(rows, n) + n_chunks + len(groups)
-    return A, M[:c, :c], depth, top
+    return A, M[:d, :c], depth, top
 
 
-def _prepare_wide(X, prep):
-    n, d = X.shape
-    out = np.empty((n, d + prep.k))
-    _stock_block(X, prep, 0, n, out)
-    return np.ascontiguousarray(out[:, :d]), np.ascontiguousarray(out[:, d:])
+def _prepare_wide(X, prep, threads):
+    Xc = _stock_design(X, prep.x_off, prep.root, threads, order="C")
+    yc = _stock_targets(prep.y, prep.y_off, prep.root)
+    return np.ascontiguousarray(Xc, dtype=np.float64), np.ascontiguousarray(yc, dtype=np.float64)
 
 
 # ---------------------------------------------------------------------------- tiled QR
@@ -1396,7 +1396,10 @@ def _ritz_solve(cert, V, rhs, residual, gradient, smax):
 
 def _solve_wide(X, prep, sw, rcond, eps, threads):
     n, d = X.shape
-    Xc, yc = _prepare_wide(X, prep)
+    if prep.x_off is not None and rcond <= 4.0 * eps * math.sqrt(d):
+        # Even an exact left null direction cannot clear stock's rounding band.
+        return None
+    Xc, yc = _prepare_wide(X, prep, threads)
     zero_rows = 0
     if sw is not None and not np.all(sw != 0):
         # Zero-weight rows are exact zero rows of the weighted design: they

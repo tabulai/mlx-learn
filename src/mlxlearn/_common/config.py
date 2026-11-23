@@ -152,20 +152,14 @@ class Tuning:
     logreg_tall_min_samples: int = 250_000
     logreg_tall_min_work: int = 8_000_000
     #
-    # Host OLS (see LinearRegression._below_crossover). Patched dispatch must not
-    # lose on any data, so these floors are calibrated on the slowest data kind
-    # per shape (one-hot, mixed scales, cond 1e10; benchmarks/linreg/crossover.py)
-    # on the M5 Ultra (scikit-learn 1.9, scipy 1.18) and the M1 Ultra (1.8, scipy
-    # 1.17, where the exact fallback has no copy advantage), not on Gaussian data,
-    # where the certified Gram path wins at almost every size. Inside these
-    # floors every kind measured at least 1.38x on the M5 Ultra and at least
-    # parity on the (busier) M1 Ultra.
-    linreg_min_samples: int = 8_192
+    # Host OLS. Keep the patched crossover conservative for small or near-square
+    # designs, where a failed rank certification can cost an extra pass.
+    linreg_min_samples: int = 4_096
     linreg_min_features: int = 16
-    linreg_min_work: int = 524_288  # n_samples * n_features
+    linreg_min_work: int = 262_144  # n_samples * n_features
     linreg_max_features: int = 1_024
-    linreg_min_aspect: float = 32.0  # n_samples >= aspect * n_features for tall fits
-    linreg_wide_max_features: int = 0  # wide fits with more features go to scikit-learn
+    linreg_min_aspect: float = 16.0  # n_samples >= aspect * n_features for tall fits
+    linreg_wide_max_features: int = 4_096  # 0 disables the patched wide tier
     linreg_max_target_ratio: float = 1.0  # n_targets <= ratio * n_features for tall fits
     linreg_threads: int = 0  # host threads for OLS row passes; 0 chooses automatically
     #

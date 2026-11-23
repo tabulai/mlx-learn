@@ -767,15 +767,21 @@ def test_tol_truncates_a_well_conditioned_design(tol):
 
 
 @pytest.mark.parametrize("kind", ["gauss", "duplicates"])
-def test_many_targets_use_separate_products(kind):
-    """k > max(8, d // 4): X^T X and X^T Y are formed separately."""
+def test_many_targets_use_separate_products(kind, monkeypatch):
+    """A fit with many targets needs only X^T X and X^T Y."""
     rng = np.random.default_rng(38)
     n, d, k = 20000, 16, 20
     X = rng.standard_normal((n, d))
     if kind == "duplicates":
         X[:, 5] = X[:, 2]
     Y = X @ rng.standard_normal((d, k)) + 0.1 * rng.standard_normal((n, k))
-    assert k > max(8, d // 4)
+    zeros = np.zeros
+
+    def check_allocation(shape, *args, **kwargs):
+        assert shape != (d + k, d + k), "OLS allocated an unused target-by-target block"
+        return zeros(shape, *args, **kwargs)
+
+    monkeypatch.setattr(ols.np, "zeros", check_allocation)
     sol = solve_ols(X, Y, config=OLSConfig())
     assert sol.method == ("gram" if kind == "gauss" else "ritz")
     _check(sol, X, Y, 1e-6, coef_rtol=1e-10)

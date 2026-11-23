@@ -168,19 +168,20 @@ A multi-lens review confirmed 54 findings. The ones that shaped the rewrite:
 
 ### Routing
 
-Layer 1 (`mlxlearn.linear_model.LinearRegression`) always runs this solver;
-its internal routing above is decided by the data. Layer 2 (`patch_sklearn()`)
-hands a fit to mlxlearn only on shapes where the *slowest* data kind still wins
-(`benchmarks/linreg/crossover.py`: Gaussian, one-hot with the intercept, mixed
-column scales and cond 1e10 at every shape, timed cold, on the M5 Ultra and the
-M1 Ultra). The calibrated floors (`linreg_*` in `Tuning`) send a fit to
-mlxlearn when it is tall, has at least 8,192 samples, 16 to 1,024 features,
-`n * d >= 2^19`, at least 32 samples per feature and no more targets than
-features. Inside them every data kind measured 1.38x or more on the M5 Ultra
-and at least parity on the busier M1 Ultra (table below); outside them the
-slowest kind sat near parity or lost on one of the two machines, so stock keeps
-those fits. Wide fits always stay with stock
-(the dual path loses on one-hot and graded wide data).
+Layer 1 (`mlxlearn.linear_model.LinearRegression`) always uses this solver
+and selects its internal path from the data. Automatic fits under
+`patch_sklearn()` use it for tall designs with at least 4,096 samples,
+16 to 1,024 features, `n * d >= 2^18`, at least 16 samples per feature and no
+more targets than features. The same work floor applies to wide float64
+designs with 256 to 1,024 samples, at least three features per sample, at most
+4,096 features and no more targets than samples. In those ranges, M4 Max
+measurements recovered substantial speedups on common dense designs.
+An ill-conditioned design that needs the exact fallback can still pay for a
+failed attempt at rank certification.
+
+The M5 Ultra and M1 Ultra results below used the original crossover of at
+least 8,192 samples, `n * d >= 2^19` and at least 32 samples per feature
+for tall designs. That crossover sent all wide fits to scikit-learn.
 
 ## 4. Results
 

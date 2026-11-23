@@ -109,9 +109,9 @@ class LinearRegression(BackendMixin, _SkLinearRegression):
     singular_ : ndarray of shape (min(n_samples, n_features),)
         Singular values of that design, descending, float64.
     execution_backend_ : {"cpu", "sklearn"}
-        ``"cpu"`` whenever mlxlearn fitted the model. There is no Metal path for
-        ordinary least squares; ``device="gpu"`` is honoured by solving on the
-        host and recording a ``host-solve`` diagnostic.
+        ``"cpu"`` whenever mlxlearn fitted the model. With ``device="gpu"``,
+        ordinary least squares runs on the host and records a ``host-solve``
+        diagnostic.
 
     Notes
     -----
@@ -154,12 +154,21 @@ class LinearRegression(BackendMixin, _SkLinearRegression):
                 value=self.positive,
             )
 
-    def _below_crossover(self, n_samples: int, n_features: int, n_targets: int = 1) -> tuple[bool, str]:
+    def _below_crossover(self, n_samples: int, n_features: int, n_targets: int, dtype) -> tuple[bool, str]:
         """Apply measured size floors to automatic fits."""
         tuning = get_tuning()
         work = n_samples * n_features
         if n_samples < n_features:
-            below = n_features > tuning.linreg_wide_max_features or work < tuning.linreg_min_work
+            # Keep the dual eigensolve small. With narrow working precision,
+            # stock's rounding band often forces the exact solve after the Gram.
+            below = (
+                dtype != np.float64
+                or not 256 <= n_samples <= 1024
+                or n_features < 3 * n_samples
+                or n_features > tuning.linreg_wide_max_features
+                or work < tuning.linreg_min_work
+                or n_targets > n_samples
+            )
         else:
             below = (
                 n_samples < tuning.linreg_min_samples
@@ -212,9 +221,7 @@ class LinearRegression(BackendMixin, _SkLinearRegression):
                     X = converted
         below, detail = False, ""
         if shape is not None and get_config().device == "auto":
-            y_shape = np.shape(y) if hasattr(y, "shape") or isinstance(y, (list, tuple)) else ()
-            n_targets = int(y_shape[1]) if len(y_shape) == 2 else 1
-            below, detail = self._below_crossover(*shape, n_targets)
+            below, detail = self._below_crossover(*shape, _count_targets(y), getattr(X, "dtype", None))
         backend = self._select_backend(
             "fit",
             capability_check=lambda: self._check_linear_capability(X),
@@ -348,3 +355,18 @@ def _safe_shape(X) -> tuple[int, ...] | None:
     if shape is None or len(shape) != 2:
         return None
     return (int(shape[0]), int(shape[1]))
+
+
+def _count_targets(y) -> int:
+    """Estimate target count for dispatch without converting or validating y."""
+    shape = _safe_shape(y)
+    if shape is not None:
+        return shape[1]
+    if isinstance(y, (list, tuple)) and y:
+        row = y[0]
+        if isinstance(row, (list, tuple, range)):
+            return len(row)
+        shape = getattr(row, "shape", None)
+        if shape is not None and len(shape) == 1:
+            return int(shape[0])
+    return 1
