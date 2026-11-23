@@ -1,281 +1,381 @@
-"""Exact radius search with a host tree, bounded screening, and stock dispatch."""
+"""Radius search orchestration: per-index caches, routing and engine dispatch.
+
+Every engine returns batches whose neighbor sets satisfy the exact contract in
+:mod:`radius_contract`; the router only chooses the fastest one. Caches are
+built lazily under one lock per index.
+"""
 
 from __future__ import annotations
 
-import itertools
 import math
-from functools import cached_property
+import os
+import threading
 
 import numpy as np
 
 from .._common.arrays import INDEX_DTYPE, NUMPY_FLOAT
-from .._common.device import use_device
+from .radius_contract import thresholds
+from .radius_result import RadiusCSR, empty_result, sort_rows
+from .radius_router import (
+    METAL_MAX_FEATURES,
+    SMALL_WORK,
+    RouteContext,
+    RoutePlan,
+    TrainSample,
+    density_sample,
+    plan_radius,
+)
 
-_F32 = np.finfo(NUMPY_FLOAT)
-_F64 = np.finfo(np.float64)
-_MAX_SCREEN_PAIRS = 8 * 1024 * 1024
-_REFINE_ELEMENTS = 1 << 20
+__all__ = ["RadiusSearch", "StockRoute", "native_engine", "resolve_threads"]
+
+#: Expected result pairs per cKDTree batch; bounds the Python lists it builds.
+_TREE_BATCH_PAIRS = 1 << 23
+#: Host brute-force calls above this much work (n * n_query * d) at d > 16 use
+#: the float64 GEMM screen rather than per-pair distances.
+_GEMM_SCREEN_WORK = 1 << 26
+
+_UNSET = object()
+_NATIVE = _UNSET
+_FORKED = False
 
 
-def _row_squares(X):
-    return np.einsum("ij,ij->i", X, X, dtype=np.float64)
+def _mark_forked() -> None:
+    # Grand Central Dispatch is not fork-safe; a forked child runs the native
+    # engines on its calling thread only.
+    global _FORKED
+    _FORKED = True
 
 
-def pack_radius(rows, cols, squared, n_query, *, sort_results, return_distance):
-    """Group pairs by query and impose a deterministic order within each row."""
-    indices = np.empty(n_query, dtype=object)
-    distances = np.empty(n_query, dtype=object) if return_distance else None
-    if rows.size:
-        keys = (cols, squared, rows) if sort_results else (cols, rows)
-        order = np.lexsort(keys)
-        cols = cols[order]
-        if return_distance:
-            sorted_dist = np.sqrt(squared[order])
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=_mark_forked)
+
+
+def native_engine():
+    """The native radius module when its extension is built, else ``None``.
+
+    The probe runs once per process; a failed import is not retried.
+    """
+    global _NATIVE
+    if _NATIVE is _UNSET:
+        try:
+            from . import radius_cpu
+        except ImportError:  # pragma: no cover - depends on the build
+            radius_cpu = None
+        _NATIVE = radius_cpu if radius_cpu is not None and radius_cpu.AVAILABLE else None
+    return _NATIVE
+
+
+class StockRoute(Exception):
+    """Raised to tell a patched estimator to delegate the whole call to scikit-learn."""
+
+    def __init__(self, reason: str):
+        super().__init__(reason)
+        self.reason = reason
+
+
+def resolve_threads(n_jobs) -> int:
+    """Worker threads for host engines.
+
+    ``Tuning.radius_threads`` when positive, else ``n_jobs`` with joblib's
+    semantics (``None`` and ``-1`` mean all cores, ``-2`` all but one, ...).
+    A process forked after the engines started uses one thread.
+    """
+    from .._common.config import get_tuning
+
+    if _FORKED:
+        return 1
+    configured = getattr(get_tuning(), "radius_threads", 0)
+    if configured and configured > 0:
+        return int(configured)
+    cores = os.cpu_count() or 1
+    if n_jobs is None or n_jobs == 0:
+        return cores
+    if n_jobs < 0:
+        return max(1, cores + 1 + int(n_jobs))
+    return int(n_jobs)
+
+
+def _aligned(values) -> np.ndarray:
+    """Owned-dtype, C-contiguous and aligned (native code requires all three)."""
+    return np.require(values, dtype=NUMPY_FLOAT, requirements=("C", "A"))
+
+
+class _TrainStats:
+    """Facts about the owned training rows, computed once."""
+
+    def __init__(self, train: np.ndarray):
+        self.n, self.d = train.shape
+        self.max_abs = float(np.max(np.abs(train))) if train.size else 0.0
+        self.integral = bool(train.size == 0 or np.array_equal(train, np.round(train)))
+        self.center = (train.mean(axis=0, dtype=np.float64) if train.size
+                       else np.zeros(self.d, dtype=np.float64))
+        self.center_norm = float(np.sqrt(np.dot(self.center, self.center)))
+        # Largest squared distance from the training mean: the Metal Gram
+        # screen admits every pair once centred norms near 2**108.
+        largest = 0.0
+        block_rows = max(1, (1 << 20) // max(self.d, 1))
+        for start in range(0, self.n, block_rows):
+            block = train[start:start + block_rows].astype(np.float64)
+            block -= self.center
+            largest = max(largest, float(np.einsum("ij,ij->i", block, block).max(initial=0.0)))
+        self.centred_norm_max = largest
+        self._sample = None
+
+    def sample(self, train: np.ndarray) -> TrainSample:
+        if self._sample is None:
+            self._sample = TrainSample.from_train(train, self.center)
+        return self._sample
+
+
+def _batch_integer_exact(stats: _TrainStats, queries: np.ndarray, *, self_query: bool) -> bool:
+    if not stats.integral:
+        return False
+    if self_query:
+        largest = stats.max_abs
     else:
-        sorted_dist = np.empty(0, dtype=np.float64)
-    ends = np.cumsum(np.bincount(rows, minlength=n_query))
-    start = 0
-    for row, stop in enumerate(ends):
-        indices[row] = cols[start:stop]
-        if return_distance:
-            distances[row] = sorted_dist[start:stop]
-        start = stop
-    return (distances, indices) if return_distance else indices
+        if not np.array_equal(queries, np.round(queries)):
+            return False
+        largest = max(stats.max_abs, float(np.max(np.abs(queries))) if queries.size else 0.0)
+    return stats.d * (2.0 * largest) ** 2 < 2.0**53
+
+
+def _query_norm_bound(queries: np.ndarray, stats: _TrainStats, *, self_query: bool) -> float:
+    """An upper bound on the queries' squared distances from the training mean."""
+    if self_query:
+        return stats.centred_norm_max
+    if not len(queries):
+        return 0.0
+    with np.errstate(over="ignore", invalid="ignore"):
+        largest = float(np.max(np.einsum("ij,ij->i", queries, queries)))
+    if not math.isfinite(largest):
+        return math.inf
+    return (math.sqrt(largest) * (1 + 1e-6) + stats.center_norm) ** 2
 
 
 class RadiusSearch:
-    """Lazy radius-specific caches over the index's owned float32 coordinates."""
+    """Lazy radius state over a :class:`NeighborIndex`'s owned float32 rows."""
 
-    def __init__(self, train):
-        self.X = np.asarray(train, dtype=NUMPY_FLOAT, order="C")
-        self._stock = None
-        self._device_norms = None
-        self._device_train = None
-        self._seen = set()
+    def __init__(self, index):
+        self._index = index
+        self._lock = threading.Lock()
+        self._train = None
+        self._stats = None
+        self._tree = None
+        self._brute = None
+        self.last_plan: RoutePlan | None = None
 
-    @cached_property
-    def _host64(self):
-        return self.X.astype(np.float64)
+    # ------------------------------------------------------------------ caches
 
-    @cached_property
-    def _norms(self):
-        return _row_squares(self.X)
+    @property
+    def train(self) -> np.ndarray:
+        """Host float32 view of the owned training rows (zero-copy from MLX)."""
+        train = self._train
+        if train is None:
+            with self._lock:
+                if self._train is None:
+                    self._train = _aligned(self._index.training_data)
+                train = self._train
+        return train
 
-    @cached_property
-    def _max_norm(self):
-        # A cheap bound is sufficient for dispatch and keeps the per-row
-        # norm cache lazy until a screening query needs it.
-        largest = max(abs(float(self.X.min())), abs(float(self.X.max())))
-        return self.X.shape[1] * largest * largest
+    @property
+    def stats(self) -> _TrainStats:
+        stats = self._stats
+        if stats is None:
+            train = self.train
+            with self._lock:
+                if self._stats is None:
+                    self._stats = _TrainStats(train)
+                stats = self._stats
+        return stats
 
-    @cached_property
-    def _tree(self):
-        from scipy.spatial import cKDTree
+    def _ensure_tree(self, threads=None):
+        tree = self._tree
+        if tree is None:
+            native = native_engine()
+            train = self.train
+            with self._lock:
+                if self._tree is None:
+                    if native is not None:
+                        self._tree = native.build_tree(train, threads=threads)
+                    else:
+                        from .radius_host import build_tree
 
-        return cKDTree(self._host64, leafsize=16)
+                        self._tree = build_tree(train)
+                tree = self._tree
+        return tree
 
-    def _sample(self, Q, radius_sq):
-        # The sample only chooses an implementation. Every route still evaluates
-        # membership against the original coordinates.
-        train = self.X[:: math.ceil(len(self.X) / 128)].astype(np.float64)
-        query = Q[:: math.ceil(len(Q) / 8)].astype(np.float64)
-        norm = _row_squares(train)
-        approx = query @ train.T
-        approx *= -2
-        approx += norm[None, :]
-        approx += _row_squares(query)[:, None]
-        hits = len(self.X) * np.count_nonzero(approx <= radius_sq) / approx.size
-        spread = np.sum(np.var(train, axis=0))
-        return hits, spread
+    def _ensure_brute(self):
+        brute = self._brute
+        if brute is None:
+            from .radius_host import BruteState
 
-    def route(self, Q, radius_sq, *, fixed, tree_allowed, stock_factory, has_gpu):
-        n, d = self.X.shape
-        if fixed == "mlx":
-            return "mlx"
-        if fixed == "cpu":
-            return "tree" if tree_allowed and d <= 8 else "cpu"
-        if tree_allowed and d <= 8 and n <= 2048:
-            return "tree"
+            train = self.train
+            with self._lock:
+                if self._brute is None:
+                    self._brute = BruteState(train)
+                brute = self._brute
+        return brute
 
-        candidate = "cpu"
-        tree_size = tree_allowed and d <= 8 and n >= 2048
-        metal_size = 16 <= d <= 4096 and n >= 16_000 and n * len(Q) >= 2_000_000
-        if len(Q) >= 64 and (tree_size or metal_size):
-            hits, spread = self._sample(Q, radius_sq)
-            if hits <= 256:
-                if tree_size and (d <= 4 or radius_sq < 0.09 * spread):
-                    candidate = "tree"
-                elif metal_size:
-                    candidate = "mlx"
+    # ----------------------------------------------------------------- routing
 
-        # Let the first eligible automatic query use host search. Tree building
-        # and Metal setup paid for themselves on repeated batches in the grid.
-        if candidate != "cpu":
-            seen = candidate in self._seen
-            self._seen.add(candidate)
-            if (seen or stock_factory is None) and (candidate == "tree" or has_gpu()):
-                return candidate
-        if stock_factory is not None and self.stock_error(Q, radius_sq) is not None:
-            return "sklearn"
-        return "cpu"
-
-    def stock_error(self, Q, radius_sq):
-        """Bound cancellation in the stock float64 brute-force distance tiles."""
-        if not 0 < radius_sq < math.inf:
-            return None
-        scale = self._max_norm + float(_row_squares(Q).max(initial=0))
-        error = 64 * (self.X.shape[1] + 1) * _F64.eps * scale
-        if error <= 1e-7 * radius_sq:
-            return error
-        return None
-
-    def stock(self, Q, radius_sq, *, factory, exclude_self, sort_results, return_distance):
-        error = self.stock_error(Q, radius_sq)
-        assert error is not None
-        if self._stock is None:
-            self._stock = factory().fit(self._host64)
-        # Include borderline points in the stock search, then verify them from
-        # the coordinates. Near-zero distances and sort ties also need refinement.
-        expanded = np.nextafter(math.sqrt(radius_sq + error), math.inf)
-        distances, indices = self._stock.radius_neighbors(
-            None if exclude_self else Q.astype(np.float64, copy=False),
-            radius=expanded, sort_results=sort_results,
+    def plan(self, queries: np.ndarray, radius: float, *, q_offset: int = 0,
+             exclude_self: bool, algorithm: str, n_jobs, patched: bool,
+             fixed: str | None, has_gpu, forced: str) -> RoutePlan:
+        stats = self.stats
+        n, d = stats.n, stats.d
+        nq = len(queries)
+        R2 = radius * radius
+        small = n * nq * d <= SMALL_WORK or math.isinf(R2) or nq == 0
+        gpu = False
+        if fixed != "cpu" and (forced == "metal" or fixed == "mlx"
+                               or (not small and forced in ("", "auto"))):
+            gpu = bool(has_gpu())
+        metal_ok = False
+        if gpu:
+            # The certified Gram screen is exact on all finite data (its floor
+            # covers underflow and unsafe entries are admitted); it is only
+            # useless when centred norms or the radius approach float32's limit.
+            metal_ok = ((2 * d + 16) * 2.0**-23 < 0.125 and d <= METAL_MAX_FEATURES
+                        and stats.centred_norm_max <= 2.0**100
+                        and (math.isinf(R2) or R2 <= 2.0**100)
+                        and _query_norm_bound(queries, stats, self_query=exclude_self)
+                        <= 2.0**100)
+        if fixed == "mlx" and forced in ("", "auto") and gpu and metal_ok and nq:
+            # An explicit GPU fit keeps every certifiable query on Metal, like
+            # k-neighbor search.
+            forced = "metal"
+        native = native_engine() is not None
+        ctx = RouteContext(
+            n=n, d=d, n_query=nq, R2=R2, algorithm=algorithm, n_jobs=n_jobs,
+            patched=patched, gpu=gpu, metal_ok=metal_ok, native=native, sample=None,
+            forced=forced,
         )
-        lengths = np.fromiter(map(len, distances), dtype=INDEX_DTYPE, count=len(Q))
-        ends = np.cumsum(lengths)
-        squared = np.concatenate(distances)
-        np.square(squared, out=squared)
-        refine = (np.abs(squared - radius_sq) <= 2 * error) | (squared <= 1e6 * error)
-        if sort_results and squared.size > 1:
-            adjacent = np.diff(squared) <= 4 * error
-            boundaries = ends[:-1] - 1
-            adjacent[boundaries[(boundaries >= 0) & (boundaries < adjacent.size)]] = False
-            refine[:-1] |= adjacent
-            refine[1:] |= adjacent
-        # Most rows need no edits. Locate the affected rows in one pass over
-        # the packed distances and keep the stock arrays for all other rows.
-        affected = np.unique(np.searchsorted(ends, np.flatnonzero(refine), side="right"))
-        for i in affected:
-            row = slice(ends[i] - lengths[i], ends[i])
-            ids, values, mask = indices[i], squared[row], refine[row]
-            diff = self._host64[ids[mask]] - Q[i]
-            values[mask] = _row_squares(diff)
-            keep = values <= radius_sq
-            ids, values = ids[keep], values[keep]
-            if sort_results:
-                order = np.lexsort((ids, values))
-                ids, values = ids[order], values[order]
-            indices[i], distances[i] = ids, np.sqrt(values)
-        return (distances, indices) if return_distance else indices
+        plan = plan_radius(ctx)
+        # The density sample is taken only when the plan reads it: Metal
+        # capacity and screen selectivity, cKDTree batching, and the patched
+        # rules of NumPy-only installations.
+        wants_sample = not small and (
+            plan.route == "metal" or (plan.route == "tree" and not native)
+            or (patched and not native))
+        if wants_sample:
+            sample = density_sample(stats.sample(self.train), queries, R2,
+                                    exclude_self=exclude_self, q_offset=q_offset, n=n,
+                                    small=n * nq <= 2**27)
+            plan = plan_radius(_with_sample(ctx, sample))
+        return plan
 
-    def tree(self, Q, radius_sq, *, exclude_self, sort_results, return_distance):
-        radius = math.sqrt(radius_sq)
-        extended = radius * (1 + 8 * _F64.eps * (Q.shape[1] + 1))
-        matches = self._tree.query_ball_point(
-            Q, extended, workers=4 if len(Q) >= 64 else 1, return_sorted=False,
-        )
-        lengths = np.fromiter(map(len, matches), dtype=INDEX_DTYPE, count=len(Q))
-        rows = np.repeat(np.arange(len(Q), dtype=INDEX_DTYPE), lengths)
-        cols = np.fromiter(itertools.chain.from_iterable(matches), dtype=INDEX_DTYPE,
-                           count=int(lengths.sum()))
-        return self._finish(Q, rows, cols, radius_sq, exclude_self=exclude_self,
-                            sort_results=sort_results, return_distance=return_distance)
+    # ----------------------------------------------------------------- queries
 
-    def metal_supported(self, Q, radius_sq):
-        return (self.X.shape[1] <= 4096
-                and max(self._max_norm, float(_row_squares(Q).max(initial=0)), radius_sq) < float(_F32.max) / 16)
+    def query(self, queries, radius: float, **options) -> list:
+        """Result batches for one call (see :meth:`query_with_plan`)."""
+        return self.query_with_plan(queries, radius, **options)[0]
 
-    def screen(self, Q, radius_sq, plan, *, backend, train_device, exclude_self,
-               sort_results, return_distance):
-        parts = (self._metal_candidates(Q, radius_sq, plan, train_device)
-                 if backend == "mlx" else self._host_candidates(Q, radius_sq, plan))
-        row_parts, col_parts = [], []
-        for rows, cols in parts:
-            if rows.size:
-                row_parts.append(rows)
-                col_parts.append(cols)
-        empty = np.empty(0, dtype=INDEX_DTYPE)
-        rows = np.concatenate(row_parts) if row_parts else empty
-        cols = np.concatenate(col_parts) if col_parts else empty
-        return self._finish(Q, rows, cols, radius_sq, exclude_self=exclude_self,
-                            sort_results=sort_results, return_distance=return_distance)
+    def query_with_plan(self, queries, radius: float, *, q_offset: int = 0,
+                        exclude_self: bool, need_distance: bool, sort_results: bool,
+                        algorithm: str = "auto", n_jobs=None, patched: bool = False,
+                        fixed: str | None = None, forced: str = "auto",
+                        has_gpu=lambda: True, device_index=None,
+                        raw: bool = False) -> tuple[list, RoutePlan]:
+        """Return ``(batches, plan)``, or raise :class:`StockRoute` for a patched stock plan.
 
-    def _tiles(self, Q, plan):
-        n = len(self.X)
-        query_rows = min(plan.query_rows, 256)
-        for q0 in range(0, len(Q), query_rows):
-            q1 = min(len(Q), q0 + query_rows)
-            train_cols = min(plan.train_cols, _MAX_SCREEN_PAIRS // (q1 - q0))
-            for t0 in range(0, n, train_cols):
-                yield q0, q1, t0, min(n, t0 + train_cols)
+        Batches are :class:`RadiusCSR`; with ``raw=True`` native engines may
+        return their own result objects instead (for fused reductions).
+        """
+        queries = _aligned(queries)
+        nq = len(queries)
+        need_distance = need_distance or sort_results
+        plan = self.plan(queries, radius, q_offset=q_offset, exclude_self=exclude_self,
+                         algorithm=algorithm, n_jobs=n_jobs, patched=patched, fixed=fixed,
+                         has_gpu=has_gpu, forced=forced)
+        self.last_plan = plan
+        if plan.route == "stock":
+            raise StockRoute(plan.reason)
+        if nq == 0:
+            return [empty_result(0, need_distance=need_distance, route=plan.route)], plan
+        threads = resolve_threads(n_jobs)
+        stats = self.stats
+        R2 = radius * radius
+        thr = thresholds(stats.d, R2, integer_exact=_batch_integer_exact(
+            stats, queries, self_query=exclude_self))
+        train = self.train
+        native = native_engine()
+        sorted_natively = native is not None
+        if plan.route == "tree":
+            parts = self._tree_parts(train, queries, thr, plan, q_offset=q_offset,
+                                     exclude_self=exclude_self, need_distance=need_distance,
+                                     sort_results=sort_results, threads=threads)
+        elif plan.route == "metal":
+            index = device_index() if callable(device_index) else device_index
+            parts = [self._metal(index, train, queries, thr, plan, q_offset=q_offset,
+                                 exclude_self=exclude_self, need_distance=need_distance,
+                                 sort_results=sort_results, threads=threads)]
+        elif native is not None and (stats.d <= 16
+                                     or stats.n * nq * stats.d <= _GEMM_SCREEN_WORK):
+            parts = [native.brute_query(train, queries, thr, exclude_self=exclude_self,
+                                        q_offset=q_offset, need_distance=need_distance,
+                                        sort=sort_results, threads=threads)]
+        else:
+            from .radius_host import brute_host
 
-    def _host_candidates(self, Q, radius_sq, plan):
-        query = Q.astype(np.float64, copy=False)
-        scale = 1 - 64 * (self.X.shape[1] + 1) * _F64.eps
-        query_norms = scale * _row_squares(query)
-        train_norms = scale * self._norms
-        for q0, q1, t0, t1 in self._tiles(query, plan):
-            lower = query[q0:q1] @ self._host64[t0:t1].T
-            lower *= -2
-            lower += train_norms[None, t0:t1]
-            lower += query_norms[q0:q1, None]
-            rows, cols = np.nonzero(lower <= np.nextafter(radius_sq, math.inf))
-            yield rows + q0, cols + t0
+            parts = [brute_host(self._ensure_brute(), train, queries, thr,
+                                exclude_self=exclude_self, q_offset=q_offset,
+                                need_distance=need_distance, sort=sort_results,
+                                threads=threads)]
+        out = []
+        for part in parts:
+            if not isinstance(part, RadiusCSR):
+                if raw:
+                    out.append(part)
+                    continue
+                part = part.to_csr(need_distance=need_distance, route=plan.route)
+            elif sort_results and not (sorted_natively and part.route in ("metal", "brute")):
+                part = sort_rows(part)
+            out.append(part)
+        return out, plan
 
-    def _metal_candidates(self, Q, radius_sq, plan, train_device):
-        import mlx.core as mx
+    def _tree_parts(self, train, queries, thr, plan, *, q_offset, exclude_self,
+                    need_distance, sort_results, threads):
+        native = native_engine()
+        tree = self._ensure_tree(threads)
+        nq = len(queries)
+        if native is not None:
+            # The native result holds at most ~32 B per pair; one call.
+            return [native.tree_query(tree, train, queries, thr, exclude_self=exclude_self,
+                                      q_offset=q_offset, need_distance=need_distance,
+                                      sort=sort_results, threads=threads)]
+        from .radius_host import tree_query
 
-        from mlxlearn_device._binary32 import matmul
-        from mlxlearn_device._radius import compact_radius
+        per_query = max(1.0, plan.cap_hint or 1.0)
+        batch = int(min(nq, max(256, _TREE_BATCH_PAIRS // per_query)))
+        return [tree_query(tree, train, queries[start:start + batch], thr,
+                           exclude_self=exclude_self, q_offset=q_offset + start,
+                           need_distance=need_distance, threads=threads)
+                for start in range(0, nq, batch)]
 
-        with use_device("gpu"):
-            if self._device_train is None:
-                self._device_train = train_device if train_device is not None else mx.array(self.X)
-            train = self._device_train
-            queries = mx.array(Q)
-            if self._device_norms is None:
-                self._device_norms = mx.array(self._norms.astype(NUMPY_FLOAT))
-            query_norms = mx.array(_row_squares(Q).astype(NUMPY_FLOAT))
-            # Bound GEMM and norm error by a multiple of the sum of norms.
-            # The absolute term covers binary32 flushing at very small scales.
-            factor = 64 * (self.X.shape[1] + 1)
-            settings = mx.array([
-                float(np.nextafter(np.float32(radius_sq), np.float32(np.inf))),
-                float(1 - factor * _F32.eps),
-                float(factor * _F32.tiny),
-            ], mx.float32)
-            for q0, q1, t0, t1 in self._tiles(Q, plan):
-                products = matmul(queries[q0:q1], train[t0:t1], transpose_b=True)
-                capacity = min(256, t1 - t0)
-                while True:
-                    counts, packed = compact_radius(
-                        products, self._device_norms[t0:t1], query_norms[q0:q1],
-                        settings, capacity,
-                    )
-                    mx.eval(counts, packed)
-                    lengths = np.asarray(counts, dtype=INDEX_DTYPE)
-                    needed = int(lengths.max(initial=0))
-                    if needed <= capacity:
-                        break
-                    # Reuse the evaluated products. Capacity never exceeds the
-                    # width of this already memory-bounded product tile.
-                    capacity = needed
-                if needed:
-                    present = np.arange(needed) < lengths[:, None]
-                    cols = np.asarray(packed)[:, :needed][present].astype(INDEX_DTYPE) + t0
-                    yield np.repeat(np.arange(q0, q1, dtype=INDEX_DTYPE), lengths), cols
+    def _metal(self, device_index, train, queries, thr, plan, *, q_offset, exclude_self,
+               need_distance, sort_results, threads):
+        from .radius_metal_v1 import metal_query
 
-    def _finish(self, Q, rows, cols, radius_sq, *, exclude_self, sort_results, return_distance):
-        if exclude_self:
-            keep = rows != cols
-            rows, cols = rows[keep], cols[keep]
-        squared = np.empty(rows.size, dtype=np.float64)
-        block_size = max(1, _REFINE_ELEMENTS // self.X.shape[1])
-        for start in range(0, rows.size, block_size):
-            block = slice(start, start + block_size)
-            diff = self.X[cols[block]].astype(np.float64)
-            diff -= Q[rows[block]]
-            squared[block] = _row_squares(diff)
-        keep = squared <= radius_sq
-        return pack_radius(rows[keep], cols[keep], squared[keep], len(Q),
-                           sort_results=sort_results, return_distance=return_distance)
+        result = metal_query(device_index, train, queries, thr, exclude_self=exclude_self,
+                             q_offset=q_offset, need_distance=need_distance,
+                             cap_hint=plan.cap_hint, threads=threads, sort=sort_results)
+        if result is None:
+            from .radius_host import brute_host
+
+            result = brute_host(self._ensure_brute(), train, queries, thr,
+                                exclude_self=exclude_self, q_offset=q_offset,
+                                need_distance=need_distance, sort=sort_results,
+                                threads=threads)
+        return result
+
+
+def _with_sample(ctx: RouteContext, sample) -> RouteContext:
+    from dataclasses import replace
+
+    return replace(ctx, sample=sample)
+
+
+def lengths_of(parts: list[RadiusCSR]) -> np.ndarray:
+    if not parts:
+        return np.empty(0, dtype=INDEX_DTYPE)
+    return np.concatenate([part.lengths() for part in parts])

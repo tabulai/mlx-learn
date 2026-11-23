@@ -7,7 +7,6 @@ import warnings
 import numpy as np
 from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin
 
-from .._common.arrays import INDEX_DTYPE
 from .._common.validation import check_is_fitted
 from ._base import MLXNeighborsMixin, MLXRadiusMixin
 
@@ -38,7 +37,8 @@ class RadiusNeighborsClassifier(MLXRadiusMixin, MLXNeighborsMixin, ClassifierMix
     metric_params : dict, default=None
         Not implemented; raises rather than being silently ignored.
     n_jobs : int, default=None
-        Accepted and ignored.
+        Worker threads for the host radius engines; ``None`` and ``-1`` use all
+        cores.
 
     Attributes
     ----------
@@ -47,6 +47,8 @@ class RadiusNeighborsClassifier(MLXRadiusMixin, MLXNeighborsMixin, ClassifierMix
     n_features_in_ : int
     n_samples_fit_ : int
     execution_backend_ : {"mlx", "cpu", "sklearn"}
+        Which backend initially stored the fitted training data;
+        ``last_query_backend_`` reports where each query ran.
 
     Notes
     -----
@@ -123,7 +125,9 @@ class RadiusNeighborsClassifier(MLXRadiusMixin, MLXNeighborsMixin, ClassifierMix
             self._set_query_backend("sklearn")
             return self._sklearn_delegate().predict(X)
 
-        proba = self.predict_proba(X)
+        proba, stock = self._radius_proba(X, "predict")
+        if stock is not None:
+            return stock[0].predict(stock[1])
         labels = self.classes_.take(proba.argmax(axis=1))
         empty = np.all(proba == 0.0, axis=1)
         if np.any(empty):
@@ -151,11 +155,33 @@ class RadiusNeighborsClassifier(MLXRadiusMixin, MLXNeighborsMixin, ClassifierMix
             self._set_query_backend("sklearn")
             return self._sklearn_delegate().predict_proba(X)
 
-        dist, idx = self.radius_neighbors(X, return_distance=True)
-        n_queries = len(idx)
+        proba, stock = self._radius_proba(X, "predict_proba")
+        if stock is not None:
+            return stock[0].predict_proba(stock[1])
+        return proba
+
+    def _radius_proba(self, X, operation):
+        """Vote over every neighbor; ``(proba, None)`` or ``(None, (stock_model, query))``."""
+        weights = self.weights
+        if weights not in (None, "uniform", "distance") and not callable(weights):
+            raise ValueError(
+                f"weights not recognized: should be 'uniform' or 'distance', got {weights!r}"
+            )
+        if callable(weights) and not self._mlxlearn_allow_fallback:
+            raise ValueError(
+                "A callable weights function is not implemented on the MLX path; "
+                "use weights='uniform' or 'distance', or run under patch_sklearn()."
+            )
+        weighted = weights == "distance"
+        parts, stock = self._radius_parts(X, None, need_distance=weighted, sort_results=False,
+                                          operation=operation, raw=True)
+        if stock is not None:
+            return None, (self._radius_stock(operation, stock), self._stock_query(X, stock))
+        from .._kernels.radius_reduce import votes_of_parts
+
         n_classes = len(self.classes_)
-        empty = np.array([np.asarray(row).size == 0 for row in idx], dtype=bool)
-        outliers = np.flatnonzero(empty)
+        votes, counts = votes_of_parts(parts, self._y, n_classes, weighted=weighted)
+        outliers = np.flatnonzero(counts == 0)
         if outliers.size > 0 and self.outlier_label_ is None:
             raise ValueError(
                 "No neighbors found for test samples "
@@ -164,37 +190,21 @@ class RadiusNeighborsClassifier(MLXRadiusMixin, MLXNeighborsMixin, ClassifierMix
                 "giving a label for outliers, "
                 "or considering removing them from your dataset."
             )
-
-        proba = np.zeros((n_queries, n_classes), dtype=np.float64)
-        weights = _ragged_weights(dist, self.weights)
-        for i in range(n_queries):
-            neighbors = np.asarray(idx[i], dtype=np.intp)
-            if neighbors.size == 0:
-                continue
-            codes = self._y[neighbors]
-            if weights is None:
-                votes = np.bincount(codes, minlength=n_classes).astype(np.float64)
-            else:
-                votes = np.bincount(
-                    codes, weights=np.asarray(weights[i], dtype=np.float64), minlength=n_classes
-                )
-            total = votes.sum()
-            if total > 0:
-                proba[i] = votes / total
-
         if outliers.size > 0:
             label = self.outlier_label_[0]
             match = np.flatnonzero(self.classes_ == label)
             if match.size == 1:
-                proba[outliers] = 0.0
-                proba[outliers, match[0]] = 1.0
+                votes[outliers, match[0]] = 1.0
             else:
                 warnings.warn(
                     f"Outlier label {label} is not in training classes. All class "
                     "probabilities of outliers will be assigned with 0.",
-                    stacklevel=2,
+                    stacklevel=3,
                 )
-        return proba
+        normalizer = votes.sum(axis=1)[:, None]
+        normalizer[normalizer == 0.0] = 1.0
+        votes /= normalizer
+        return votes, None
 
 
 class RadiusNeighborsRegressor(MLXRadiusMixin, MLXNeighborsMixin, RegressorMixin, BaseEstimator):
@@ -213,12 +223,16 @@ class RadiusNeighborsRegressor(MLXRadiusMixin, MLXNeighborsMixin, RegressorMixin
     metric : {"euclidean", "l2", "minkowski"}, default="minkowski"
     metric_params : dict, default=None
     n_jobs : int, default=None
+        Worker threads for the host radius engines; ``None`` and ``-1`` use all
+        cores.
 
     Attributes
     ----------
     n_features_in_ : int
     n_samples_fit_ : int
     execution_backend_ : {"mlx", "cpu", "sklearn"}
+        Which backend initially stored the fitted training data;
+        ``last_query_backend_`` reports where each query ran.
 
     Notes
     -----
@@ -263,10 +277,23 @@ class RadiusNeighborsRegressor(MLXRadiusMixin, MLXNeighborsMixin, RegressorMixin
         -------
         self : RadiusNeighborsRegressor
         """
+        y_in = y
+        column = False
+        if self._mlxlearn_allow_fallback:
+            # Patched twins advertise multi-output targets like scikit-learn's
+            # regressor, which keeps a single-column target two-dimensional.
+            # (Layer 1 is single-output: such a y warns and is raveled.)
+            values = np.asarray(y)
+            column = values.ndim == 2 and values.shape[1] == 1
+            if column:
+                y = values[:, 0]
         if self._fit_neighbors(X, y, target="regression") == "sklearn":
-            return self._fit_sklearn(X, y)
+            return self._fit_sklearn(X, y_in)
 
-        self._y = np.array(self._y_checked_, dtype=np.float64, copy=True)
+        checked = self._y_checked_
+        self._y = np.array(checked, dtype=np.float64, copy=True)
+        self._y_out_dtype_ = np.float32 if checked.dtype == np.float32 else np.float64
+        self._y_2d_ = bool(column)
         del self._y_checked_
         return self
 
@@ -288,28 +315,34 @@ class RadiusNeighborsRegressor(MLXRadiusMixin, MLXNeighborsMixin, RegressorMixin
             self._set_query_backend("sklearn")
             return self._sklearn_delegate().predict(X)
 
-        dist, idx = self.radius_neighbors(X, return_distance=True)
-        n_queries = len(idx)
-        y_pred = np.empty(n_queries, dtype=np.float64)
-        weights = _ragged_weights(dist, self.weights)
-        empty = False
-        for i in range(n_queries):
-            neighbors = np.asarray(idx[i], dtype=INDEX_DTYPE)
-            if neighbors.size == 0:
-                y_pred[i] = np.nan
-                empty = True
-                continue
-            values = self._y[neighbors]
-            if weights is None:
-                y_pred[i] = float(np.mean(values))
-            else:
-                w = np.asarray(weights[i], dtype=np.float64)
-                y_pred[i] = float(np.average(values, weights=w))
-        if empty:
+        weights = self.weights
+        if weights not in (None, "uniform", "distance") and not callable(weights):
+            raise ValueError(
+                f"weights not recognized: should be 'uniform' or 'distance', got {weights!r}"
+            )
+        if callable(weights) and not self._mlxlearn_allow_fallback:
+            raise ValueError(
+                "A callable weights function is not implemented on the MLX path; "
+                "use weights='uniform' or 'distance', or run under patch_sklearn()."
+            )
+        weighted = weights == "distance"
+        parts, stock = self._radius_parts(X, None, need_distance=weighted, sort_results=False,
+                                          operation="predict", raw=True)
+        if stock is not None:
+            return self._radius_stock("predict", stock).predict(self._stock_query(X, stock))
+        from .._kernels.radius_reduce import mean_of_parts
+
+        y_pred, counts = mean_of_parts(parts, self._y, weighted=weighted)
+        if np.any(counts == 0):
             warnings.warn(
                 "One or more samples have no neighbors within specified radius; predicting NaN.",
                 stacklevel=2,
             )
+        # Like scikit-learn: float32 targets give float32 predictions, and a
+        # column-vector target gives column-vector predictions.
+        y_pred = y_pred.astype(self.__dict__.get("_y_out_dtype_", np.float64), copy=False)
+        if self.__dict__.get("_y_2d_", False):
+            y_pred = y_pred.reshape(-1, 1)
         return y_pred
 
 
@@ -317,41 +350,31 @@ def _resolve_outlier_label(outlier_label, classes, encoded_y):
     """Populate ``outlier_label_`` the way scikit-learn does for a single output."""
     if outlier_label is None:
         return None
-    if outlier_label == "most_frequent":
+    if isinstance(outlier_label, str) and outlier_label == "most_frequent":
         counts = np.bincount(encoded_y, minlength=len(classes))
         return [classes[int(counts.argmax())]]
 
-    if not np.isscalar(outlier_label) and not isinstance(outlier_label, (str, bytes, np.generic)):
+    def arraylike(value):
+        return (hasattr(value, "__len__") or hasattr(value, "shape")
+                or hasattr(value, "__array__")) and not isinstance(value, (str, bytes))
+
+    if arraylike(outlier_label):
+        if len(outlier_label) != 1:
+            raise ValueError(
+                f"The length of outlier_label: {outlier_label} is inconsistent with the "
+                "output length: 1"
+            )
+        label = list(outlier_label)[0]
+    else:
+        label = outlier_label
+    if arraylike(label):
         raise TypeError(
             f"The outlier_label of classes {classes} is supposed to be a scalar, "
-            f"got {outlier_label}."
+            f"got {label}."
         )
-    label_arr = np.append(classes, outlier_label)
-    if label_arr.dtype != classes.dtype:
+    if np.append(classes, label).dtype != classes.dtype:
         raise TypeError(
-            f"The dtype of outlier_label {outlier_label} is inconsistent with "
+            f"The dtype of outlier_label {label} is inconsistent with "
             f"classes {classes} in y."
         )
-    return [outlier_label]
-
-
-def _ragged_weights(neigh_dist, weights):
-    """Per-query distance weights for object arrays of 1-d distance rows."""
-    if weights in (None, "uniform"):
-        return None
-    if weights != "distance":
-        raise ValueError(
-            f"weights not recognized: should be 'uniform' or 'distance', got {weights!r}"
-        )
-    out = np.empty(len(neigh_dist), dtype=object)
-    for i, dist in enumerate(neigh_dist):
-        d = np.asarray(dist, dtype=np.float64)
-        if d.size == 0:
-            out[i] = d
-            continue
-        with np.errstate(divide="ignore"):
-            w = 1.0 / d
-        if np.any(d == 0):
-            w = (d == 0).astype(np.float64)
-        out[i] = w
-    return out
+    return [label]

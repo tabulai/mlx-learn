@@ -24,11 +24,14 @@ class NearestNeighbors(MLXRadiusMixin, MLXNeighborsMixin, BaseEstimator):
     radius : float, default=1.0
         Used by :meth:`radius_neighbors`.
     algorithm : {"auto", "brute"}, default="auto"
-        Automatic radius search can use a CPU tree. Explicit ``"kd_tree"`` and
-        ``"ball_tree"`` raise :class:`~mlxlearn.exceptions.UnsupportedParameterError` on direct
-        use and fall back to scikit-learn under ``patch_sklearn()``.
+        ``"auto"`` lets radius search use a tree for low-dimensional data;
+        ``"brute"`` keeps every query on brute-force engines. Results are the
+        same either way. Explicit ``"kd_tree"`` and ``"ball_tree"`` raise
+        :class:`~mlxlearn.exceptions.UnsupportedParameterError` on direct use and
+        fall back to scikit-learn under ``patch_sklearn()``.
     leaf_size : int, default=30
-        Accepted for signature compatibility; brute-force search does not use it.
+        Accepted for signature compatibility. The owned engines choose their
+        own tree leaves; a call delegated to scikit-learn uses this value.
     metric : {"euclidean", "l2", "minkowski"}, default="minkowski"
         ``"minkowski"`` is supported at ``p=2`` only.
     p : float, default=2
@@ -36,7 +39,8 @@ class NearestNeighbors(MLXRadiusMixin, MLXNeighborsMixin, BaseEstimator):
         Not implemented on the MLX path. mlxlearn raises rather than silently
         computing unweighted Euclidean distances.
     n_jobs : int, default=None
-        Accepted and ignored; the MLX path does not use joblib parallelism.
+        Worker threads for the host radius engines. ``None`` and ``-1`` use all
+        cores. k-neighbor search ignores it.
 
     Attributes
     ----------
@@ -54,9 +58,14 @@ class NearestNeighbors(MLXRadiusMixin, MLXNeighborsMixin, BaseEstimator):
 
     Notes
     -----
-    :meth:`radius_neighbors` can use a CPU tree or screen candidates in bounded
-    CPU or Metal tiles. Automatic patched searches can also use stock
-    scikit-learn. Neighborhoods are ragged arrays with one row per query.
+    :meth:`radius_neighbors` returns exact neighbor sets for the float32
+    coordinates: a training row is returned iff its exact squared distance is
+    at most ``fl64(radius ** 2)``. A state-free router picks a tree, host brute
+    force or a certified Metal Gram screen for each call; all return the same
+    sets, in ascending index order unless ``sort_results=True``. Patched
+    estimators hand a whole call to scikit-learn for inputs the owned engines do
+    not implement, or when scikit-learn is predicted to be faster.
+    Neighborhoods are ragged arrays with one row per query.
 
     Examples
     --------

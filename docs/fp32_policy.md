@@ -178,7 +178,7 @@ no worse." Both are tested.
 | Quantity | Comparison against scikit-learn | Rationale |
 |---|---|---|
 | Neighbor **sets** (per row) | `assert_array_equal` on the sorted row — exact | Which points are nearest is not a matter of opinion |
-| Radius-neighbor **membership** | set equality on indices; a disagreement must sit on the radius | Same claim as k-neighbor sets, for a threshold instead of a count |
+| Radius-neighbor **membership** | exact: `S <= fl64(r**2)` for the exact squared distance `S` of the float32 coordinates, identical on every route; a disagreement with scikit-learn's float64 Gram arithmetic can only sit on the radius | Same claim as k-neighbor sets, for a threshold instead of a count; the band is resolved with integers (`radius_contract.py`) |
 | Neighbor **index order** | exact where distances are strictly separated; set equality where they tie | See §3.1 — scikit-learn does not define an order for exact ties |
 | Neighbor **distances** | `atol=1e-6, rtol=1e-6` | Refined float32, relative to the data scale |
 | Classifier **predictions** | ≥ 99.5% label agreement | Labels are discrete; disagreements concentrate at the decision boundary. Measured: 0.9975 worst case over 40 randomized logistic configurations, 1.0 typical |

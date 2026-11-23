@@ -341,12 +341,7 @@ class MLXNeighborsMixin(BackendMixin):
 
         if automatic:
             n_samples, n_features = X_checked.shape
-            # A patched radius query can start on stock search even for large
-            # fits. Radius-only estimators also select a device per query.
-            defer_radius = isinstance(self, MLXRadiusMixin) and (
-                self._mlxlearn_allow_fallback or self.n_neighbors is None
-            )
-            if (defer_radius or (n_samples <= 2048 and n_features <= 64)
+            if ((n_samples <= 2048 and n_features <= 64)
                     or (n_samples <= 16384 and n_features <= 32)):
                 backend = "cpu"
                 gpu_available = None
@@ -378,6 +373,11 @@ class MLXNeighborsMixin(BackendMixin):
         self._tree = None
         self._set_backend(backend)
         self._knn_policy_ = "auto" if automatic else "fixed"
+        if isinstance(self, MLXRadiusMixin):
+            # A patched radius call delegated to scikit-learn is answered by a
+            # stock twin configured as this fit was (sklearn's fit-time
+            # parameters do not follow later set_params calls).
+            self._radius_fit_params_ = self.get_params(deep=False)
         return backend
 
     # -------------------------------------------------------------- kneighbors
@@ -509,7 +509,8 @@ class MLXNeighborsMixin(BackendMixin):
     def __getstate__(self):
         # Encoded labels remain in _y; device copies can be rebuilt lazily, just
         # like the search index, without embedding GPU buffers in the pickle.
-        state = super().__getstate__()
+        # Copy first: BackendMixin may return the live __dict__ itself.
+        state = dict(super().__getstate__())
         state.pop("_y_device_", None)
         # The mirrored stock state is sufficient to recover fallback inference.
         # Do not serialize a second estimator or rely on its public binding
@@ -532,13 +533,98 @@ class MLXNeighborsMixin(BackendMixin):
 
 
 class MLXRadiusMixin:
-    """``radius_neighbors`` for the MLX brute-force path.
+    """``radius_neighbors`` and ``radius_neighbors_graph`` on the owned engines.
 
     Kept off :class:`MLXNeighborsMixin` so :class:`KNeighborsClassifier` and
     :class:`KNeighborsRegressor` do not grow a method scikit-learn's k-neighbor
     estimators do not have. :class:`NearestNeighbors` and the radius estimators
     opt in.
+
+    Neighbor sets are exact for the float32 training and query coordinates:
+    a row is returned iff its exact squared distance is at most
+    ``fl64(radius ** 2)``, whichever engine (a tree, host brute force or a
+    Metal screen) the router selects. Patched estimators hand a whole call to
+    scikit-learn when it is outside the owned engines' capability or when the
+    router predicts scikit-learn is faster; those calls return scikit-learn's
+    own results unchanged.
     """
+
+    def _radius_parts(self, X, radius, *, need_distance, sort_results, operation, raw=False):
+        """Return ``(parts, None)`` from the owned engines, or ``(None, (kind, reason))``.
+
+        ``kind`` is ``"capability"`` when the call uses something the owned
+        engines do not implement (patched layer only), or ``"router"`` when the
+        state-free router predicts that scikit-learn is faster.
+        """
+        from .._kernels.radius import StockRoute
+        from ._radius_stock import capability_reason
+
+        patched = self._mlxlearn_allow_fallback
+        value = self.radius if radius is None else radius
+        if patched:
+            reason = capability_reason(self, X, value)
+            if reason is not None:
+                return None, ("capability", reason)
+        query_is_train = X is None
+        if query_is_train:
+            Q = self._index_.training_data
+        else:
+            from scipy import sparse
+
+            if sparse.issparse(X):
+                # Layer 1 densifies sparse queries, as its radius methods did
+                # before they were accelerated.
+                X = X.toarray()
+            try:
+                Q = _validate_neighbor_query(self, X)
+            except CapabilityError:
+                if patched:
+                    return None, ("capability", "query values outside float32")
+                raise
+        with mlx_guard(type(self).__name__, operation):
+            try:
+                parts = self._index_.query_radius_csr(
+                    Q, value, need_distance=need_distance, exclude_self=query_is_train,
+                    sort_results=sort_results, algorithm=self.algorithm, n_jobs=self.n_jobs,
+                    patched=patched, raw=raw,
+                )
+            except StockRoute as stock:
+                return None, ("router", stock.reason)
+        self._record_neighbor_query(operation, Q.shape)
+        return parts, None
+
+    def _radius_stock(self, operation, stock):
+        """The fitted stock twin for a delegated call, honoring ``fallback_policy``.
+
+        Capability delegations are fallbacks: ``"raise"`` refuses them and
+        ``"warn"`` warns. Router delegations are ordinary dispatch.
+        """
+        from ._radius_stock import stock_model
+
+        kind, reason = stock
+        name = type(self).__name__
+        if kind == "capability":
+            policy = get_config().fallback_policy
+            if policy == "raise":
+                record_event(name, operation, "sklearn", reason=f"radius: {reason}",
+                             fallback=True)
+                raise CapabilityError(
+                    f"{name}.{operation}: {reason} is not implemented on the MLX path, and "
+                    "fallback_policy='raise' is set, so mlxlearn did not hand this call to "
+                    "scikit-learn. Set fallback_policy='warn' or 'silent' to allow it.",
+                    reason="radius-" + reason.replace(" ", "-"),
+                )
+            record_event(name, operation, "sklearn", reason=f"radius: {reason}",
+                         fallback=True, warn=True)
+        else:
+            record_event(name, operation, "sklearn", reason=f"radius: {reason}")
+        self._set_query_backend("sklearn")
+        return stock_model(self)
+
+    def _stock_query(self, X, stock):
+        from ._radius_stock import stock_query
+
+        return stock_query(X, stock[1])
 
     def radius_neighbors(self, X=None, radius=None, return_distance=True, sort_results=False):
         """Find every training row within ``radius`` of each query.
@@ -547,14 +633,15 @@ class MLXRadiusMixin:
         ----------
         X : array-like of shape (n_queries, n_features), default=None
             Query points. ``None`` means "the training data", and each point's
-            own index is excluded from its neighbors.
+            own index is excluded from its neighbors (duplicates are kept).
         radius : float, default=None
             Inclusive Euclidean radius. Defaults to the estimator's ``radius``.
         return_distance : bool, default=True
             Whether to return distances alongside indices.
         sort_results : bool, default=False
-            If True, each row is ordered by distance, then training index. ``True`` with
-            ``return_distance=False`` is an error, matching scikit-learn.
+            If True, each row is ordered by distance, then training index.
+            ``True`` with ``return_distance=False`` is an error, matching
+            scikit-learn. Otherwise rows hold ascending training indices.
 
         Returns
         -------
@@ -564,43 +651,23 @@ class MLXRadiusMixin:
             Training indices, int64.
         """
         check_is_fitted(self)
-        if sort_results and not return_distance:
-            raise ValueError("return_distance must be True if sort_results is True.")
-
         if self._fitted_backend("radius_neighbors") == "sklearn":
             self._note_inference("radius_neighbors")
             self._set_query_backend("sklearn")
             return self._sklearn_delegate().radius_neighbors(
                 X, radius, return_distance, sort_results
             )
+        if sort_results and not return_distance:
+            raise ValueError("return_distance must be True if sort_results is True.")
+        parts, stock = self._radius_parts(X, radius, need_distance=return_distance,
+                                          sort_results=sort_results,
+                                          operation="radius_neighbors")
+        if stock is not None:
+            return self._radius_stock("radius_neighbors", stock).radius_neighbors(
+                self._stock_query(X, stock), radius, return_distance, sort_results)
+        from .._kernels.radius_result import to_ragged
 
-        query_is_train = X is None
-        radius = float(self.radius if radius is None else radius)
-        if radius < 0:
-            raise ValueError(f"radius must be non-negative, got {radius}")
-
-        if query_is_train:
-            Q = self._index_.training_data
-        else:
-            require_dense(X, estimator=type(self).__name__, operation="radius_neighbors")
-            Q = _validate_neighbor_query(self, X)
-
-        with mlx_guard(type(self).__name__, "radius_neighbors"):
-            result = self._index_.query_radius(
-                Q,
-                radius,
-                return_distance=return_distance,
-                exclude_self=query_is_train,
-                sort_results=sort_results,
-                tree_allowed=self.algorithm == "auto",
-                stock_factory=self._stock_radius_index if self._mlxlearn_allow_fallback else None,
-            )
-        self._record_neighbor_query("radius_neighbors", Q.shape)
-        return result
-
-    def _stock_radius_index(self):
-        factory = _stock_neighbor_class("NearestNeighbors")
-        return factory(algorithm="brute", metric="euclidean", n_jobs=self.n_jobs)
+        return to_ragged(parts, return_distance=return_distance)
 
     def radius_neighbors_graph(self, X=None, radius=None, mode="connectivity", sort_results=False):
         """Return the CSR graph of neighbors within ``radius``, excluding self for X=None."""
@@ -609,27 +676,19 @@ class MLXRadiusMixin:
             self._note_inference("radius_neighbors")
             self._set_query_backend("sklearn")
             return self._sklearn_delegate().radius_neighbors_graph(X, radius, mode, sort_results)
-        if mode == "connectivity":
-            indices = self.radius_neighbors(X, radius, return_distance=False)
-            values = None
-        elif mode == "distance":
-            distances, indices = self.radius_neighbors(
-                X, radius, return_distance=True, sort_results=sort_results
-            )
-            values = np.concatenate(list(distances))
-        else:
+        if mode not in ("connectivity", "distance"):
             raise ValueError('Unsupported mode, must be one of "connectivity", '
                              f'or "distance" but got "{mode}" instead')
-        from scipy import sparse
+        distance = mode == "distance"
+        parts, stock = self._radius_parts(X, radius, need_distance=distance,
+                                          sort_results=distance and sort_results,
+                                          operation="radius_neighbors_graph")
+        if stock is not None:
+            return self._radius_stock("radius_neighbors_graph", stock).radius_neighbors_graph(
+                self._stock_query(X, stock), radius, mode, sort_results)
+        from .._kernels.radius_result import to_graph
 
-        counts = np.fromiter((len(row) for row in indices), dtype=np.int64, count=len(indices))
-        columns = np.concatenate(list(indices))
-        if values is None:
-            values = np.ones(columns.size)
-        indptr = np.concatenate(([0], np.cumsum(counts)))
-        constructor = (sparse.csr_array if get_sklearn_config().get("sparse_interface") == "sparray"
-                       else sparse.csr_matrix)
-        return constructor((values, columns, indptr), shape=(len(indices), self.n_samples_fit_))
+        return to_graph(parts, self.n_samples_fit_, mode=mode)
 
 
 def _safe_shape(X) -> tuple[int, ...] | None:

@@ -98,7 +98,10 @@ def test_radius_handles_distances_outside_the_float32_squared_range(backend, sca
         model = NearestNeighbors(radius=2 * scale).fit(X)
         dist, idx = model.radius_neighbors(Q, sort_results=True)
 
-    assert model.last_query_backend_ == backend
+    # Tiny coordinates screen exactly on Metal (the Gram floor covers
+    # underflow); huge ones push centred norms past the screen's range, so the
+    # exact host engine serves them under either fixed backend.
+    assert model.last_query_backend_ == (backend if scale < 1 else "cpu")
     np.testing.assert_array_equal(idx[0], [0, 1])
     np.testing.assert_allclose(dist[0], X[:2, 0].astype(np.float64), atol=0, rtol=1e-7)
 
@@ -181,39 +184,44 @@ def test_nearest_neighbors_radius_matches_sklearn(classification_data, rng):
     assert mlx.execution_backend_ == "mlx" and mlx.last_query_backend_ == "mlx"
 
 
-def test_patched_large_cold_radius_query_defers_metal_setup(rng, monkeypatch):
-    from mlxlearn._common import device
+def _bitwise_equal(first, second):
+    for a, b in zip(first, second, strict=True):
+        np.testing.assert_array_equal(np.asarray(a), np.asarray(b))
+        assert np.asarray(a).dtype == np.asarray(b).dtype
+
+
+def test_patched_radius_routing_is_state_free(rng):
+    """Repeated identical calls take the same route and return identical bits."""
     from mlxlearn.patching._estimators import NearestNeighbors as Patched
 
     X = rng.normal(size=(32_768, 16)).astype(np.float32)
     Q = X[:64] + np.float32(0.01)
-
-    def unexpected_probe():
-        pytest.fail("a stock-routed first query should stay on the host")
-
-    monkeypatch.setattr(device, "gpu_available", unexpected_probe)
     model = Patched(radius=1.5).fit(X)
-    model.radius_neighbors(Q)
-    assert model.execution_backend_ == "cpu"
-    assert model.last_query_backend_ == "sklearn"
-    assert model._index_._device_index is None
+    first = model.radius_neighbors(Q)
+    first_plan = model._index_._radius_search.last_plan
+    second = model.radius_neighbors(Q)
+    assert model._index_._radius_search.last_plan == first_plan
+    _bitwise_equal(first[0], second[0])
+    _bitwise_equal(first[1], second[1])
 
 
-def test_patched_large_sparse_radius_uses_stock_then_metal(rng):
+def test_patched_sparse_high_d_radius_stays_owned_and_dense_output_uses_stock(rng):
     from mlxlearn.patching._estimators import NearestNeighbors as Patched
 
     X = rng.normal(size=(16_384, 16)).astype(np.float32)
     Q = X[:128] + np.float32(0.01)
     nn = Patched(radius=1.5).fit(X)
     first_dist, first_idx = nn.radius_neighbors(Q)
-    assert nn.last_query_backend_ == "sklearn"
+    assert nn.last_query_backend_ in ("mlx", "cpu")
     warm_dist, warm_idx = nn.radius_neighbors(Q)
-    assert nn.last_query_backend_ == "mlx"
     ref_dist, ref_idx = sk_reference(X, radius=1.5).radius_neighbors(Q.astype(np.float64))
     assert_radius_parity(first_idx, ref_idx, first_dist, ref_dist, radius=1.5)
-    assert_radius_parity(warm_idx, ref_idx, warm_dist, ref_dist, radius=1.5)
+    _bitwise_equal(first_idx, warm_idx)
+    _bitwise_equal(first_dist, warm_dist)
 
-    # The warm index still hands dense searches to the stock implementation.
+    # Nearly every training row is inside radius 6 of the origin: about two
+    # million result pairs from a small screen, which the patched layer
+    # leaves to sklearn.
     nn.radius_neighbors(np.zeros_like(Q), radius=6.0, return_distance=False)
     assert nn.last_query_backend_ == "sklearn"
 
@@ -223,30 +231,31 @@ def test_patched_low_dimensional_radius_reuses_a_cpu_tree(rng):
 
     from mlxlearn.patching._estimators import NearestNeighbors as Patched
 
-    X = rng.normal(size=(4096, 4)).astype(np.float32)
-    Q = X[:64] + np.float32(0.01)
+    X = rng.normal(size=(20_000, 4)).astype(np.float32)
+    Q = X[:256] + np.float32(0.01)
     nn = Patched(radius=0.2).fit(X)
     first_dist, first_idx = nn.radius_neighbors(Q)
-    assert nn.last_query_backend_ == "sklearn"
-    warm_dist, warm_idx = nn.radius_neighbors(Q)
     assert nn.last_query_backend_ == "cpu"
+    assert nn._index_._radius_search.last_plan.route == "tree"
     tree = nn._index_._radius_search._tree
-    nn.radius_neighbors(Q)
+    warm_dist, warm_idx = nn.radius_neighbors(Q)
     assert nn._index_._radius_search._tree is tree
     restored = pickle.loads(pickle.dumps(nn))
     restored_dist, restored_idx = restored.radius_neighbors(Q)
-    assert_radius_parity(warm_idx, first_idx, warm_dist, first_dist, radius=0.2)
-    assert_radius_parity(restored_idx, first_idx, restored_dist, first_dist, radius=0.2)
+    _bitwise_equal(warm_idx, first_idx)
+    _bitwise_equal(warm_dist, first_dist)
+    _bitwise_equal(restored_idx, first_idx)
+    _bitwise_equal(restored_dist, first_dist)
 
 
-def test_stock_radius_route_checks_boundary_and_tie_order():
+def test_radius_sorted_ties_follow_training_index_on_patched_models():
     from mlxlearn.patching._estimators import NearestNeighbors as Patched
 
     X = np.array([[3.0], [1.0], [2.0], [4.0]], dtype=np.float32)
     Q = np.array([[100.0], [2.0], [100.0], [3.0]], dtype=np.float32)
     model = Patched(radius=1.0, algorithm="brute").fit(X)
     dist, idx = model.radius_neighbors(Q, sort_results=True)
-    assert model.last_query_backend_ == "sklearn"
+    assert model.last_query_backend_ == "cpu"
     np.testing.assert_array_equal(idx[0], [])
     np.testing.assert_array_equal(idx[1], [2, 0, 1])
     np.testing.assert_array_equal(dist[1], [0.0, 1.0, 1.0])

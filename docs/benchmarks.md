@@ -97,7 +97,7 @@ MLX 0.31.2, scikit-learn 1.7.2, NumPy 2.5.1.
 | Algorithm / operation | Crossover | Best speedup | Threshold in `Tuning` |
 |---|---|---|---|
 | `knn/kneighbors` | ~250–1 000 samples | 17.4× | `knn_min_train_samples = 256`, `knn_min_work = 2048` |
-| `knn/radius_neighbors` | varies with batch size and result density | — | CPU trees for low-dimensional data, compact Metal screening for repeated sparse batches, and stock for eligible cold and dense patched queries |
+| `knn/radius_neighbors` | see `benchmarks/radius/` | — | state-free router in `_kernels/radius_router.py`; measured with `benchmarks/radius/bench_radius.py` |
 | `knn/fit` | never | — | accepted regression, see below |
 | `svc/fit` | ~2 000 samples **and** ~10⁶ elements; never for `kernel="linear"` | 2.93× | `svc_min_samples = 2048`, `svc_min_work = 1_000_000` |
 | `logreg/fit` | ~20 000 samples **and** ~2·10⁷ elements | 1.34× | `logreg_min_samples = 20_000`, `logreg_min_work = 20_000_000` |
