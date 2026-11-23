@@ -683,7 +683,7 @@ def _noise_kept_case(seed):
 
 
 @pytest.mark.parametrize("seed", [1012, 1001])
-def test_a_cutoff_that_keeps_noise_directions_stays_on_gelsd(seed, monkeypatch):
+def test_a_cutoff_that_keeps_noise_directions_stays_on_gelsd(seed):
     """Review round 2: gelsd's backward error is legitimate residual, not a failure."""
     X, Y, w, tol = _noise_kept_case(seed)
     sol = ols._stock_lstsq(X, Y, w, True, tol)
@@ -694,9 +694,25 @@ def test_a_cutoff_that_keeps_noise_directions_stays_on_gelsd(seed, monkeypatch):
         ref = SkLinearRegression(tol=tol).fit(X, Y, sample_weight=w)
         assert sol.rank == ref.rank_
         np.testing.assert_array_equal(sol.coef.reshape(np.shape(ref.coef_)), ref.coef_)
-    # Without the backward-error term the same result is (wrongly) rejected.
+
+
+@pytest.mark.parametrize("n_targets", [1, 3])
+def test_plausibility_accounts_for_gelsd_backward_error(n_targets, monkeypatch):
+    eps = np.finfo(np.float32).eps
+    X = np.diag(np.array([1, eps], dtype=np.float32))
+    target = np.ones((2, n_targets), dtype=np.float32)
+    target[1, :-1] = 0
+
+    # This is the exact solution for a nearby matrix with a second diagonal
+    # entry of eps/4. On X the last target has residual norm 3, larger than
+    # its zero-solution residual sqrt(2), despite the small input perturbation.
+    singular = np.array([1, eps / 4], dtype=np.float32)
+    coef = target / singular[:, None]
+    monkeypatch.setattr(ols, "_PLAUSIBLE_RESIDUAL_WORK", 1)
+    assert ols._plausible_lstsq(X, None, None, target, coef, 2, singular)
     monkeypatch.setattr(ols, "_GELSD_BACKWARD", 0.0)
-    assert ols._stock_lstsq(X, Y, w, True, tol).method == "gelss"
+    assert not ols._plausible_lstsq(X, None, None, target, coef, 2, singular)
+
 
 def test_offset_near_duplicates_keep_stock_bits(monkeypatch):
     """Review round 2: X b - x_off b cancels for huge b on offset data; the
