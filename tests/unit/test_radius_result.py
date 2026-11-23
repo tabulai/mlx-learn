@@ -216,6 +216,8 @@ def test_dense_outputs_on_small_screens_stay_on_stock_when_patched():
     dense = DensitySample(1500.0, 4000.0, 1.0, c_hat=1600.0)
     small = _context(patched=True, native=True, d=64, n=100_000, n_query=1000, sample=dense)
     assert plan_radius(small).route == "stock"
+    bitmap = _context(patched=True, native=True, d=32, n=32_000, n_query=256, sample=dense)
+    assert plan_radius(bitmap).route == "metal"
     large = _context(patched=True, native=True, d=64, n=1_000_000, n_query=1000, sample=dense)
     assert plan_radius(large).route == "metal"
     assert plan_radius(_context(patched=False, native=True, d=64, n=100_000, n_query=1000,

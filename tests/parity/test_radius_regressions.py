@@ -9,6 +9,7 @@ import warnings
 
 import numpy as np
 import pytest
+from sklearn import config_context as sklearn_config_context
 from sklearn import neighbors as sk_neighbors
 
 from mlxlearn import config_context
@@ -27,6 +28,53 @@ def _data(rng, n=2000, d=6, nq=50):
     X = rng.normal(size=(n, d)).astype(np.float32)
     Q = rng.normal(size=(nq, d)).astype(np.float32)
     return X, Q
+
+
+@pytest.mark.parametrize("translated", [True, False], ids=["common-offset", "zero-centered"])
+@pytest.mark.parametrize("device", ["cpu", "auto"])
+def test_automatic_dense_routes_preserve_exact_membership(translated, device):
+    # Large enough for the patched CPU or Metal planner to consider stock.
+    # Both inputs have 1,024 true neighbors per query, all at distance 0.5.
+    X = np.zeros((4096, 16), dtype=np.float32)
+    Q = np.zeros((1024, 16), dtype=np.float32)
+    X[:1024, 1] = 0.5
+    X[1024:, 1] = 4.0
+    if translated:
+        # The uncentered Gram identity in float64 rounds every distance to 0.
+        X[:, 0] = Q[:, 0] = np.float32(2e12)
+    else:
+        # 1 + 2**-54 rounds to 1 even with direct float64 accumulation.
+        X[-2:, 1:3] = [1, 2**-27]
+        X[::2] *= -1
+    with config_context(device=device):
+        model = patched.NearestNeighbors(radius=1.0, algorithm="brute").fit(X)
+        distances, indices = model.radius_neighbors(Q)
+    expected = np.arange(1024)
+    for idx, dist in zip(indices, distances, strict=True):
+        np.testing.assert_array_equal(np.sort(idx), expected)
+        np.testing.assert_array_equal(dist, 0.5)
+
+
+@pytest.mark.parametrize(("metric", "radius"), [
+    ("euclidean", np.sqrt(np.float32(3))),
+    ("l2", 3.0 ** 0.5),
+])
+@pytest.mark.parametrize("cython_reductions", [False, True])
+def test_automatic_stock_respects_the_squared_cutoff(metric, radius, cython_reductions):
+    # Stock's Python paths square a float32 radius in float32 for euclidean,
+    # and compare a rounded square root directly to the radius for l2.
+    assert float(radius) ** 2 < 3
+    X = np.zeros((4096, 16), dtype=np.float32)
+    X[1, :3] = 1
+    X[2:, 0] = 4
+    Q = np.zeros((1024, 16), dtype=np.float32)
+    with config_context(device="cpu"), sklearn_config_context(
+        enable_cython_pairwise_dist=cython_reductions,
+    ):
+        nn = patched.NearestNeighbors(radius=radius, metric=metric, algorithm="brute").fit(X)
+        rows = nn.radius_neighbors(Q, return_distance=False)
+    for row in rows:
+        np.testing.assert_array_equal(row, [0])
 
 
 @pytest.mark.parametrize("cls", [RadiusNeighborsClassifier, RadiusNeighborsRegressor])

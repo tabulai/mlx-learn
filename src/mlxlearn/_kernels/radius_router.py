@@ -198,6 +198,12 @@ def _patched_stock_reason(ctx: RouteContext, plan: RoutePlan) -> str | None:
         # NumPy, which loses to scikit-learn on dense outputs.
         return "dense high-d output"
     if plan.route == "metal" and m_hat >= 512 and ctx.n * ctx.n_query <= 2**27:
+        # For moderately dense rows the single-tile bitmap is faster even
+        # than stock's batched search. Very dense rows spend more time in
+        # exact distance calculation and sorting.
+        if (ctx.native and ctx.d <= 64 and ctx.n <= 2**17 and ctx.n * ctx.n_query <= 2**24
+                and ctx.n / 64 <= m_hat <= ctx.n / 4):
+            return None
         # Dense rows on a small screen: per-pair host work and the GPU's
         # cold-start cost outweigh the screen, and scikit-learn's batched
         # float64 GEMM wins (measured on M4 Max and M5 Ultra).

@@ -341,7 +341,11 @@ class MLXNeighborsMixin(BackendMixin):
 
         if automatic:
             n_samples, n_features = X_checked.shape
-            if ((n_samples <= 2048 and n_features <= 64)
+            # At up to eight features auto radius queries run on the host for
+            # every batch size. A later k-neighbor query can still select Metal.
+            host_radius_fit = (isinstance(self, MLXRadiusMixin) and self.algorithm == "auto"
+                               and n_features <= 8 and n_samples < 2**31)
+            if (host_radius_fit or (n_samples <= 2048 and n_features <= 64)
                     or (n_samples <= 16384 and n_features <= 32)):
                 backend = "cpu"
                 gpu_available = None
@@ -542,11 +546,10 @@ class MLXRadiusMixin:
 
     Neighbor sets are exact for the float32 training and query coordinates:
     a row is returned iff its exact squared distance is at most
-    ``fl64(radius ** 2)``, whichever engine (a tree, host brute force or a
-    Metal screen) the router selects. Patched estimators hand a whole call to
-    scikit-learn when it is outside the owned engines' capability or when the
-    router predicts scikit-learn is faster; those calls return scikit-learn's
-    own results unchanged.
+    ``fl64(radius ** 2)`` on every owned engine. Patched estimators delegate
+    unsupported calls to scikit-learn. The router can also select a faster
+    scikit-learn brute search with proven exact
+    membership. An explicitly forced stock route also delegates the whole call.
     """
 
     def _radius_parts(self, X, radius, *, need_distance, sort_results, operation, raw=False):

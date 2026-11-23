@@ -219,10 +219,10 @@ def test_patched_sparse_high_d_radius_stays_owned_and_dense_output_uses_stock(rn
     _bitwise_equal(first_idx, warm_idx)
     _bitwise_equal(first_dist, warm_dist)
 
-    # Nearly every training row is inside radius 6 of the origin: about two
-    # million result pairs from a small screen, which the patched layer
-    # leaves to sklearn.
-    nn.radius_neighbors(np.zeros_like(Q), radius=6.0, return_distance=False)
+    # Bounded integer coordinates give stock exact squared distances. Nearly
+    # every row lies inside radius 6, so the dense-output rule can delegate.
+    nn = Patched(radius=6.0, algorithm="brute").fit(np.rint(X))
+    nn.radius_neighbors(np.zeros_like(Q), return_distance=False)
     assert nn.last_query_backend_ == "sklearn"
 
 

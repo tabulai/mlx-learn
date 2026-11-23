@@ -595,6 +595,7 @@ struct SortScratch {
     std::vector<double> query;  // per-task float64 copy of the current query
     std::vector<std::uint64_t> keys;
     std::vector<double> values;
+    std::vector<std::uint32_t> word_offsets;
     struct Item {
         std::uint64_t distance;
         std::int32_t col;
@@ -604,12 +605,44 @@ struct SortScratch {
 };
 
 inline void sort_row(std::int32_t* cols, double* d2, std::size_t count, bool by_distance,
-                     double R2, SortScratch& scratch) {
+                     double R2, SortScratch& scratch, std::size_t unique_columns = 0) {
     if (count <= 1) return;
     if (!by_distance) {
         bool ascending = true;
         for (std::size_t i = 1; i < count && ascending; ++i) ascending = cols[i - 1] < cols[i];
         if (ascending) return;
+        // Dense tree rows contain unique training indices. Enumerate their
+        // set bits in index order; a word prefix and a popcount give the
+        // sorted position of each payload without comparing or moving pairs.
+        const std::size_t word_count = (unique_columns + 63) / 64;
+        if (word_count && count >= 128 && word_count <= count) {
+            auto& words = scratch.keys;
+            words.assign(word_count, 0);
+            for (std::size_t i = 0; i < count; ++i)
+                words[cols[i] >> 6] |= std::uint64_t(1) << (cols[i] & 63);
+            if (d2) {
+                auto& offsets = scratch.word_offsets;
+                offsets.resize(word_count);
+                std::uint32_t offset = 0;
+                for (std::size_t w = 0; w < word_count; ++w) {
+                    offsets[w] = offset;
+                    offset += __builtin_popcountll(words[w]);
+                }
+                auto& values = scratch.values;
+                values.resize(count);
+                for (std::size_t i = 0; i < count; ++i) {
+                    const std::size_t w = std::size_t(cols[i]) >> 6;
+                    const auto bit = std::uint64_t(1) << (cols[i] & 63);
+                    values[offsets[w] + __builtin_popcountll(words[w] & (bit - 1))] = d2[i];
+                }
+                std::memcpy(d2, values.data(), count * sizeof(double));
+            }
+            std::size_t i = 0;
+            for (std::size_t w = 0; w < word_count; ++w)
+                for (auto mask = words[w]; mask; mask &= mask - 1)
+                    cols[i++] = std::int32_t(w * 64 + __builtin_ctzll(mask));
+            return;
+        }
         if (!d2) {
             std::sort(cols, cols + count);
             return;
@@ -845,7 +878,7 @@ inline void scan_screened(const double* q, const float* qf, const float* points,
     const bool certify = !sink.keep_d2;
     auto handle = [&](Py_ssize_t p, float s32) {
         const std::int64_t col = perm ? perm[p] : std::int64_t(p);
-        if (col == self) return;
+        if (col == self || !(s32 <= screen.out)) return;
         if (certify && s32 <= screen.in) {
             sink.add(std::int32_t(col), 0.0);
             return;
@@ -893,6 +926,28 @@ inline void scan_screened(const double* q, const float* qf, const float* points,
                 if (lanes[j] <= cut) handle(p + j, lanes[j]);
         }
     } else {
+        // With wide vectors and a selective radius, the first cache line
+        // often certifies a miss. Probe eight rows before paying for a
+        // separate prefix screen. Only each row's own bound can reject it.
+        if constexpr (D == 0) {
+            constexpr Py_ssize_t prefix = 16;
+            if (!perm && d >= 64 && end - begin >= 128) {
+                int rejected = 0;
+                for (int j = 0; j < 8; ++j) {
+                    const auto row = begin + j * ((end - begin) / 8);
+                    rejected += screen_d2(qf, points + row * d, prefix) > cut;
+                }
+                if (rejected >= 7) {
+                    for (; p + 2 <= end; p += 2) {
+                        const float* x = points + p * d;
+                        float a, b;
+                        screen_d2_x2(qf, x, x + d, prefix, a, b);
+                        if (a <= cut) handle(p, screen_d2(qf, x, d));
+                        if (b <= cut) handle(p + 1, screen_d2(qf, x + d, d));
+                    }
+                }
+            }
+        }
         for (; p + 2 <= end; p += 2) {
             float s0, s1;
             screen_d2_x2(qf, points + p * d, points + (p + 1) * d, d, s0, s1);
@@ -926,7 +981,7 @@ template <class RowFn>
 std::unique_ptr<Result> run_rows(Py_ssize_t n_query, Py_ssize_t n_train, const Thr& thr,
                                  int mode, const std::vector<std::int64_t>& order,
                                  const std::vector<std::int64_t>& bounds, int threads,
-                                 double estimated_ns, RowFn&& fn) {
+                                 double estimated_ns, RowFn&& fn, std::size_t unique_columns = 0) {
     auto result = std::make_unique<Result>();
     result->n_query = n_query;
     result->n_train = n_train;
@@ -960,7 +1015,7 @@ std::unique_ptr<Result> run_rows(Py_ssize_t n_query, Py_ssize_t n_train, const T
             if (!count_only) {
                 const std::size_t count = out.cols.size() - begin;
                 sort_row(out.cols.data() + begin, keep_d2 ? out.d2.data() + begin : nullptr, count,
-                         by_distance, thr.R2, scratch);
+                         by_distance, thr.R2, scratch, unique_columns);
             }
             raw->row_task[row] = std::int32_t(task);
             raw->row_off[row] = std::int64_t(begin);

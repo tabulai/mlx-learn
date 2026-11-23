@@ -698,3 +698,70 @@ def test_kernel_counts_past_capacity():
         stored = packed[row, :min(3, counts[row])]
         assert np.unique(stored).size == stored.size
         assert np.isin(stored, full[row, :full_counts[row]]).all()
+
+
+@pytest.mark.parametrize(("need_distance", "sort"), [(False, False), (True, False), (True, True)])
+def test_dense_bitmap_preserves_boundary_order_and_self(monkeypatch, need_distance, sort):
+    native = metal._native_finisher()
+    if native is None:
+        pytest.skip("native bitmap finisher unavailable")
+    # Two query blocks, a final partial SIMD word, and many ties. The tiny
+    # second coordinate moves some unit-distance pairs just outside radius 1.
+    rng = np.random.default_rng(46)
+    X = np.zeros((313, 32), np.float32)
+    X[:, 0] = rng.integers(-1, 2, len(X))
+    X[::3, 1] = np.float32(2.0 ** -40)
+    X[::17, 0] = 2.0 ** 60  # unsafe Gram bounds must go through exact refinement
+    offset = 7
+    Q = X[offset:offset + 71]
+    monkeypatch.setattr(metal, "_TILE_ELEMENTS", 64 * len(X))
+    starts = []
+    original = native.finish_mask
+
+    def record(*args, **kwargs):
+        starts.append(kwargs["q_offset"])
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(native, "finish_mask", record)
+    result = _query(X, Q, 1.0, cap_hint=300, need_distance=need_distance,
+                    sort=sort, exclude_self=True, q_offset=offset, threads=2)
+    assert starts == [offset, offset + 64]
+    if not sort:
+        assert_exact(result, X, Q, 1.0, exclude_self=True, q_offset=offset,
+                     need_distance=need_distance)
+        return
+    for row, indices in enumerate(exact_neighbors(X, Q, 1.0, exclude_self=True, q_offset=offset)):
+        region = slice(result.indptr[row], result.indptr[row + 1])
+        squared = host_distances(X, Q, np.full(indices.size, row), indices)
+        order = np.lexsort((indices, np.minimum(squared, 1.0)))
+        np.testing.assert_array_equal(result.indices[region], indices[order])
+        np.testing.assert_array_equal(result.distances[region], np.sqrt(np.minimum(squared[order], 1.0)))
+
+
+def test_bitmap_validates_dimensions_before_launch(monkeypatch):
+    import mlx.core as mx
+
+    from mlxlearn_device import _radius
+
+    def unexpected_launch():
+        pytest.fail("invalid or empty tiles must not launch a Metal kernel")
+
+    monkeypatch.setattr(_radius, "_mask_kernel", unexpected_launch)
+
+    def mask(shape, query_rows, train_cols, offset=0):
+        # Broadcast views can exercise the signed grid limit without allocating a large array.
+        zero = mx.array(0, dtype=mx.float32)
+        return _radius.mask_gram(mx.broadcast_to(zero, shape), mx.broadcast_to(zero, (query_rows,)),
+                                 mx.broadcast_to(zero, (train_cols,)), cut=1.0, factor=0.0,
+                                 floor=0.0, row_offset=offset, stream=mx.gpu)
+
+    assert mask((0, 33), 0, 33).shape == (0, 2)
+    assert mask((3, 0), 3, 0).shape == (3, 0)
+    for rows, width, offset in [(1, 33, 1), (2, 32, 0)]:
+        with pytest.raises(ValueError, match="cover the product tile"):
+            mask((2, 33), rows, width, offset)
+    for offset in [-1, 2**32 - 1, 2**32]:
+        with pytest.raises(ValueError, match="fit in uint32"):
+            mask((2, 1), 2, 1, offset)
+    with pytest.raises(ValueError, match="grid limit"):
+        mask((1, 2**31 - 1), 1, 1)

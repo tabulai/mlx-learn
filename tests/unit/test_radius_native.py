@@ -192,6 +192,21 @@ def test_finish_pairs_with_every_pair_uncertain_is_still_exact(rng):
     assert_same_csr(result, oracle(X, Q, R2, integer_exact=True))
 
 
+def test_index_only_finish_resolves_rounded_radius_ties():
+    X = np.zeros((7, 65), dtype=np.float32)
+    X[[1, 2, 3], 0] = 1.0
+    X[1, -1] = 2.0**-40  # over the radius, indistinguishable in float64
+    X[3, -1] = np.nextafter(np.float32(0), np.float32(1))
+    X[4, -1] = 4.0
+    X[5, -1] = 0.5
+    X[6, -1] = 1.0
+    Q = X[:1]
+    cols = np.array([1, 0, 4, 2, 5, 3, 6], dtype=np.int32)
+    result = rc.finish_pairs(X, Q, np.zeros_like(cols), cols, thresholds(X.shape[1], 1.0),
+                             need_distance=False, exclude_self=True, presorted=True).to_csr()
+    np.testing.assert_array_equal(result.indices, [2, 5, 6])
+
+
 def test_finish_pairs_sort_mode_orders_by_distance_then_index(rng):
     X = rng.integers(-2, 3, size=(500, 2)).astype(np.float32)  # many exact distance ties
     Q = rng.integers(-2, 3, size=(30, 2)).astype(np.float32)
@@ -439,3 +454,23 @@ def test_fused_reductions_validate_inputs(rng):
         result.votes(np.zeros(len(X), np.int32), 4, True)
     with pytest.raises(ValueError, match="sizes"):
         result.mean(np.zeros(3), False)
+
+
+def test_finish_mask_accepts_misaligned_host_buffers():
+    def misaligned(data):
+        result = np.ndarray(data.shape, data.dtype, buffer=bytearray(data.nbytes + 1), offset=1)
+        result[:] = data
+        assert result.flags.c_contiguous and not result.flags.aligned
+        return result
+
+    train = misaligned(np.arange(35, dtype=np.float32)[:, None])
+    queries = misaligned(np.array([[0.], [34.]], dtype=np.float32))
+    # Exercise the high bit of a uint32 word and a partial final word.
+    mask = misaligned(np.array([[0xFFFFFFFF, 7], [0xFFFFFFFF, 7]], dtype=np.uint32))
+    result, candidates = rc.finish_mask(train, queries, mask, thresholds(1, 9.0), q_offset=0,
+                                        exclude_self=False, need_distance=True, sort=False, threads=1)
+    assert candidates == 70
+    csr = result.to_csr()
+    np.testing.assert_array_equal(csr.indptr, [0, 4, 8])
+    np.testing.assert_array_equal(csr.indices, [0, 1, 2, 3, 31, 32, 33, 34])
+    np.testing.assert_array_equal(csr.distances, [0, 1, 2, 3, 3, 2, 1, 0])

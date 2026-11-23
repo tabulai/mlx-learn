@@ -185,6 +185,23 @@ def test_tree_queries_without_distances_return_the_same_members(rng):
     np.testing.assert_array_equal(without.indices, with_distances.indices)
 
 
+@pytest.mark.parametrize("need_distance", [False, True])
+def test_dense_tree_rows_keep_indices_and_distances_paired(need_distance, rng):
+    # Non-multiple-of-64 size, empty words and members on both sides of a word
+    # boundary exercise the rank calculation. Reuse the scratch on a new row.
+    X = rng.random((1027, 2), dtype=np.float32)
+    X[128:320, 0] += 4
+    X[[63, 64, 1026]] = (0.1, 0.2)
+    Q = np.array([[0.25, 0.25], [0.75, 0.75], [4.5, 0.5]], dtype=np.float32)
+    thr = thresholds(X.shape[1], 0.25)
+    tree = rc.build_tree(X, leaf_size=5)
+    expected = oracle(X, Q, thr.R2)
+    assert np.min(np.diff(expected.indptr)) >= 128
+    for result in (rc.tree_query(tree, X, Q, thr, need_distance=need_distance, threads=1).to_csr(),
+                   rc.tree_query_csr(tree, X, Q, thr, need_distance=need_distance, threads=1)):
+        assert_same_csr(result, expected, distances=need_distance)
+
+
 def test_tree_pilot_counts_are_deterministic_and_consistent(rng):
     X = rng.normal(size=(20_000, 3)).astype(np.float32)
     Q = rng.normal(size=(64, 3)).astype(np.float32)

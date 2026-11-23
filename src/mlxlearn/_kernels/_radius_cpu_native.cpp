@@ -131,6 +131,10 @@ std::unique_ptr<Result> finish_pairs_impl(const PairCall& call, const Index* row
     group_by_row(call, rows, cols, row_begin, order);
     const Py_ssize_t d = call.d;
     const Thr& thr = *call.thr;
+    // For index-only high-dimensional pairs a certified float32 result avoids
+    // the sequential float64 chain. Distance outputs always need that chain.
+    const bool screen_indices = d >= 16 && !(call.mode & (NEED_DISTANCE | NO_SCREEN));
+    const Screen32 screen = screen_indices ? make_screen32(thr.R2, d) : Screen32{};
     const std::int64_t target = std::max<std::int64_t>(2048, call.k / (8 * std::int64_t(call.threads)));
     const auto bounds = pair_bounds(row_begin, call.m, target, 4096);
     const double estimate = double(call.k) * (20.0 + 2.0 * double(d)) + double(call.m) * 50.0;
@@ -150,6 +154,28 @@ std::unique_ptr<Result> finish_pairs_impl(const PairCall& call, const Index* row
             const std::int64_t b = row_begin[row], e = row_begin[row + 1];
             auto pair = [&](std::int64_t i) { return order.empty() ? i : order[i]; };
             std::int64_t i = b;
+            if (screen.on) {
+                auto finish = [&](std::int64_t col, float s32) {
+                    if (col == self || !(s32 <= screen.out)) return;
+                    if (s32 > screen.in) {
+                        const float* x = call.train + col * d;
+                        if (!classify(canonical_d2<D>(q, x, d), thr, qf, x, d)) return;
+                    }
+                    sink.add(std::int32_t(col), 0.0);
+                };
+                for (; i + 2 <= e; i += 2) {
+                    const std::int64_t c0 = cols[pair(i)], c1 = cols[pair(i + 1)];
+                    float s0, s1;
+                    screen_d2_x2(qf, call.train + c0 * d, call.train + c1 * d, d, s0, s1);
+                    finish(c0, s0);
+                    finish(c1, s1);
+                }
+                if (i < e) {
+                    const std::int64_t col = cols[pair(i)];
+                    finish(col, screen_d2(qf, call.train + col * d, d));
+                }
+                return;
+            }
             double s[4];
             for (; i + 4 <= e; i += 4) {
                 const std::int64_t c0 = cols[pair(i)], c1 = cols[pair(i + 1)];
@@ -520,6 +546,86 @@ PyObject* py_finish_pairs(PyObject*, PyObject* args) {
     return wrap_result(std::move(result));
 }
 
+// Finish a Metal candidate bitmap. Words and bits follow training order.
+PyObject* py_finish_mask(PyObject*, PyObject* args) {
+    PyObject *train_object, *query_object, *mask_object, *thr_object;
+    Py_ssize_t q_offset, threads;
+    int exclude_self, mode;
+    if (!PyArg_ParseTuple(args, "OOOOnpin:finish_mask", &train_object, &query_object,
+                          &mask_object, &thr_object, &q_offset, &exclude_self, &mode, &threads))
+        return nullptr;
+    Buffer train, queries, mask;
+    Thr thr;
+    if (!get_buffer(train_object, train, false, "train", DType::f32, 2) ||
+        !get_buffer(query_object, queries, false, "queries", DType::f32, 2) ||
+        !get_buffer(mask_object, mask, false, "mask", DType::i32, 2) ||
+        !parse_thresholds(thr_object, thr) || !check_mode(mode) || !check_points(train, queries))
+        return nullptr;
+    const auto n = train.dim(0), d = train.dim(1), m = queries.dim(0), words = mask.dim(1);
+    if (q_offset < 0 || q_offset > PY_SSIZE_T_MAX - m ||
+        mask.dim(0) != m || words != (n + 31) / 32) {
+        PyErr_SetString(PyExc_ValueError, "invalid candidate bitmap shape or query offset");
+        return nullptr;
+    }
+    const float* x = train.data<const float>();
+    const float* q = queries.data<const float>();
+    const auto* bits = mask.data<const std::uint32_t>();
+    std::int64_t total = 0;
+    std::unique_ptr<Result> result;
+    std::exception_ptr error;
+    Py_BEGIN_ALLOW_THREADS
+    try {
+        std::vector<std::int64_t> counts(m);
+        const int workers = clamp_threads(threads);
+        const auto bounds = uniform_bounds(m, std::max<std::int64_t>(1, m / (4 * workers)));
+        result = run_rows(m, n, thr, mode, {}, bounds, workers, double(m) * n,
+            [&](std::int64_t row, RowSink& sink, SortScratch& scratch) {
+                const float* qf = q + row * d;
+                scratch.query.assign(qf, qf + d);
+                const auto self = exclude_self ? q_offset + row : -1;
+                // Evaluate four candidates at a time, retaining the canonical
+                // feature summation order for each candidate.
+                std::int32_t cols[4];
+                int used = 0;
+                std::int64_t candidates = 0;
+                for (std::int64_t w = 0; w < words; ++w) {
+                    auto word = bits[row * words + w];
+                    candidates += __builtin_popcount(word);
+                    while (word) {
+                        const auto c = std::int32_t(32 * w + __builtin_ctz(word));
+                        word &= word - 1;
+                        if (c >= n) throw InputError("invalid padding bits in candidate bitmap");
+                        if (c == self) continue;
+                        cols[used++] = c;
+                        if (used == 4) {
+                            double s[4];
+                            canonical_d2_x4<0>(scratch.query.data(), x + cols[0] * d,
+                                x + cols[1] * d, x + cols[2] * d, x + cols[3] * d, d, s);
+                            for (int k = 0; k < 4; ++k)
+                                if (classify(s[k], thr, qf, x + cols[k] * d, d))
+                                    sink.add(cols[k], s[k]);
+                            used = 0;
+                        }
+                    }
+                }
+                counts[row] = candidates;
+                for (int k = 0; k < used; ++k) {
+                    const float* point = x + cols[k] * d;
+                    const double s = canonical_d2<0>(scratch.query.data(), point, d);
+                    if (classify(s, thr, qf, point, d)) sink.add(cols[k], s);
+                }
+            });
+        for (const auto count : counts) total += count;
+    } catch (...) {
+        error = std::current_exception();
+    }
+    Py_END_ALLOW_THREADS
+    if (error) return raise_exception(error);
+    PyObject* capsule = wrap_result(std::move(result));
+    if (!capsule) return nullptr;
+    return Py_BuildValue("NL", capsule, static_cast<long long>(total));
+}
+
 PyObject* py_brute_query(PyObject*, PyObject* args) {
     PyObject *train_object, *query_object, *thr_object;
     Py_ssize_t q_offset, threads;
@@ -872,6 +978,7 @@ PyObject* py_fpcr(PyObject*, PyObject* args) {
 }
 
 PyMethodDef methods[] = {
+    {"finish_mask", py_finish_mask, METH_VARARGS, "Refine a Metal candidate bitmap in column order."},
     {"build_tree", py_build_tree, METH_VARARGS, "build_tree(train_f32, leaf_size, threads) -> tree"},
     {"tree_info", py_tree_info, METH_VARARGS, "tree_info(tree) -> (n, d, leaf_size, depth, n_nodes)"},
     {"tree_export", py_tree_export, METH_VARARGS,

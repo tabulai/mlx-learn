@@ -50,6 +50,7 @@ __all__ = [
     "canonical_distances",
     "cpu_count",
     "default_leaf_size",
+    "finish_mask",
     "finish_pairs",
     "resolve_threads",
     "tree_pilot",
@@ -406,6 +407,23 @@ def finish_pairs(train32, queries32, rows, cols, thr: Thresholds, *, exclude_sel
                                   _mode(thr, need_distance=need_distance, sort=sort), workers,
                                   bool(presorted))
     return NativeResult(capsule, workers)
+
+
+def finish_mask(train32, queries32, mask, thr, *, q_offset, exclude_self, need_distance,
+                sort, threads):
+    """Refine candidate bits in ascending training order."""
+    train32 = _f32(train32)
+    queries32 = _f32(queries32)
+    mask = np.asarray(mask)
+    if mask.dtype not in (np.uint32, np.int32):
+        raise ValueError("candidate bitmap must contain 32-bit integer words")
+    mask = np.require(mask.view(np.int32), requirements=("C", "A"))
+    workers = _threads(threads)
+    capsule, candidates = _require().finish_mask(
+        train32, queries32, mask, threshold_tuple(thr), int(q_offset),
+        bool(exclude_self), _mode(thr, need_distance=need_distance, sort=sort), workers,
+    )
+    return NativeResult(capsule, workers), candidates
 
 
 def canonical_distances(train32, queries32, rows, cols, *, threads: int | None = None) -> np.ndarray:

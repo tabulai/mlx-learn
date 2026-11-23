@@ -24,7 +24,7 @@ class NearestNeighbors(MLXRadiusMixin, MLXNeighborsMixin, BaseEstimator):
     radius : float, default=1.0
         Used by :meth:`radius_neighbors`.
     algorithm : {"auto", "brute"}, default="auto"
-        ``"auto"`` lets radius search use a tree for low-dimensional data;
+        ``"auto"`` can use a low-dimensional tree or an index of duplicate rows.
         ``"brute"`` keeps every query on brute-force engines. Results are the
         same either way. Explicit ``"kd_tree"`` and ``"ball_tree"`` raise
         :class:`~mlxlearn.exceptions.UnsupportedParameterError` on direct use and
@@ -60,11 +60,12 @@ class NearestNeighbors(MLXRadiusMixin, MLXNeighborsMixin, BaseEstimator):
     -----
     :meth:`radius_neighbors` returns exact neighbor sets for the float32
     coordinates: a training row is returned iff its exact squared distance is
-    at most ``fl64(radius ** 2)``. A state-free router picks a tree, host brute
-    force or a certified Metal Gram screen for each call; all return the same
-    sets, in ascending index order unless ``sort_results=True``. Patched
-    estimators hand a whole call to scikit-learn for inputs the owned engines do
-    not implement, or when scikit-learn is predicted to be faster.
+    at most ``fl64(radius ** 2)``. Automatic queries can use a tree, host brute
+    force, a Metal Gram screen, or exact row lookup for batched zero-radius
+    searches. Each engine returns indices in ascending order unless
+    ``sort_results=True``. Patched estimators can delegate unsupported inputs
+    to scikit-learn. For supported inputs, automatic delegation requires a
+    faster stock route that preserves exact membership.
     Neighborhoods are ragged arrays with one row per query.
 
     Examples

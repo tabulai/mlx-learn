@@ -22,11 +22,12 @@ counter and is unspecified, so callers sort each row on the host.
 
 from __future__ import annotations
 
+import operator
 from functools import cache
 
 import mlx.core as mx
 
-__all__ = ["compact_gram"]
+__all__ = ["compact_gram", "mask_gram"]
 
 #: Threads per threadgroup, columns per thread and rows per thread.
 _THREADS = 128
@@ -36,6 +37,18 @@ _ROWS = 8
 #: constant address space, which changes the generated source (and before MLX
 #: 0.32 rebuilds the library through an unlocked map). Every input is padded.
 _MIN_INPUT = 8
+
+
+_GRAM_HEADER = """
+inline bool is_radius_candidate(float query_sq, float train_sq, float product,
+                                float cut, float factor, float floor_value) {
+    const float norms = query_sq + train_sq;
+    const float gram = norms - 2.0f * product;
+    const bool safe = metal::isfinite(norms) && norms <= 0x1p108f && metal::isfinite(gram);
+    const float lower = safe ? metal::max(gram - factor * norms - floor_value, 0.0f) : 0.0f;
+    return lower <= cut;
+}
+"""
 
 
 @cache
@@ -48,6 +61,7 @@ def _compact_kernel():
         name="mlxlearn_radius_gram_compact",
         input_names=["products", "query_norms", "train_norms", "shape", "settings"],
         output_names=["counts", "packed"],
+        header=_GRAM_HEADER,
         atomic_outputs=True,
         source=f"""
         constexpr uint THREADS = {_THREADS}u, COLS = {_COLS}u, ROWS = {_ROWS}u;
@@ -74,13 +88,8 @@ def _compact_kernel():
             #pragma clang loop unroll(full)
             for (uint e = 0u; e < COLS; ++e) {{
                 if (inside[e]) {{
-                    const float norms = query_sq + train_sq[e];
-                    const float gram = norms - 2.0f * products[base + first_col + e * THREADS];
-                    const bool safe = metal::isfinite(norms) && norms <= 0x1p108f
-                                      && metal::isfinite(gram);
-                    const float lower = safe
-                        ? metal::max(gram - factor * norms - floor_value, 0.0f) : 0.0f;
-                    hits |= uint(lower <= cut) << e;
+                    hits |= uint(is_radius_candidate(query_sq, train_sq[e],
+                        products[base + first_col + e * THREADS], cut, factor, floor_value)) << e;
                 }}
             }}
             const uint count = metal::popcount(hits);
@@ -174,3 +183,59 @@ def compact_gram(products, query_norms, train_norms, *, capacity, cut, factor, f
         stream=stream,
     )
     return counts, packed
+
+
+@cache
+def _mask_kernel():
+    return mx.fast.metal_kernel(
+        name="mlxlearn_radius_gram_mask",
+        input_names=["products", "query_norms", "train_norms", "shape", "settings"],
+        output_names=["masks"],
+        header=_GRAM_HEADER,
+        source="""
+        const uint col = thread_position_in_grid.x, row = thread_position_in_grid.y;
+        const uint width = shape[0], words = shape[1];
+        const uint lane = thread_index_in_simdgroup;
+        bool hit = false;
+        if (col < width) {
+            hit = is_radius_candidate(query_norms[shape[2] + row], train_norms[col],
+                products[size_t(row) * width + col], settings[0], settings[1], settings[2]);
+        }
+        const uint mask = metal::simd_or(uint(hit) << lane);
+        if (lane == 0 && col < width)
+            masks[size_t(row) * words + (col >> 5)] = mask;
+        """,
+    )
+
+
+def mask_gram(products, query_norms, train_norms, *, cut, factor, floor, row_offset, stream):
+    """Store the certified candidates in column order, one bit per training row."""
+    if products.ndim != 2 or query_norms.ndim != 1 or train_norms.ndim != 1:
+        raise ValueError("expected a product matrix and one-dimensional norm arrays")
+    if any(array.dtype != mx.float32 for array in (products, query_norms, train_norms)):
+        raise ValueError("products and norms must be float32")
+    rows, width = products.shape
+    row_offset = operator.index(row_offset)
+    # Grid extents are signed ints in MLX. The kernel computes norm indices
+    # in uint32, and linear product/mask offsets in size_t.
+    grid_width = ((width + 127) // 128) * 128
+    if grid_width >= 2**31 or rows >= 2**31:
+        raise ValueError("tile dimensions exceed the Metal kernel grid limit")
+    if not 0 <= row_offset < 2**32 or row_offset + rows > 2**32:
+        raise ValueError("query norm indices must fit in uint32")
+    if row_offset + rows > query_norms.size or width > train_norms.size:
+        raise ValueError("query and training norms must cover the product tile")
+    words = (width + 31) // 32
+    if rows == 0 or width == 0:
+        return mx.zeros((rows, words), dtype=mx.uint32, stream=stream)
+    shape = mx.array([width, words, row_offset, 0, 0, 0, 0, 0], dtype=mx.uint32)
+    settings = mx.array([cut, factor, floor, 0, 0, 0, 0, 0], dtype=mx.float32)
+    return _mask_kernel()(
+        inputs=[_padded(products, stream), _padded(query_norms, stream),
+                _padded(train_norms, stream), shape, settings],
+        grid=(grid_width, rows, 1),
+        threadgroup=(128, 1, 1),
+        output_shapes=[(rows, words)],
+        output_dtypes=[mx.uint32],
+        stream=stream,
+    )[0]

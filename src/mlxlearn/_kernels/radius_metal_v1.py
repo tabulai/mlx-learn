@@ -16,8 +16,10 @@ Work is tiled and pipelined:
   get one evaluation each. The next wave is queued with ``mx.async_eval``
   before the host finishes the current one, so at most two waves of products
   are alive and the GPU stays busy while the host sorts and refines.
-* Each row stores up to ``capacity`` candidates while still counting all of
-  them. Rows that overflow are rescanned with exactly the capacity they need.
+* For dense full-width tiles the GPU emits one bit per pair. The native finisher
+  walks set bits in column order and evaluates canonical distances directly.
+* Sparse searches and column tiles store up to ``capacity`` candidates per row
+  while still counting all of them. Rows that overflow are rescanned with exactly the capacity they need.
 * Per-row atomic arrival order is unspecified; the host restores ascending
   columns with a row-wise sort of the small packed block (sentinel padded), so
   results are deterministic. Rows stay grouped; column tiles merge per row
@@ -41,7 +43,7 @@ import numpy as np
 from .._common.arrays import INDEX_DTYPE
 from .radius_contract import Thresholds
 from .radius_host import refine
-from .radius_result import RadiusCSR, empty_result, from_grouped
+from .radius_result import RadiusCSR, concatenate, empty_result, from_grouped
 
 __all__ = ["ROUTE", "debug", "metal_query"]
 
@@ -329,6 +331,42 @@ class _Query:
 
     # -- driver -----------------------------------------------------------------
 
+    def _use_mask(self):
+        # A bitmap costs one bit for every training row, even when no candidate
+        # survives. Use it when a per-row index list would occupy similar space.
+        return (not self.sort_rows and _FORCE_CAPACITY is None and self.n_tiles == 1
+                and self.cap_hint is not None and self.cap_hint >= max(256, self.n / 128))
+
+    def _run_mask(self, blocks, norms_all, starts):
+        from mlxlearn_device._radius import mask_gram
+
+        native = _native_finisher()
+        parts = []
+        queued = deque()
+
+        def finish():
+            start, stop, mask = queued.popleft()
+            result, candidates = native.finish_mask(
+                self.train32, self.queries32[start:stop], np.asarray(mask), self.thr,
+                q_offset=self.q_offset + start, exclude_self=self.exclude_self,
+                need_distance=self.need_distance, sort=self.sort, threads=self.threads,
+            )
+            debug.add(candidates=candidates)
+            parts.append(result.to_csr(need_distance=self.need_distance, route=ROUTE))
+
+        for start, block in zip(starts, blocks, strict=True):
+            products = self.matmul(block, self.train_tiles[0], transpose_b=True, stream=self.gpu)
+            mask = mask_gram(products, norms_all, self.train_sq, cut=self.cut, factor=self.factor,
+                             floor=self.floor, row_offset=start, stream=self.gpu)
+            self.mx.async_eval(mask)
+            queued.append((start, start + block.shape[0], mask))
+            if len(queued) == _PIPELINE_WAVES:
+                finish()
+        while queued:
+            finish()
+        debug.add(calls=1, screened_pairs=self.n_query * self.n, waves=len(starts), tiles=len(starts))
+        return concatenate(parts)
+
     def run(self) -> RadiusCSR:
         mx, gpu = self.mx, self.gpu
         nq, rows = self.n_query, self.block_rows
@@ -337,6 +375,8 @@ class _Query:
         blocks = (mx.split(centred_all, starts[1:], axis=0, stream=gpu)
                   if len(starts) > 1 else [centred_all])
         del centred_all
+        if self._use_mask():
+            return self._run_mask(blocks, norms_all, starts)
         tiles = [(index, start, min(nq, start + rows), tile)
                  for index, start in enumerate(starts) for tile in range(self.n_tiles)]
         waves = [tiles[i:i + self.per_wave] for i in range(0, len(tiles), self.per_wave)]
@@ -548,8 +588,8 @@ def metal_query(device_index, train32: np.ndarray, queries32: np.ndarray, thr: T
     """
     if thr.gram_cut is None:
         return None
-    queries32 = np.ascontiguousarray(queries32, dtype=np.float32)
-    train32 = np.ascontiguousarray(train32, dtype=np.float32)
+    queries32 = np.require(queries32, dtype=np.float32, requirements=("C", "A"))
+    train32 = np.require(train32, dtype=np.float32, requirements=("C", "A"))
     if queries32.ndim != 2 or train32.ndim != 2 or queries32.shape[1] != train32.shape[1]:
         raise ValueError("queries and training rows must be matrices with equal widths")
     if tuple(device_index.X.shape) != train32.shape:

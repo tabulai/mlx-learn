@@ -1,8 +1,8 @@
 """Radius search orchestration: per-index caches, routing and engine dispatch.
 
 Every engine returns batches whose neighbor sets satisfy the exact contract in
-:mod:`radius_contract`; the router only chooses the fastest one. Caches are
-built lazily under one lock per index.
+:mod:`radius_contract`; the router selects an engine for the workload. Each index
+constructs its search structures on demand.
 """
 
 from __future__ import annotations
@@ -10,12 +10,14 @@ from __future__ import annotations
 import math
 import os
 import threading
+from dataclasses import replace
+from functools import cached_property
 
 import numpy as np
 
 from .._common.arrays import INDEX_DTYPE, NUMPY_FLOAT
 from .radius_contract import thresholds
-from .radius_result import RadiusCSR, empty_result, sort_rows
+from .radius_result import RadiusCSR, all_indices, empty_result, sort_rows
 from .radius_router import (
     METAL_MAX_FEATURES,
     SMALL_WORK,
@@ -101,55 +103,80 @@ def _aligned(values) -> np.ndarray:
 
 
 class _TrainStats:
-    """Facts about the owned training rows, computed once."""
+    """Compute only the facts used by this index's chosen engines."""
 
     def __init__(self, train: np.ndarray):
+        self.train = train
         self.n, self.d = train.shape
-        self.max_abs = float(np.max(np.abs(train))) if train.size else 0.0
-        self.integral = bool(train.size == 0 or np.array_equal(train, np.round(train)))
-        self.center = (train.mean(axis=0, dtype=np.float64) if train.size
-                       else np.zeros(self.d, dtype=np.float64))
-        self.center_norm = float(np.sqrt(np.dot(self.center, self.center)))
-        # Largest squared distance from the training mean: the Metal Gram
-        # screen admits every pair once centred norms near 2**108.
-        largest = 0.0
-        block_rows = max(1, (1 << 20) // max(self.d, 1))
-        for start in range(0, self.n, block_rows):
-            block = train[start:start + block_rows].astype(np.float64)
-            block -= self.center
-            largest = max(largest, float(np.einsum("ij,ij->i", block, block).max(initial=0.0)))
-        self.centred_norm_max = largest
-        self._sample = None
 
-    def sample(self, train: np.ndarray) -> TrainSample:
-        if self._sample is None:
-            self._sample = TrainSample.from_train(train, self.center)
-        return self._sample
+    @cached_property
+    def integral(self):
+        return _all_integral(self.train)
+
+    @cached_property
+    def max_abs(self):
+        return _max_abs(self.train)
+
+    @cached_property
+    def center(self):
+        return self.train.mean(axis=0, dtype=np.float64)
+
+    @cached_property
+    def sample(self) -> TrainSample:
+        return TrainSample.from_train(self.train, self.center)
+
+    @cached_property
+    def metal_range_ok(self):
+        if self.max_abs <= 2.0**49 / math.sqrt(self.d):
+            # Each centered coordinate is bounded by twice the largest input.
+            return True
+        return _centered_norms_fit(self.train, self.center)
+
+
+def _all_integral(values):
+    flat = values.reshape(-1)
+    # A short prefix typically disproves this optional certificate on real data.
+    prefix = flat[:128]
+    if not np.array_equal(prefix, np.rint(prefix)):
+        return False
+    for start in range(len(prefix), flat.size, 1 << 20):
+        block = flat[start:start + (1 << 20)]
+        if not np.array_equal(block, np.rint(block)):
+            return False
+    return True
+
+
+def _max_abs(values):
+    return max(-float(values.min(initial=0.0)), float(values.max(initial=0.0)))
 
 
 def _batch_integer_exact(stats: _TrainStats, queries: np.ndarray, *, self_query: bool) -> bool:
     if not stats.integral:
         return False
-    if self_query:
-        largest = stats.max_abs
-    else:
-        if not np.array_equal(queries, np.round(queries)):
+    largest = stats.max_abs
+    if not self_query:
+        if not _all_integral(queries):
             return False
-        largest = max(stats.max_abs, float(np.max(np.abs(queries))) if queries.size else 0.0)
+        largest = max(largest, _max_abs(queries))
     return stats.d * (2.0 * largest) ** 2 < 2.0**53
 
 
-def _query_norm_bound(queries: np.ndarray, stats: _TrainStats, *, self_query: bool) -> float:
-    """An upper bound on the queries' squared distances from the training mean."""
-    if self_query:
-        return stats.centred_norm_max
-    if not len(queries):
-        return 0.0
-    with np.errstate(over="ignore", invalid="ignore"):
-        largest = float(np.max(np.einsum("ij,ij->i", queries, queries)))
-    if not math.isfinite(largest):
-        return math.inf
-    return (math.sqrt(largest) * (1 + 1e-6) + stats.center_norm) ** 2
+def _centered_norms_fit(values, center):
+    block_rows = max(1, (1 << 20) // len(center))
+    for start in range(0, len(values), block_rows):
+        block = values[start:start + block_rows].astype(np.float64)
+        block -= center
+        if np.any(np.einsum("ij,ij->i", block, block) > 2.0**100):
+            return False
+    return True
+
+
+def _metal_range_ok(queries, stats, self_query):
+    if not stats.metal_range_ok:
+        return False
+    if self_query or max(stats.max_abs, _max_abs(queries)) <= 2.0**49 / math.sqrt(stats.d):
+        return True
+    return _centered_norms_fit(queries, stats.center)
 
 
 class RadiusSearch:
@@ -162,6 +189,7 @@ class RadiusSearch:
         self._stats = None
         self._tree = None
         self._brute = None
+        self._lookup = None
         self.last_plan: RoutePlan | None = None
 
     # ------------------------------------------------------------------ caches
@@ -187,6 +215,16 @@ class RadiusSearch:
                     self._stats = _TrainStats(train)
                 stats = self._stats
         return stats
+
+    def _ensure_lookup(self):
+        if self._lookup is None:
+            from .radius_lookup import RowLookup
+
+            train = self.train
+            with self._lock:
+                if self._lookup is None:
+                    self._lookup = RowLookup(train)
+        return self._lookup
 
     def _ensure_tree(self, threads=None):
         tree = self._tree
@@ -225,10 +263,16 @@ class RadiusSearch:
         n, d = stats.n, stats.d
         nq = len(queries)
         R2 = radius * radius
+        # Distinct binary32 coordinates differ by at least 2**-149. Amortize
+        # the stable row sort only across large batches of exact-match queries.
+        if (R2 < 2.0**-298 and algorithm == "auto" and forced in ("", "auto")
+                and fixed != "mlx" and nq >= 512 and nq * 16 >= n):
+            return RoutePlan("row-lookup", "exact coordinate matches")
         small = n * nq * d <= SMALL_WORK or math.isinf(R2) or nq == 0
         gpu = False
         if fixed != "cpu" and (forced == "metal" or fixed == "mlx"
-                               or (not small and forced in ("", "auto"))):
+                               or (not small and forced in ("", "auto")
+                                   and (algorithm == "brute" or d > 8))):
             gpu = bool(has_gpu())
         metal_ok = False
         if gpu:
@@ -236,10 +280,8 @@ class RadiusSearch:
             # covers underflow and unsafe entries are admitted); it is only
             # useless when centred norms or the radius approach float32's limit.
             metal_ok = ((2 * d + 16) * 2.0**-23 < 0.125 and d <= METAL_MAX_FEATURES
-                        and stats.centred_norm_max <= 2.0**100
                         and (math.isinf(R2) or R2 <= 2.0**100)
-                        and _query_norm_bound(queries, stats, self_query=exclude_self)
-                        <= 2.0**100)
+                        and _metal_range_ok(queries, stats, exclude_self))
         if fixed == "mlx" and forced in ("", "auto") and gpu and metal_ok and nq:
             # An explicit GPU fit keeps every certifiable query on Metal, like
             # k-neighbor search.
@@ -258,10 +300,24 @@ class RadiusSearch:
             plan.route == "metal" or (plan.route == "tree" and not native)
             or (patched and not native))
         if wants_sample:
-            sample = density_sample(stats.sample(self.train), queries, R2,
+            sample = density_sample(stats.sample, queries, R2,
                                     exclude_self=exclude_self, q_offset=q_offset, n=n,
                                     small=n * nq <= 2**27)
-            plan = plan_radius(_with_sample(ctx, sample))
+            ctx = replace(ctx, sample=sample)
+            plan = plan_radius(ctx)
+        if plan.route == "stock" and forced != "stock":
+            from sklearn import get_config as sklearn_config
+
+            # Stock's uncentered float64 Gram calculation can lose even an
+            # entire interior distance at a large offset. A centered dataset
+            # can also round an exterior point onto the cutoff. Delegate only
+            # when stock uses brute force and its intermediate sums are exact.
+            # Above 15 features both supported fit algorithms use stock brute.
+            # Stock's non-Cython paths may square the radius in its input
+            # dtype or compare a rounded square root against it (metric="l2").
+            if (d <= 15 or not sklearn_config()["enable_cython_pairwise_dist"]
+                    or not _batch_integer_exact(stats, queries, self_query=exclude_self)):
+                plan = plan_radius(replace(ctx, patched=False))
         return plan
 
     # ----------------------------------------------------------------- queries
@@ -292,11 +348,18 @@ class RadiusSearch:
             raise StockRoute(plan.reason)
         if nq == 0:
             return [empty_result(0, need_distance=need_distance, route=plan.route)], plan
+        if plan.route == "row-lookup":
+            part = self._ensure_lookup().query(
+                queries, exclude_self=exclude_self, q_offset=q_offset, need_distance=need_distance)
+            return [part], plan
+        R2 = radius * radius
+        if math.isinf(R2) and not need_distance and not raw and forced in ("", "auto"):
+            return [all_indices(n_train=self.train.shape[0], n_query=nq,
+                                q_offset=q_offset, exclude_self=exclude_self)], plan
         threads = resolve_threads(n_jobs)
         stats = self.stats
-        R2 = radius * radius
-        thr = thresholds(stats.d, R2, integer_exact=_batch_integer_exact(
-            stats, queries, self_query=exclude_self))
+        integer_exact = 0 < R2 < math.inf and _batch_integer_exact(stats, queries, self_query=exclude_self)
+        thr = thresholds(stats.d, R2, integer_exact=integer_exact)
         train = self.train
         native = native_engine()
         sorted_natively = native is not None
@@ -367,12 +430,6 @@ class RadiusSearch:
                                 need_distance=need_distance, sort=sort_results,
                                 threads=threads)
         return result
-
-
-def _with_sample(ctx: RouteContext, sample) -> RouteContext:
-    from dataclasses import replace
-
-    return replace(ctx, sample=sample)
 
 
 def lengths_of(parts: list[RadiusCSR]) -> np.ndarray:

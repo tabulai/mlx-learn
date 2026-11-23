@@ -3,7 +3,8 @@
 A patched estimator hands a call to scikit-learn when the call is outside the
 owned engines' capability (sparse queries, non-scalar or negative radii,
 values beyond float32, callable weights), or when the state-free router
-predicts that scikit-learn is faster. The stock estimator mirrors the user's
+predicts that scikit-learn is faster and can preserve exact membership, or
+when stock is explicitly requested. The stock estimator mirrors the user's
 configuration (algorithm, leaf_size, n_jobs, weights, outlier_label, ...),
 is fitted once on the float64 image of the owned float32 training rows, and
 its outputs are returned unchanged.

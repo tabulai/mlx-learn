@@ -19,6 +19,7 @@ _FLT_MAX = float(np.finfo(np.float32).max)
 
 __all__ = [
     "RadiusCSR",
+    "all_indices",
     "concatenate",
     "csr_to_objects",
     "empty_result",
@@ -52,6 +53,21 @@ class RadiusCSR:
     def row_ids(self) -> np.ndarray:
         """The query row of every stored entry."""
         return np.repeat(np.arange(self.n_query, dtype=INDEX_DTYPE), self.lengths())
+
+
+def all_indices(*, n_train: int, n_query: int, q_offset: int, exclude_self: bool) -> RadiusCSR:
+    """Build the index-only result directly when the squared radius is infinite."""
+    width = n_train - int(exclude_self)
+    indptr = np.arange(n_query + 1, dtype=INDEX_DTYPE) * width
+    source = np.arange(n_train, dtype=INDEX_DTYPE)
+    if exclude_self:
+        rows = np.empty((n_query, width), dtype=INDEX_DTYPE)
+        for i, row in enumerate(rows, start=q_offset):
+            row[:i], row[i:] = source[:i], source[i + 1:]
+        indices = rows.ravel()
+    else:
+        indices = np.tile(source, n_query)
+    return RadiusCSR(indptr, indices, None, "brute")
 
 
 def empty_result(n_query: int, *, need_distance: bool, route: str = "") -> RadiusCSR:

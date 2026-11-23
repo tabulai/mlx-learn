@@ -106,6 +106,24 @@ def test_brute_float32_screen_does_not_change_the_output(d, rng):
         assert_same_csr(rc.brute_query(X, Q, thr).to_csr(), oracle(X, Q, R2))
 
 
+@pytest.mark.parametrize("need_distance", [False, True])
+def test_wide_brute_prefix_screen_still_checks_the_suffix(need_distance):
+    # Most rows fail on their first feature, including all eight probe rows.
+    # The exceptional rows share a prefix and differ only in the final lane.
+    X = np.full((513, 65), 2.0, dtype=np.float32)
+    X[[1, 2, 3, 4, -1]] = 0
+    X[1, -1] = 0.5
+    X[2, -1] = 1.0
+    X[3, -1] = np.nextafter(np.float32(1.0), np.float32(2.0))
+    X[4, 0], X[4, -1] = 1.0, 2.0**-40  # exactly outside, rounds to 1 in float64
+    Q = np.zeros((1, X.shape[1]), dtype=np.float32)
+    thr = thresholds(X.shape[1], 1.0)
+    result = rc.brute_query(X, Q, thr, need_distance=need_distance).to_csr()
+    expected = oracle(X, Q, 1.0)
+    np.testing.assert_array_equal(expected.indices, [1, 2, 512])
+    assert_same_csr(result, expected, distances=need_distance)
+
+
 def test_thread_policy():
     from mlxlearn._common.config import tuning_context
 

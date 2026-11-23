@@ -210,3 +210,44 @@ fastest variant from the final campaign):
   the hand rules with per-generation tables.
 - **Object arrays.** Ragged results still cost about 1 us per row per array to
   build; scikit-learn pays the same. Graphs and predictions skip them.
+
+## 7. M4 Max follow-up on November 23
+
+Automatic fits with up to eight features keep the training rows on the CPU for
+radius searches. The tree preserves index order when splitting leaves, and
+dense results use a bitmap to emit indices in order. For wide brute-force
+searches, a lower bound from the first 16 features can reject distant rows
+before the remaining features are read.
+
+For moderately dense Metal queries, the GPU emits one candidate bit per
+training row. The CPU walks those bits in index order and applies the existing
+exact membership test. Large batches below the smallest positive binary32
+coordinate separation use a stable index of equal rows. Self queries remove
+only the query's own index, including when other training rows are identical.
+
+Automatic delegation to scikit-learn now requires evidence that the squared
+distances and cutoff comparison are exact. One translated dataset produced
+4,096 neighbors per query in the old automatic route, and a zero-centered
+dataset produced 1,026. Both have exactly 1,024 neighbors at distance 0.5.
+Explicit stock requests and capability fallbacks still use scikit-learn.
+
+The follow-up benchmark compared the patched public estimator with commit
+`77d20f8` and stock scikit-learn 1.9.1 on 22 workloads. Cold time includes
+fit and the first query in each of five fresh processes, after imports and data
+generation. Warm time is the median of 27 queries across three primed processes.
+Every query returned the same neighbor set across all three implementations.
+The float64 cases used the same coordinate values as their float32 counterparts.
+
+| Workload | Previous cold (ms) | New cold (ms) | Stock cold (ms) | Previous warm (ms) | New warm (ms) | Stock warm (ms) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 128,000 × 4, 256 sparse queries | 27.48 | 9.59 | 28.66 | 0.29 | 0.27 | 2.60 |
+| 32,768 × 4, 256 dense queries with distances | 27.31 | 10.25 | 35.11 | 3.45 | 2.32 | 27.53 |
+| 32,000 × 32, 256 dense queries with sorted distances | 49.63 | 54.76 | 25.88 | 8.72 | 4.86 | 8.29 |
+| 8,192 × 16, zero-radius self query | 62.79 | 5.72 | 39.77 | 4.42 | 2.00 | 25.48 |
+
+With equal weight per workload, geometric-mean speedups over the previous
+commit were 1.62× cold and 1.55× warm. Against stock they were 0.94× cold
+and 4.06× warm. Stock won 14 of 22 cold cases, including every high-dimensional
+Metal search. The new warm median was lower than stock in all 22 cases.
+The very dense integer sort delegated to stock and finished
+within 2% of it.

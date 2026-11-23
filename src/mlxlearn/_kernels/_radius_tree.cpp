@@ -333,8 +333,7 @@ std::unique_ptr<Tree> build_tree_impl(const float* X, Py_ssize_t n, Py_ssize_t d
     std::int32_t* dst_index = index_b.data();
     // Top levels split level by level (big nodes with all threads); from the
     // first level with at least 2 * threads nodes on, every node's subtree is
-    // one task that splits all remaining levels and orders its leaves, so
-    // deep levels cost no per-level dispatch. Splits are identical either way.
+    // one task that splits all remaining levels without per-level dispatch.
     int subtree_level = 0;
     while (subtree_level < depth && (std::int64_t(1) << subtree_level) < 2 * std::int64_t(threads))
         ++subtree_level;
@@ -371,7 +370,7 @@ std::unique_ptr<Tree> build_tree_impl(const float* X, Py_ssize_t n, Py_ssize_t d
     const std::int64_t subtrees = std::int64_t(1) << subtree_level;
     const std::int64_t sub_first = subtrees - 1;
     const int sub_levels = depth - subtree_level;
-    parallel_for(std::size_t(subtrees), threads, double(n) * double(d + 8) * (sub_levels + 1),
+    parallel_for(sub_levels ? std::size_t(subtrees) : 0, threads, double(n) * double(d + 8) * sub_levels,
                  [&](std::size_t g) {
         BuildState local = state;
         float* s_points = src;
@@ -391,29 +390,10 @@ std::unique_ptr<Tree> build_tree_impl(const float* X, Py_ssize_t n, Py_ssize_t d
             std::swap(s_points, d_points);
             std::swap(s_index, d_index);
         }
-        // Order the subtree's leaves by original index into the other buffer.
-        const std::int64_t count = std::int64_t(1) << sub_levels;
-        const std::int64_t first = (root + 1) * count - 1;
-        std::vector<std::int64_t> order;
-        for (std::int64_t h = first; h < first + count; ++h) {
-            const std::int64_t b = tree->begin[h], e = tree->end[h];
-            order.resize(std::size_t(e - b));
-            for (std::int64_t i = b; i < e; ++i) order[i - b] = i;
-            std::sort(order.begin(), order.end(), [&](std::int64_t x, std::int64_t y) {
-                return s_index[x] < s_index[y];
-            });
-            for (std::int64_t i = b; i < e; ++i) {
-                const std::int64_t from = order[i - b];
-                std::memcpy(d_points + i * d, s_points + from * d, std::size_t(d) * sizeof(float));
-                d_index[i] = s_index[from];
-            }
-        }
     });
-    for (int below = 0; below < sub_levels; ++below) {
-        std::swap(src, dst);
-        std::swap(src_index, dst_index);
-    }
-    if (dst == points_a.data()) {
+    // Starting from buffer A, each level stably partitions into the other
+    // buffer. The leaves retain ascending index order without a sort or copy.
+    if (depth % 2 == 0) {
         tree->points = std::move(points_a);
         tree->perm = std::move(index_a);
     } else {
@@ -696,7 +676,7 @@ std::unique_ptr<Result> tree_query_impl(const QueryCall& call) {
                             if (self < tree.n) self_pos = tree.position[self];
                         }
                         searcher.search(q, qf, self, self_pos, sink);
-                    });
+                    }, tree.n);
 }
 
 // Second pass of TWO_PASS mode: write rows straight into the caller's CSR.
@@ -740,7 +720,7 @@ void tree_fill_impl(const QueryCall& call, const std::int64_t* indptr, std::int6
             if (std::int64_t(count) != indptr[row + 1] - indptr[row])
                 throw InputError("indptr does not match the counting pass of this query");
             sort_row(out.cols.data(), keep_d2 ? out.d2.data() : nullptr, count, by_distance, thr.R2,
-                     scratch);
+                     scratch, tree.n);
             std::int64_t* cols = indices + indptr[row];
             for (std::size_t j = 0; j < count; ++j) cols[j] = out.cols[j];
             if (distances) {
