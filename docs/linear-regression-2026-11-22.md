@@ -378,8 +378,12 @@ refused attempt costs 10-20% there.
   invalid, four valid).
 - **Safety.** A test forbids `numpy.linalg.qr`/`scipy.linalg.qr` and pins blocked
   `dgeqrf` to the swept leaf shapes (and makes sure both a blocked and a short
-  leaf run); a forked child must fit within two minutes; fits on hard designs
-  run under warnings-as-errors, threaded and not.
+  leaf run). A spawned child fits and predicts on a full-rank design. On macOS,
+  a raw fork inherits native numerical-library state. When the parent has
+  already imported the OLS solver, the child raises before fitting or
+  predicting. The default `spawn` start method gives each worker a fresh
+  interpreter and numerical runtime. Fits on hard designs run under
+  warnings-as-errors with multiple thread budgets.
 - **The rest of the suite.** All repository tests pass on 1.9.1 (4834 passed;
   8 skipped for pandas and a C compiler), including scikit-learn's estimator
   checks for both layers; `tools/compliance.py` and `ruff check` pass.

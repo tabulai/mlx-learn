@@ -27,7 +27,7 @@ from .._common.base import BackendMixin, mlx_guard
 from .._common.config import get_config, get_tuning
 from .._common.diagnostics import record_event
 from .._common.validation import check_is_fitted, require_dense, validate_data
-from .._solvers.ols import _SMALL_WORK, OLSConfig, solve_ols
+from .._solvers.ols import _SMALL_WORK, OLSConfig, _check_process, solve_ols
 from ..exceptions import UnsupportedParameterError
 
 __all__ = ["LinearRegression"]
@@ -213,6 +213,7 @@ class LinearRegression(BackendMixin, _SkLinearRegression):
         -------
         self : LinearRegression
         """
+        _check_process()
         if not self._mlxlearn_allow_fallback:
             # Layer 1 validates first, so its parameter errors are stock's. The
             # patched class leaves that to whichever fit runs: stock's own fit
@@ -348,6 +349,7 @@ class LinearRegression(BackendMixin, _SkLinearRegression):
         y : ndarray of shape (n_queries,) or (n_queries, n_targets)
             float64.
         """
+        _check_process()
         check_is_fitted(self)
         if getattr(self, "_execution_backend_", None) is not None:
             # A model whose coef_/intercept_ were set by hand has no recorded

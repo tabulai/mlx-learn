@@ -67,6 +67,7 @@ from __future__ import annotations
 
 import math
 import os
+import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -144,6 +145,7 @@ _PARALLEL_MIN_ELEMENTS = 1 << 18
 
 _POOL: ThreadPoolExecutor | None = None
 _POOL_LOCK = threading.Lock()
+_FORKED_MACOS_CHILD = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -240,6 +242,7 @@ def solve_ols(
     -------
     OLSSolution
     """
+    _check_process()
     X = np.asarray(X)
     if X.dtype not in (np.float64, np.float32, np.float16):
         X = np.asarray(X, dtype=np.float64)
@@ -685,13 +688,22 @@ def _pool() -> ThreadPoolExecutor:
 
 def _forget_pool_after_fork() -> None:
     # A forked child inherits the executor object but none of its threads;
-    # submitting to it would wait forever. Start a fresh pool on demand.
-    global _POOL, _POOL_LOCK
+    # it also inherits the native BLAS runtime that macOS cannot reinitialize.
+    global _POOL, _POOL_LOCK, _FORKED_MACOS_CHILD
+    _FORKED_MACOS_CHILD = sys.platform == "darwin"
     _POOL, _POOL_LOCK = None, threading.Lock()
 
 
 if hasattr(os, "register_at_fork"):
     os.register_at_fork(after_in_child=_forget_pool_after_fork)
+
+
+def _check_process() -> None:
+    if _FORKED_MACOS_CHILD:
+        raise RuntimeError(
+            "LinearRegression inherited the macOS numerical runtime after fork. "
+            "Use multiprocessing's 'spawn' start method for this operation."
+        )
 
 
 def _quiet(fn):

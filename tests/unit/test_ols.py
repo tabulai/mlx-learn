@@ -232,9 +232,11 @@ def ols_cutoff_is_tol():
 
 
 @pytest.mark.filterwarnings("ignore:This process .* is multi-threaded:DeprecationWarning")
-def test_a_forked_child_gets_a_working_thread_pool():
+def test_raw_fork_with_initialized_solver():
     import os
     import sys
+
+    from mlxlearn.linear_model import LinearRegression
 
     if not hasattr(os, "fork") or sys.platform == "win32":
         pytest.skip("no fork")
@@ -242,10 +244,19 @@ def test_a_forked_child_gets_a_working_thread_pool():
     X, y = rng.normal(size=(60000, 16)), rng.normal(size=60000)
     solve_ols(X, y, config=OLSConfig(threads=4))  # the parent has a live pool
     pid = os.fork()
-    if pid == 0:  # child: must not deadlock on the inherited executor
+    if pid == 0:
         try:
-            sol = solve_ols(X, y, config=OLSConfig(threads=4))
-            os._exit(0 if sol.rank == 16 else 1)
+            if sys.platform == "darwin":
+                # The Python pool has been reset. Native BLAS may still hold
+                # state from vanished threads, even for a single-thread fit.
+                estimator = LinearRegression()
+                for call in (lambda: solve_ols(X, y, config=OLSConfig(threads=1)),
+                             lambda: estimator.fit(X, y), lambda: estimator.predict(X)):
+                    with pytest.raises(RuntimeError, match="spawn"):
+                        call()
+            elif solve_ols(X, y, config=OLSConfig(threads=4)).rank != 16:
+                os._exit(1)
+            os._exit(0)
         except BaseException:
             os._exit(2)
     import signal
@@ -262,6 +273,29 @@ def test_a_forked_child_gets_a_working_thread_pool():
             pytest.fail("the forked child hung on the inherited thread pool")
         time.sleep(0.05)
     assert os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0
+
+
+def _fit_in_spawned_child():
+    from mlxlearn.linear_model import LinearRegression
+
+    X = np.random.default_rng(13).normal(size=(16_384, 16))
+    y = 0.5 + 2 * X[:, -1] - X[:, 0]
+    model = LinearRegression().fit(X, y)
+    assert model.rank_ == X.shape[1]
+    np.testing.assert_allclose(model.predict(X[:8]), y[:8], atol=1e-12)
+
+
+def test_spawned_child_fits_and_predicts():
+    import multiprocessing
+
+    child = multiprocessing.get_context("spawn").Process(target=_fit_in_spawned_child)
+    child.start()
+    child.join(120)
+    if child.is_alive():
+        child.kill()
+        child.join()
+        pytest.fail("the spawned child hung during LinearRegression fit or prediction")
+    assert child.exitcode == 0
 
 
 def test_omp_num_threads_caps_the_thread_budget(monkeypatch):
