@@ -68,7 +68,7 @@ def matmul_may_round_float32() -> bool:
 # no scratch. Split launches (grid z) cover consecutive 16-aligned K ranges and
 # write partial products for a separate sum. Inputs with fewer than eight
 # elements arrive in the constant address space.
-_HEADER = r"""
+GEMM_TILE_HEADER = r"""
 #include <metal_simdgroup_matrix>
 inline float4 b32_load4(const device float* p) { return *(const device float4*)p; }
 inline float4 b32_load4(const constant float* p) { return *(const constant float4*)p; }
@@ -137,7 +137,10 @@ struct b32_loader {
 };
 """
 
-_SOURCE = r"""
+# A shared 64-by-64 binary32 product. Consumers supply the output step.
+# Each SIMD group holds a 32-by-32 fragment in acc, and each lane owns
+# adjacent column pairs (fn, fn + 1) for fragment row fm.
+GEMM_TILE_SOURCE = r"""
 constexpr int BM = 64, BN = 64, BK = 16;
 constexpr int LDA = TA ? BM + 4 : BK + 4;
 constexpr int LDB = TB ? BK + 4 : BN + 4;
@@ -194,6 +197,9 @@ for (int k0 = k_begin; k0 < k_end; k0 += BK) {
 const int quad = lane / 4;
 const int fm = (quad & 4) + (lane / 2) % 4;
 const int fn = (quad & 2) * 2 + (lane % 2) * 2;
+"""
+
+_STORE_PRODUCT = r"""
 device float* target = out + size_t(threadgroup_position_in_grid.z) * size_t(M) * size_t(N);
 // Interior tiles with an even row length store each lane's adjacent pair as
 // one aligned float2 (fn is even); other tiles check every element.
@@ -237,8 +243,8 @@ def _kernel(epilogue: bool):
         name="mlxlearn_binary32_gemm_axpby" if epilogue else "mlxlearn_binary32_gemm",
         input_names=inputs,
         output_names=["out"],
-        source=(_AXPBY if epilogue else "#define STORE(value) (value)\n") + _SOURCE,
-        header=_HEADER,
+        source=(_AXPBY if epilogue else "#define STORE(value) (value)\n") + GEMM_TILE_SOURCE + _STORE_PRODUCT,
+        header=GEMM_TILE_HEADER,
     )
 
 
@@ -264,7 +270,7 @@ def _split_span(rows: int, cols: int, depth: int) -> int:
     return _ceil_div(_ceil_div(depth, parts), 16) * 16
 
 
-def _launch(a, b, rows, cols, depth, transpose_a, transpose_b, epilogue=None):
+def _launch(a, b, rows, cols, depth, transpose_a, transpose_b, epilogue=None, stream=None):
     span = _split_span(rows, cols, depth) if epilogue is None else depth
     parts = _ceil_div(depth, span)
     inputs = [a, b, mx.array([rows, cols, depth, span], mx.int32)]
@@ -285,8 +291,9 @@ def _launch(a, b, rows, cols, depth, transpose_a, transpose_b, epilogue=None):
         threadgroup=(128, 1, 1),
         output_shapes=[(parts, rows, cols) if parts > 1 else (rows, cols)],
         output_dtypes=[mx.float32],
+        stream=stream,
     )
-    return mx.sum(out, axis=0) if parts > 1 else out
+    return mx.sum(out, axis=0, stream=stream) if parts > 1 else out
 
 
 def _check_operands(a, b, transpose_a, transpose_b):
@@ -302,29 +309,35 @@ def _check_operands(a, b, transpose_a, transpose_b):
     return rows, cols, depth
 
 
-def _column_chunks(b, cols, transpose_b):
-    for start in range(0, cols, _MAX_LAUNCH_COLUMNS):
-        stop = min(start + _MAX_LAUNCH_COLUMNS, cols)
-        yield b[start:stop] if transpose_b else b[:, start:stop]
+def _column_chunks(b, cols, transpose_b, stream=None):
+    if stream is None:
+        for start in range(0, cols, _MAX_LAUNCH_COLUMNS):
+            stop = min(start + _MAX_LAUNCH_COLUMNS, cols)
+            yield b[start:stop] if transpose_b else b[:, start:stop]
+        return
+    yield from mx.split(b, list(range(_MAX_LAUNCH_COLUMNS, cols, _MAX_LAUNCH_COLUMNS)),
+                        axis=0 if transpose_b else 1, stream=stream)
 
 
-def float32_matmul(a, b, *, transpose_a=False, transpose_b=False):
+def float32_matmul(a, b, *, transpose_a=False, transpose_b=False, stream=None):
     """Return ``op(a) @ op(b)`` for float32 matrices with binary32 arithmetic.
 
     ``op`` transposes its operand when the matching flag is set; pass the
     stored (untransposed) arrays so no transposed copy is made. Products run on
     the GPU with fp32 multiply-accumulate in every case, whatever MLX's own
-    float32 GEMM would do on this device.
+    float32 GEMM would do on this device. ``stream`` (a GPU stream or device)
+    names where the work runs instead of MLX's process-global default.
     """
     rows, cols, depth = _check_operands(a, b, transpose_a, transpose_b)
     if rows == 0 or cols == 0 or depth == 0:
-        return mx.zeros((rows, cols), mx.float32)
+        return mx.zeros((rows, cols), mx.float32, stream=stream)
     if cols > _MAX_LAUNCH_COLUMNS:
         return mx.concatenate([
-            float32_matmul(a, part, transpose_a=transpose_a, transpose_b=transpose_b)
-            for part in _column_chunks(b, cols, transpose_b)
-        ], axis=1)
-    return _launch(a, b, rows, cols, depth, transpose_a, transpose_b)
+            float32_matmul(a, part, transpose_a=transpose_a, transpose_b=transpose_b,
+                           stream=stream)
+            for part in _column_chunks(b, cols, transpose_b, stream)
+        ], axis=1, stream=stream)
+    return _launch(a, b, rows, cols, depth, transpose_a, transpose_b, stream=stream)
 
 
 def float32_addmm(c, a, b, *, alpha=1.0, beta=1.0, transpose_a=False, transpose_b=False):
@@ -355,7 +368,13 @@ def float32_addmm(c, a, b, *, alpha=1.0, beta=1.0, transpose_a=False, transpose_
                    epilogue=(c.reshape(-1), kind, alpha, beta))
 
 
-def _needs_kernel(left, right) -> bool:
+def _stream_device(stream):
+    if stream is None:
+        return mx.default_device()
+    return stream.device if isinstance(stream, mx.Stream) else stream
+
+
+def _needs_kernel(left, right, stream=None) -> bool:
     """Whether ``left @ right`` would be a float32 GEMM that MLX may round."""
     return (
         left.dtype == mx.float32
@@ -365,21 +384,30 @@ def _needs_kernel(left, right) -> bool:
         # Matrix-vector shapes take MLX's gemv kernels, which stay binary32.
         and left.shape[0] > 1
         and right.shape[1] > 1
-        and mx.default_device() == mx.gpu
+        and _stream_device(stream) == mx.gpu
         and matmul_may_round_float32()
     )
 
 
-def matmul(a, b, *, transpose_a=False, transpose_b=False):
+def matmul(a, b, *, transpose_a=False, transpose_b=False, stream=None):
     """``op(a) @ op(b)``, with binary32 products wherever MLX may use TF32.
 
     Elsewhere this evaluates exactly the MLX expression ``op(a) @ op(b)``.
+    ``stream`` names the stream or device for every operation; ``None`` keeps
+    MLX's process-global default, which another thread may change.
     """
-    left = a.T if transpose_a else a
-    right = b.T if transpose_b else b
-    if not _needs_kernel(left, right):
-        return left @ right
-    return float32_matmul(a, b, transpose_a=transpose_a, transpose_b=transpose_b)
+    if stream is None:
+        left = a.T if transpose_a else a
+        right = b.T if transpose_b else b
+    else:
+        left = mx.transpose(a, stream=stream) if transpose_a else a
+        right = mx.transpose(b, stream=stream) if transpose_b else b
+    if not _needs_kernel(left, right, stream):
+        return left @ right if stream is None else mx.matmul(left, right, stream=stream)
+    if stream is None:
+        return float32_matmul(a, b, transpose_a=transpose_a, transpose_b=transpose_b)
+    return float32_matmul(a, b, transpose_a=transpose_a, transpose_b=transpose_b,
+                          stream=stream)
 
 
 def addmm(c, a, b, *, alpha=1.0, beta=1.0, transpose_a=False, transpose_b=False):

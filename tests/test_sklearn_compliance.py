@@ -27,7 +27,13 @@ from sklearn.utils.estimator_checks import check_estimator
 
 from mlxlearn.decomposition import PCA
 from mlxlearn.linear_model import LinearRegression, LogisticRegression
-from mlxlearn.neighbors import KNeighborsClassifier, KNeighborsRegressor, NearestNeighbors
+from mlxlearn.neighbors import (
+    KNeighborsClassifier,
+    KNeighborsRegressor,
+    NearestNeighbors,
+    RadiusNeighborsClassifier,
+    RadiusNeighborsRegressor,
+)
 from mlxlearn.patching import _estimators as patched
 from mlxlearn.svm import SVC
 
@@ -63,6 +69,8 @@ LAYER1 = [
     NearestNeighbors,
     KNeighborsClassifier,
     KNeighborsRegressor,
+    RadiusNeighborsClassifier,
+    RadiusNeighborsRegressor,
     LinearRegression,
     LogisticRegression,
     PCA,
@@ -72,6 +80,8 @@ LAYER2 = [
     patched.NearestNeighbors,
     patched.KNeighborsClassifier,
     patched.KNeighborsRegressor,
+    patched.RadiusNeighborsClassifier,
+    patched.RadiusNeighborsRegressor,
     patched.LinearRegression,
     patched.LogisticRegression,
     patched.PCA,

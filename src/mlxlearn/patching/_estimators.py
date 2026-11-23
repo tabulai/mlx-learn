@@ -28,6 +28,8 @@ from __future__ import annotations
 from sklearn.neighbors import KNeighborsClassifier as _StockKNeighborsClassifier
 from sklearn.neighbors import KNeighborsRegressor as _StockKNeighborsRegressor
 from sklearn.neighbors import NearestNeighbors as _StockNearestNeighbors
+from sklearn.neighbors import RadiusNeighborsClassifier as _StockRadiusNeighborsClassifier
+from sklearn.neighbors import RadiusNeighborsRegressor as _StockRadiusNeighborsRegressor
 
 from ..decomposition import PCA as _PCA
 from ..linear_model import LinearRegression as _LinearRegression
@@ -35,6 +37,8 @@ from ..linear_model import LogisticRegression as _LogisticRegression
 from ..neighbors import KNeighborsClassifier as _KNeighborsClassifier
 from ..neighbors import KNeighborsRegressor as _KNeighborsRegressor
 from ..neighbors import NearestNeighbors as _NearestNeighbors
+from ..neighbors import RadiusNeighborsClassifier as _RadiusNeighborsClassifier
+from ..neighbors import RadiusNeighborsRegressor as _RadiusNeighborsRegressor
 from ..neighbors._base import _register_sklearn_neighbor_class
 from ..svm import SVC as _SVC
 
@@ -42,6 +46,8 @@ __all__ = [
     "NearestNeighbors",
     "KNeighborsClassifier",
     "KNeighborsRegressor",
+    "RadiusNeighborsClassifier",
+    "RadiusNeighborsRegressor",
     "LinearRegression",
     "LogisticRegression",
     "PCA",
@@ -80,6 +86,8 @@ for _name, _original in (
     ("NearestNeighbors", _StockNearestNeighbors),
     ("KNeighborsClassifier", _StockKNeighborsClassifier),
     ("KNeighborsRegressor", _StockKNeighborsRegressor),
+    ("RadiusNeighborsClassifier", _StockRadiusNeighborsClassifier),
+    ("RadiusNeighborsRegressor", _StockRadiusNeighborsRegressor),
 ):
     _register_sklearn_neighbor_class(_name, _original)
 
@@ -93,6 +101,14 @@ class KNeighborsClassifier(_KNeighborsClassifier, _StockKNeighborsClassifier):
 
 
 class KNeighborsRegressor(_KNeighborsRegressor, _StockKNeighborsRegressor):
+    _mlxlearn_allow_fallback = True
+
+
+class RadiusNeighborsClassifier(_RadiusNeighborsClassifier, _StockRadiusNeighborsClassifier):
+    _mlxlearn_allow_fallback = True
+
+
+class RadiusNeighborsRegressor(_RadiusNeighborsRegressor, _StockRadiusNeighborsRegressor):
     _mlxlearn_allow_fallback = True
 
 
@@ -116,6 +132,8 @@ for _cls, _name in (
     (NearestNeighbors, "NearestNeighbors"),
     (KNeighborsClassifier, "KNeighborsClassifier"),
     (KNeighborsRegressor, "KNeighborsRegressor"),
+    (RadiusNeighborsClassifier, "RadiusNeighborsClassifier"),
+    (RadiusNeighborsRegressor, "RadiusNeighborsRegressor"),
     (LinearRegression, "LinearRegression"),
     (LogisticRegression, "LogisticRegression"),
     (PCA, "PCA"),

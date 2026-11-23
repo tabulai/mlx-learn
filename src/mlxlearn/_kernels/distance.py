@@ -18,6 +18,9 @@ from .._common.arrays import INDEX_DTYPE, NUMPY_FLOAT
 from .._common.config import get_tuning
 from .._common.device import physical_memory_bytes, use_device
 from .neighbors_cpu import CPUIndex
+from .radius import RadiusSearch
+from .radius_contract import validate_radius
+from .radius_result import RadiusCSR, to_ragged
 
 __all__ = ["NeighborIndex", "build_index", "resolve_blocks"]
 
@@ -64,7 +67,7 @@ def resolve_blocks(
 class NeighborIndex:
     """Owned search state and the sklearn compatibility boundary.
 
-    Host X remains available for inherited sklearn radius queries and portable
+    Host X remains available for sklearn's private fitted state and portable
     pickles. It is independent of both authoritative search buffers. Automatic
     fits prepare CPU or GPU search state lazily when the query policy needs it;
     explicit device fits retain the resident NumPy-free MLX index.
@@ -77,6 +80,7 @@ class NeighborIndex:
     _gpu_available: bool | None = True
     _cpu_X: object = None
     _cpu_index: object = None
+    _radius_search: RadiusSearch | None = None
     last_query_backend: str | None = None
 
     def __init__(self, X, backend, _device_index=None, *, _auto=False, _gpu_available=True):
@@ -87,6 +91,7 @@ class NeighborIndex:
         self._gpu_available = _gpu_available
         self._cpu_X = X if _auto else None
         self._cpu_index = None
+        self._radius_search = None
         self.last_query_backend = None
         if not _auto or backend == "mlx":
             self._ensure_device()
@@ -200,6 +205,7 @@ class NeighborIndex:
         if self.auto_policy:
             self._host_X = None
         self._cpu_index = None
+        self._radius_search = None
         self.last_query_backend = None
 
     def query_device(
@@ -263,6 +269,99 @@ class NeighborIndex:
         return (None if distances is None else np.sqrt(np.asarray(distances, dtype=np.float64)),
                 np.asarray(indices, dtype=INDEX_DTYPE))
 
+    def _radius_gpu_available(self):
+        if self._gpu_available is None:
+            from .._common.device import gpu_available
+
+            self._gpu_available = gpu_available()
+        return bool(self._gpu_available)
+
+    def _radius(self) -> RadiusSearch:
+        search = self._radius_search
+        if search is None:
+            search = self._radius_search = RadiusSearch(self)
+        return search
+
+    def query_radius_csr(
+        self,
+        Q: np.ndarray,
+        radius: float,
+        *,
+        need_distance: bool = True,
+        exclude_self: bool = False,
+        sort_results: bool = False,
+        algorithm: str = "auto",
+        n_jobs=None,
+        patched: bool = False,
+        query_block_size: int | None = None,
+        raw: bool = False,
+    ) -> list[RadiusCSR]:
+        """Neighborhoods within an inclusive Euclidean radius, as CSR batches.
+
+        Membership is exact for the owned float32 coordinates: a training row is
+        returned iff its exact squared distance is at most ``fl64(radius**2)``,
+        whichever engine runs. Rows hold ascending training indices, or
+        ``(distance, index)`` order when ``sort_results`` is set. Raises
+        :class:`~.radius.StockRoute` when a patched plan prefers scikit-learn.
+        """
+        radius = validate_radius(radius)
+        n_query = int(Q.shape[0])
+        if exclude_self and n_query != self.n_samples:
+            raise ValueError(
+                "exclude_self requires the query matrix to be the training matrix: "
+                f"got {n_query} query rows and {self.n_samples} training rows."
+            )
+        search = self._radius()
+        fixed = None if self.auto_policy else self.backend
+        forced = get_tuning().radius_route
+        options = {
+            "exclude_self": exclude_self, "need_distance": need_distance,
+            "sort_results": sort_results, "algorithm": algorithm, "n_jobs": n_jobs,
+            "patched": patched, "fixed": fixed, "forced": forced,
+            "has_gpu": (lambda: False) if fixed == "cpu" else self._radius_gpu_available,
+            "device_index": lambda: self.device_index,
+            "raw": raw,
+        }
+        queries = np.require(Q, dtype=NUMPY_FLOAT, requirements=("C", "A"))
+        step = n_query if not query_block_size else max(1, int(query_block_size))
+        parts: list[RadiusCSR] = []
+        route = "brute"
+        for start in range(0, max(n_query, 1), max(step, 1)):
+            block = queries[start:start + step] if n_query else queries
+            batch, plan = search.query_with_plan(block, radius, q_offset=start, **options)
+            parts.extend(batch)
+            route = plan.route
+        # Taken from this call's own plan, not the shared ``last_plan``.
+        self.last_query_backend = "mlx" if route == "metal" else "cpu"
+        return parts
+
+    def query_radius(
+        self,
+        Q: np.ndarray,
+        radius: float,
+        *,
+        return_distance: bool = True,
+        exclude_self: bool = False,
+        sort_results: bool = False,
+        query_block_size: int | None = None,
+        train_block_size: int | None = None,
+        algorithm: str = "auto",
+    ):
+        """scikit-learn's ragged form of :meth:`query_radius_csr`.
+
+        ``train_block_size`` is accepted for compatibility; engines tile the
+        training rows themselves.
+        """
+        if Q.shape[0] == 0:
+            empty = np.empty(0, dtype=object)
+            return (np.empty(0, dtype=object), empty) if return_distance else empty
+        parts = self.query_radius_csr(
+            Q, radius, need_distance=return_distance or sort_results,
+            exclude_self=exclude_self, sort_results=sort_results, algorithm=algorithm,
+            query_block_size=query_block_size,
+        )
+        return to_ragged(parts, return_distance=return_distance)
+
 
 def build_index(X: np.ndarray, *, backend: str, _owned: bool = False,
                 _auto: bool = False, _gpu_available: bool | None = True) -> NeighborIndex:
@@ -283,7 +382,7 @@ def build_index(X: np.ndarray, *, backend: str, _owned: bool = False,
             raise ValueError("training row count must fit int32 indices")
         with use_device("gpu"):
             # mx.array eagerly owns a copy, including on MLX 0.29. Ordinary
-            # queries need only that buffer; radius queries and pickling obtain
+            # queries need only that buffer; private state and pickling obtain
             # an independent host mirror through X when required.
             device_index = DeviceNeighborIndex(mx.array(Xf, dtype=mx.float32), device="gpu")
         return NeighborIndex(X=None, backend=backend, _device_index=device_index,

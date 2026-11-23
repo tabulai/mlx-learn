@@ -56,6 +56,21 @@ if sys.platform == "darwin" and platform.machine() == "arm64":
             optional=True,
         )
     )
+    # Exact multithreaded radius engine (KD-tree, brute force, candidate
+    # finisher, fused reductions); GCD threads, no NumPy C API.
+    extensions.append(
+        Extension(
+            "mlxlearn._kernels._radius_cpu_native",
+            [
+                "src/mlxlearn/_kernels/_radius_cpu_native.cpp",
+                "src/mlxlearn/_kernels/_radius_tree.cpp",
+            ],
+            depends=["src/mlxlearn/_kernels/_radius_common.h"],
+            language="c++",
+            extra_compile_args=["-O3", "-std=c++17", "-fno-fast-math", "-ffp-contract=off"],
+            optional=True,
+        )
+    )
     for module, source in (
         ("mlxlearn._solvers._smo_native", "src/mlxlearn/_solvers/_smo_native.cpp"),
         ("mlxlearn._solvers._smo_block_native", "src/mlxlearn/_solvers/_smo_block_native.cpp"),

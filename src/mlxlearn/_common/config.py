@@ -211,6 +211,12 @@ class Tuning:
     #: Force a specific backend regardless of size. For tests and bisection only.
     force_backend: Literal["", "mlx", "cpu", "sklearn"] = ""
     diagnostics_capacity: int = 512
+    #: Force one radius-search engine ("tree", "brute", "metal", or "stock" for
+    #: patched estimators). The stock setting uses scikit-learn's own distance
+    #: arithmetic. For tests and benchmarks.
+    radius_route: Literal["auto", "tree", "brute", "metal", "stock"] = "auto"
+    #: Worker threads for host radius engines; 0 uses n_jobs, then all cores.
+    radius_threads: int = 0
 
     def __post_init__(self) -> None:
         for f in fields(self):
@@ -221,6 +227,11 @@ class Tuning:
             not isinstance(self.lbfgs_sketch_size, int) or
             not 0 <= self.lbfgs_sketch_size <= min(self.lbfgs_history, 32)):
             raise ValueError("lbfgs_sketch_size must be an integer between 0 and min(lbfgs_history, 32)")
+        if self.radius_route not in ("auto", "tree", "brute", "metal", "stock"):
+            raise ValueError(
+                "radius_route must be one of 'auto', 'tree', 'brute', 'metal', 'stock'; "
+                f"got {self.radius_route!r}"
+            )
         if not 0.0 < self.smo_kernel_cache_fraction <= 1.0:
             raise ValueError(
                 "smo_kernel_cache_fraction must be in (0, 1], got "

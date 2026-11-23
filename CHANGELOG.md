@@ -8,6 +8,26 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- **Radius-neighbor search** (`radius_neighbors`, `radius_neighbors_graph`) on
+  owned engines: a tree for low-dimensional data, a certified Metal Gram screen on
+  centred coordinates, and exact host brute force for small calls. Membership is
+  exact for the float32 coordinates (`S <= fl64(radius**2)`, ties resolved with
+  integers) and identical on every engine; rows hold ascending training indices,
+  or `(distance, index)` order with `sort_results=True`. Results are assembled as
+  CSR batches, so graphs and predictions never build per-row Python objects.
+- **`mlxlearn.neighbors.RadiusNeighborsClassifier`** and
+  **`RadiusNeighborsRegressor`** — Layer 1 estimators and Layer 2 patched
+  twins. Votes and averages use every training row inside `radius` and are
+  vectorized; empty neighborhoods follow scikit-learn (`outlier_label` or `NaN`).
+- Patched radius calls delegate whole calls to stock scikit-learn, configured
+  like the user's estimator, for sparse queries, per-query or negative radii,
+  values beyond float32 and callable weights. Automatic routing can also use
+  stock when it predicts a faster search and certifies exact membership.
+  Routing depends only on the call, never on earlier
+  calls, so repeated calls are bitwise reproducible.
+- `benchmarks/radius/`: a radius benchmark and calibration harness against
+  scikit-learn's default, brute-force and `n_jobs=-1` configurations, with
+  same-session controls of older sources.
 - **`mlxlearn.linear_model.LinearRegression`**: dense ordinary least squares
   with multi-output targets and `sample_weight`. The certified paths solve on
   the host in float64: a threaded pass centres and weights the data exactly as
@@ -23,12 +43,10 @@ All notable changes to this project are documented here. The format follows
   returns a wrong model. `rank_`, `singular_` and the minimum-norm `coef_`
   follow the installed scikit-learn's cutoff (`tol` from 1.9,
   `max(n_samples, n_features) * eps` on 1.7 and 1.8), and errors match stock's
-  on each version. There is no Metal path; `device="gpu"` solves on the host
-  and records a `host-solve` diagnostic. Patched mode hands to scikit-learn
-  `positive=True`, sparse input, wide designs, and tall fits with fewer than
-  8,192 samples or 16 features, more than 1,024 features, fewer than 32 samples
-  per feature, or more targets than features: the shapes where some data kind
-  measured slower than stock.
+  on each version. With `device="gpu"` the solver runs on the host and
+  records a `host-solve` diagnostic. Patched mode delegates positive and
+  sparse fits to scikit-learn. For dense inputs, it selects a solver using
+  [measured crossovers](docs/linear-regression-2026-11-22.md#routing).
 
 ## [0.1.6] — 2026-11-19
 

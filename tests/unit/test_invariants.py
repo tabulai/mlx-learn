@@ -19,18 +19,26 @@ from sklearn.datasets import make_classification
 from mlxlearn._common.config import tuning_context
 from mlxlearn.decomposition import PCA
 from mlxlearn.linear_model import LinearRegression, LogisticRegression
-from mlxlearn.neighbors import KNeighborsClassifier, KNeighborsRegressor, NearestNeighbors
+from mlxlearn.neighbors import (
+    KNeighborsClassifier,
+    KNeighborsRegressor,
+    NearestNeighbors,
+    RadiusNeighborsClassifier,
+    RadiusNeighborsRegressor,
+)
 from mlxlearn.svm import SVC
 
 SUPERVISED = [
     (KNeighborsClassifier, {"n_neighbors": 5}),
     (KNeighborsRegressor, {"n_neighbors": 5}),
+    (RadiusNeighborsClassifier, {"radius": 50.0}),
+    (RadiusNeighborsRegressor, {"radius": 50.0}),
     (LinearRegression, {}),
     (LogisticRegression, {}),
     (SVC, {}),
 ]
 ALL = SUPERVISED + [
-    (NearestNeighbors, {"n_neighbors": 5}),
+    (NearestNeighbors, {"n_neighbors": 5, "radius": 50.0}),
     (PCA, {"n_components": 6}),
 ]
 
