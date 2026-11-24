@@ -6,6 +6,30 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Cost-based revival for `EMeans`** (`revival="cost"`, opt-in; the default
+  `revival="mass"` is unchanged). Every five mini-batches, the centroids that
+  are cheapest to remove (by the summed margin between their rows'
+  second-nearest and nearest centroids) move onto the clusters with the
+  longest axes, which are split at the Gaussian half-means along the axis. It
+  follows the reference's rule (facebookresearch/faiss#5915) with a closing
+  mean chosen by measurement: a centroid involved in a move during the last
+  pass returns its EMA position. On five embedding datasets at 16,384
+  centroids, held-out error fell in all 45 seed-level comparisons: by 0.5–1.2%
+  per dataset at one epoch and 0.2–0.6% at two and three. The mass rule needs
+  1.3–1.5 epochs to match one epoch and 2.7 to more than 4 to match two. Fits
+  take 1.6–4.4% longer at equal epochs (M4 Max, M5 Ultra). It works with every precision,
+  assignment route and finalizer and with spherical clustering; `OMeans` keeps
+  the mass rule. See the [guide](docs/e-means.md#cost-based-revival) and the
+  [measurements](benchmarks/experiments/emeans-cost-revival-2026-11-24/README.md).
+- The dense assignment kernels can return each row's margin, the distance to
+  its second-nearest centroid minus the distance to its nearest
+  (`assign(..., second=True)`), from the search they already do: the GEMM
+  argmin, the fused tile, and the streaming float32 and BF16 tiles keep the
+  second-smallest score next to the smallest. Labels and distances are
+  bit-identical to the plain call.
+
 ## [0.1.7] — 2026-11-23
 
 ### Added

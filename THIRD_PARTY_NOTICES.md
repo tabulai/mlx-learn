@@ -237,6 +237,16 @@ checkout which retains its license, use upstream dataset split fingerprints,
 and credit the original datasets. Faiss is an optional benchmark dependency.
 See [the benchmark guide](benchmarks/e_means/README.md).
 
+Cost-based revival (`EMeans(revival="cost")`) follows the rule that the same
+MIT-licensed Faiss reference adopted in facebookresearch/faiss#5915 (merged
+2026-11-22 as `16a95d63f2980b90c19e5308b4baec8f050b9b5b`, accessed 2026-11-24;
+copyright Meta Platforms, Inc. and affiliates): the removal cost, the long
+axis by Oja's rule, the threshold of 0.3 times the median, the pairing order
+and the split at the Gaussian half-means. No upstream source was copied. The
+Metal kernels, the selection on the GPU, the clipping of splits and the
+closing rule were written for mlxlearn; a test oracle restates the
+reference's selection rule in NumPy.
+
 The o-means implementation follows the MIT-licensed `contrib/o_means` package
 of the owlgebra-ai/faiss fork (accessed 2026-11-18; its files carry the Meta
 Platforms, Inc. and affiliates copyright header) and the Owlgebra AI post

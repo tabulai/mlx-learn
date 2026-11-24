@@ -15,7 +15,13 @@ import mlx.core as mx
 
 from mlxlearn_device._binary32 import matmul
 
-from .e_means_bf16 import _tile_kernel, assign_bf16, prepare_centers, streaming_tile
+from .e_means_bf16 import (
+    _merge_second_kernel,
+    _tile_kernel,
+    assign_bf16,
+    prepare_centers,
+    streaming_tile,
+)
 
 _UINT32_MAX = 2**32 - 1
 
@@ -67,6 +73,30 @@ def _kernel(name):
             uint i = metal::simd_min(best == v ? index : 0xffffffff);
             if (lane == 0) labels[row] = i;
             """)
+    if name == "argmin_second":
+        # ``argmin`` that also returns the winning score and the smallest
+        # score among the other centroids (equal to the winner's on a tie).
+        return mx.fast.metal_kernel(
+            name="emeans_argmin_second", input_names=["scores", "norms"],
+            output_names=["labels", "best_scores", "second_scores"], source=r"""
+            const uint row = thread_position_in_grid.x / 32;
+            const uint lane = thread_index_in_simdgroup;
+            if (row >= N) return;
+            float best = INFINITY, second = INFINITY;
+            uint index = 0;
+            for (uint j = lane; j < K; j += 32) {
+                float v = SPHERICAL ? -float(scores[row * K + j])
+                                    : norms[j] - 2.0f * float(scores[row * K + j]);
+                bool wins = v < best || (v == best && j < index);
+                second = metal::min(second, wins ? best : v);
+                if (wins) {best = v; index = j;}
+            }
+            float v = metal::simd_min(best);
+            uint i = metal::simd_min(best == v ? index : 0xffffffff);
+            // The winner's lane offers its second score, every other lane its best.
+            float other = metal::simd_min(best == v && index == i ? second : best);
+            if (lane == 0) {labels[row] = i; best_scores[row] = v; second_scores[row] = other;}
+            """)
     if name == "distances":
         return mx.fast.metal_kernel(
             name="emeans_distances", input_names=["x", "centers", "labels"],
@@ -116,6 +146,77 @@ def _kernel(name):
                     (old_weight * centers[i] + alpha[0] * sums[i]) / count : centers[i];
             }
             if (i % D == 0) new_counts[c] = count;
+            """)
+    if name == "removal_stats":
+        # One SIMD group per row. With y = x - c for the row's centroid c and
+        # p = <y, axis>, add p * y to the centroid's axis sums and the row's
+        # margin to its removal cost. A margin that is not finite (a single
+        # centroid, or overflowing operands) adds nothing; the bit test keeps
+        # that rule under fast-math compilation.
+        return mx.fast.metal_kernel(
+            name="emeans_removal_stats",
+            input_names=["x", "labels", "margins", "centers", "axes"],
+            output_names=["axis_sums", "costs"], atomic_outputs=True, source=r"""
+            const uint row = thread_position_in_grid.x / 32;
+            const uint lane = thread_index_in_simdgroup;
+            if (row >= N) return;
+            const uint base = uint(labels[row]) * D;
+            float projection = 0;
+            for (uint f = lane; f < D; f += 32) {
+                float y = float(x[row * D + f]) - centers[base + f];
+                projection += y * axes[base + f];
+            }
+            projection = metal::simd_sum(projection);
+            for (uint f = lane; f < D; f += 32) {
+                float y = float(x[row * D + f]) - centers[base + f];
+                atomic_fetch_add_explicit(&axis_sums[base + f], projection * y, memory_order_relaxed);
+            }
+            if (lane == 0) {
+                const float margin = margins[row];
+                if ((as_type<uint>(margin) & 0x7f800000u) != 0x7f800000u)
+                    atomic_fetch_add_explicit(&costs[base / D], margin, memory_order_relaxed);
+            }
+            """)
+    if name == "removal_update":
+        # One SIMD group per centroid: the EMA of its axis sums and removal
+        # cost, the length of the new axis sum and its direction. The length
+        # is formed from components scaled by the largest one, so that it
+        # cannot overflow where the length itself is representable. A sum
+        # whose largest component is below the normal float32 range counts as
+        # zero and keeps the previous direction: dividing by it could overflow
+        # once fast-math compilation turns the division into a reciprocal.
+        return mx.fast.metal_kernel(
+            name="emeans_removal_update",
+            input_names=["long_axis", "removal", "axis_sums", "costs", "axes", "rate"],
+            output_names=["new_long_axis", "new_removal", "new_axes", "lengths"], source=r"""
+            const uint c = thread_position_in_grid.x / 32;
+            const uint lane = thread_index_in_simdgroup;
+            if (c >= K) return;
+            float peak = 0;
+            for (uint f = lane; f < D; f += 32) {
+                float u = rate[1] * long_axis[c * D + f] + rate[0] * axis_sums[c * D + f];
+                new_long_axis[c * D + f] = u;
+                peak = metal::max(peak, metal::abs(u));
+            }
+            peak = metal::simd_max(peak);
+            const bool usable = peak >= 1.17549435e-38f;
+            float squares = 0;
+            if (usable) {
+                for (uint f = lane; f < D; f += 32) {
+                    float u = new_long_axis[c * D + f] / peak;
+                    squares += u * u;
+                }
+            }
+            // At least one scaled component is one, so the scale is at least one.
+            const float scale = usable ? metal::sqrt(metal::simd_sum(squares)) : 1.0f;
+            const float length = usable ? peak * scale : 0.0f;
+            for (uint f = lane; f < D; f += 32)
+                new_axes[c * D + f] = usable ? (new_long_axis[c * D + f] / peak) / scale
+                                             : axes[c * D + f];
+            if (lane == 0) {
+                lengths[c] = length;
+                new_removal[c] = rate[1] * removal[c] + rate[0] * costs[c];
+            }
             """)
     raise ValueError(name)
 
@@ -186,6 +287,48 @@ _FUSED = r"""
 """
 
 
+# The reduction of ``_FUSED`` starts at this line; the variant below replaces
+# it and also keeps each row's second-smallest score of the tile.
+_FUSED_REDUCTION = "    // Eight SIMD groups cooperatively reduce four rows each.\n"
+_FUSED_SECOND = _FUSED[:_FUSED.index(_FUSED_REDUCTION)] + r"""    // Eight SIMD groups cooperatively reduce four rows each.
+    uint lane = thread_index_in_simdgroup;
+    for (uint r = sg; r < 32; r += 8) {
+        uint row = r0 + r;
+        if (row >= N) continue;
+        float best = INFINITY, second = INFINITY;
+        uint index = c0;
+        for (uint c = lane; c < 64; c += 32) {
+            uint col = c0 + c;
+            if (col < K) {
+                float v = SPHERICAL ? -dots[r * 64 + c]
+                                    : norms[col] - 2.0f * dots[r * 64 + c];
+                bool wins = v < best || (v == best && col < index);
+                second = metal::min(second, wins ? best : v);
+                if (wins) {best = v; index = col;}
+            }
+        }
+        float v = metal::simd_min(best);
+        uint idx = metal::simd_min(best == v ? index : 0xffffffff);
+        // The winner's lane offers its second score, every other lane its best.
+        float other = metal::simd_min(best == v && index == idx ? second : best);
+        if (lane == 0) {
+            uint address = row * PARTS + threadgroup_position_in_grid.y;
+            partial_scores[address] = v;
+            partial_seconds[address] = other;
+            partial_labels[address] = idx;
+        }
+    }
+"""
+
+
+@lru_cache(None)
+def _fused_second_kernel():
+    return mx.fast.metal_kernel(
+        name="emeans_tiled_assign_second", input_names=["x", "centers", "norms"],
+        output_names=["partial_scores", "partial_seconds", "partial_labels"],
+        source=_FUSED_SECOND, header="#include <metal_simdgroup_matrix>\n")
+
+
 @lru_cache(None)
 def _fused_kernels():
     tiled = mx.fast.metal_kernel(
@@ -242,7 +385,8 @@ def _streaming_fp32_device():
     return True
 
 
-def assign(x, centers, *, batch_size=None, spherical=False, method="auto", precision="float32"):
+def assign(x, centers, *, batch_size=None, spherical=False, method="auto", precision="float32",
+           second=False):
     """Assign rows to centers with bounded scratch memory on the GPU.
 
     ``float16`` only reduces assignment operands; state, accumulation, scores,
@@ -256,6 +400,12 @@ def assign(x, centers, *, batch_size=None, spherical=False, method="auto", preci
     widens the BF16 values before FP32 GEMM to avoid BF16 score rounding.
     Float32 ``auto`` streams large M4 Max score tiles directly into argmin and
     uses tuned GEMM for the other shapes. ``fused`` exposes the older matrix tiles.
+
+    ``second`` adds a third result: each row's margin, the distance to its
+    second-nearest centroid minus the distance to its nearest one, in the
+    units of the returned distances. It comes from the assignment scores of
+    the same search, so it is zero on a tie and infinite when there is only
+    one centroid. Labels and distances are those of the plain call.
     """
     if method not in {"auto", "gemm", "fused"}:
         raise ValueError("method must be auto, gemm, or fused")
@@ -268,14 +418,15 @@ def assign(x, centers, *, batch_size=None, spherical=False, method="auto", preci
     if d < 1 or k * d > _UINT32_MAX:
         raise ValueError("centroid matrix exceeds Metal kernel indexing capacity")
     if n == 0:
-        return mx.zeros((0,), mx.uint32), mx.zeros((0,), mx.float32)
+        empty = (mx.zeros((0,), mx.uint32), mx.zeros((0,), mx.float32))
+        return empty + (mx.zeros((0,), mx.float32),) if second else empty
     dtype = {"float32": mx.float32, "float16": mx.float16, "bfloat16": mx.bfloat16}[precision]
     if precision == "float16":
         method = "fused"
     # Bound one GEMM tile to at most 1 GiB (less on smaller Macs). This bounds lazy graphs via
     # evaluation inside the loop, important for full-dataset predict/score.
     native_bf16 = precision == "bfloat16" and method in {"auto", "fused"}
-    scratch_per_row = 8 * ((k + 63) // 64) if native_bf16 else 4 * k
+    scratch_per_row = (12 if second else 8) * ((k + 63) // 64) if native_bf16 else 4 * k
     budget = min(256 << 20, _scratch_budget()) if native_bf16 else _scratch_budget()
     block = min(n, max(1, budget // scratch_per_row)) if batch_size is None else int(batch_size)
     if block < 1:
@@ -292,35 +443,61 @@ def assign(x, centers, *, batch_size=None, spherical=False, method="auto", preci
     # operands for the baseline so both implementations accumulate/output FP32.
     gemm_centers = represented_centers if precision == "bfloat16" else centers.astype(dtype)
     ct = gemm_centers.T
-    labels_out, distances_out = [], []
+    # Spherical scores are -x.c and distances 2 - 2 x.c; Euclidean scores
+    # differ from squared distances by the row's own norm only.
+    margin_scale = 2.0 if spherical else 1.0
+    chunks = []
     for start in range(0, n, block):
         xb = x[start:start + block]
         rows = xb.shape[0]
+        best = other = None
         if native_bf16:
-            labels, _ = assign_bf16(xb, center_mirror, norms=norms, spherical=spherical)
+            if second:
+                labels, best, other = assign_bf16(xb, center_mirror, norms=norms,
+                                                  spherical=spherical, second=True)
+            else:
+                labels, _ = assign_bf16(xb, center_mirror, norms=norms, spherical=spherical)
         elif (method == "auto" and precision == "float32" and rows >= 128
               and k >= 4096 and 64 <= d <= 512 and _streaming_fp32_device()):
             # 64 centers per tile: keep one score and index per row in place
             # of 64 GEMM outputs. Keep the original batching, including GEMV
             # for singleton tails, whose dot reduction is different.
-            labels, _ = streaming_tile(
-                xb.astype(mx.float32), gemm_centers, norms, spherical=spherical,
-                bm=64, bk=16, pad=4, coalesced=True,
-            )
+            if second:
+                labels, best, other = streaming_tile(
+                    xb.astype(mx.float32), gemm_centers, norms, spherical=spherical,
+                    bm=64, bk=16, pad=4, coalesced=True, second=True,
+                )
+            else:
+                labels, _ = streaming_tile(
+                    xb.astype(mx.float32), gemm_centers, norms, spherical=spherical,
+                    bm=64, bk=16, pad=4, coalesced=True,
+                )
         elif method == "fused":
-            tile, merge = _fused_kernels()
             parts = (k + 63) // 64
-            scores, indices = tile(
-                inputs=[xb, centers, norms],
-                template=[("T", dtype), ("N", rows), ("K", k), ("D", d),
-                          ("PARTS", parts), ("SPHERICAL", spherical)],
-                grid=(((rows + 31) // 32) * 256, parts, 1), threadgroup=(256, 1, 1),
-                output_shapes=[(rows, parts), (rows, parts)],
-                output_dtypes=[mx.float32, mx.uint32], stream=mx.gpu)
-            labels = merge(
-                inputs=[scores, indices], template=[("N", rows), ("PARTS", parts)],
-                grid=(rows * 32, 1, 1), threadgroup=(256, 1, 1),
-                output_shapes=[(rows,)], output_dtypes=[mx.uint32], stream=mx.gpu)[0]
+            template = [("T", dtype), ("N", rows), ("K", k), ("D", d),
+                        ("PARTS", parts), ("SPHERICAL", spherical)]
+            grid = (((rows + 31) // 32) * 256, parts, 1)
+            if second:
+                partials = _fused_second_kernel()(
+                    inputs=[xb, centers, norms], template=template, grid=grid,
+                    threadgroup=(256, 1, 1), output_shapes=[(rows, parts)] * 3,
+                    output_dtypes=[mx.float32, mx.float32, mx.uint32], stream=mx.gpu)
+                labels, best, other = _merge_second_kernel()(
+                    inputs=list(partials), template=[("N", rows), ("PARTS", parts)],
+                    grid=(rows * 32, 1, 1), threadgroup=(256, 1, 1),
+                    output_shapes=[(rows,)] * 3,
+                    output_dtypes=[mx.uint32, mx.float32, mx.float32], stream=mx.gpu)
+            else:
+                tile, merge = _fused_kernels()
+                scores, indices = tile(
+                    inputs=[xb, centers, norms], template=template, grid=grid,
+                    threadgroup=(256, 1, 1),
+                    output_shapes=[(rows, parts), (rows, parts)],
+                    output_dtypes=[mx.float32, mx.uint32], stream=mx.gpu)
+                labels = merge(
+                    inputs=[scores, indices], template=[("N", rows), ("PARTS", parts)],
+                    grid=(rows * 32, 1, 1), threadgroup=(256, 1, 1),
+                    output_shapes=[(rows,)], output_dtypes=[mx.uint32], stream=mx.gpu)[0]
         else:
             operands = xb.astype(dtype)
             if precision == "bfloat16":
@@ -330,19 +507,30 @@ def assign(x, centers, *, batch_size=None, spherical=False, method="auto", preci
             else:
                 # Float32 scores need binary32 products on every GPU.
                 scores = matmul(operands, gemm_centers, transpose_b=True)
-            labels = _kernel("argmin")(
-                inputs=[scores, norms], template=[("N", rows), ("K", k), ("SPHERICAL", spherical)],
-                grid=(rows * 32, 1, 1), threadgroup=(256, 1, 1),
-                output_shapes=[(rows,)], output_dtypes=[mx.uint32], stream=mx.gpu)[0]
+            template = [("N", rows), ("K", k), ("SPHERICAL", spherical)]
+            if second:
+                labels, best, other = _kernel("argmin_second")(
+                    inputs=[scores, norms], template=template,
+                    grid=(rows * 32, 1, 1), threadgroup=(256, 1, 1),
+                    output_shapes=[(rows,)] * 3,
+                    output_dtypes=[mx.uint32, mx.float32, mx.float32], stream=mx.gpu)
+            else:
+                labels = _kernel("argmin")(
+                    inputs=[scores, norms], template=template,
+                    grid=(rows * 32, 1, 1), threadgroup=(256, 1, 1),
+                    output_shapes=[(rows,)], output_dtypes=[mx.uint32], stream=mx.gpu)[0]
         distance_x = xb.astype(dtype) if precision == "bfloat16" else xb
         distance_centers = center_mirror if precision == "bfloat16" else centers
         distances = selected_distances(distance_x, distance_centers, labels, spherical=spherical)
+        chunk = (labels, distances)
+        if second:
+            chunk += ((other - best) * margin_scale if margin_scale != 1.0 else other - best,)
         if n > block:
-            mx.eval(labels, distances)
-        labels_out.append(labels)
-        distances_out.append(distances)
-    return (labels_out[0], distances_out[0]) if len(labels_out) == 1 else (
-        mx.concatenate(labels_out), mx.concatenate(distances_out))
+            mx.eval(*chunk)
+        chunks.append(chunk)
+    if len(chunks) == 1:
+        return chunks[0]
+    return tuple(mx.concatenate(pieces) for pieces in zip(*chunks, strict=True))
 
 
 def gather_bf16(data, order):
@@ -380,6 +568,51 @@ def batch_stats(x, labels, k):
         grid=(max(1, n * d), 1, 1), threadgroup=(256, 1, 1),
         output_shapes=[(k, d), (k,)], output_dtypes=[mx.float32, mx.float32],
         init_value=0, stream=mx.gpu))
+
+
+def removal_stats(x, labels, margins, centers, axes):
+    """Batch statistics of cost-based revival, fused in Metal.
+
+    For each row, with ``y = x - centers[label]`` and ``p = <y, axes[label]>``,
+    adds ``p * y`` to the centroid's axis sums and the row's margin to its
+    removal cost; a margin that is not finite adds nothing. ``centers`` are
+    the centroids the rows were assigned to, in the coordinates of ``x``, and
+    ``axes`` their float32 unit directions. Returns float32 ``(k, d)`` axis
+    sums and ``(k,)`` costs. Sums use float32 atomics, as ``batch_stats``.
+    """
+    n, d = x.shape
+    k = centers.shape[0]
+    if centers.shape != (k, d) or axes.shape != (k, d):
+        raise ValueError("centers and axes must be matrices with one row per centroid")
+    if labels.shape != (n,) or margins.shape != (n,):
+        raise ValueError("labels and margins must have one entry per row")
+    if n * max(d, 32) > _UINT32_MAX or k * d > _UINT32_MAX:
+        raise ValueError("statistics matrix exceeds Metal kernel indexing capacity")
+    return tuple(_kernel("removal_stats")(
+        inputs=[x, labels, margins, centers, axes], template=[("N", n), ("D", d)],
+        grid=(max(1, n) * 32, 1, 1), threadgroup=(256, 1, 1),
+        output_shapes=[(k, d), (k,)], output_dtypes=[mx.float32, mx.float32],
+        init_value=0, stream=mx.gpu))
+
+
+def removal_update(long_axis, removal, axis_sums, costs, axes, alpha):
+    """EMA of the cost-based revival statistics and the unit long axes.
+
+    ``long_axis`` and ``removal`` decay by ``1 - alpha`` and gain ``alpha``
+    times the batch's ``axis_sums`` and ``costs``. Returns the new long-axis
+    sums, the new removal costs, their unit directions (the previous
+    direction where the sum is zero) and the lengths of the sums.
+    """
+    k, d = long_axis.shape
+    if k * max(d, 32) > _UINT32_MAX:
+        raise ValueError("centroid matrix exceeds Metal kernel indexing capacity")
+    return tuple(_kernel("removal_update")(
+        inputs=[long_axis, removal, axis_sums, costs, axes,
+                mx.array([alpha, 1.0 - alpha], mx.float32)],
+        template=[("K", k), ("D", d)],
+        grid=(k * 32, 1, 1), threadgroup=(256, 1, 1),
+        output_shapes=[(k, d), (k,), (k, d), (k,)],
+        output_dtypes=[mx.float32] * 4, stream=mx.gpu))
 
 
 def ema_update(centers, counts, batch_sums, batch_counts, alpha, *, decay=None):

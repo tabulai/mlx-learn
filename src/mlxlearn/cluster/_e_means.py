@@ -22,7 +22,14 @@ from sklearn.utils.validation import check_is_fitted
 
 from mlxlearn_device._binary32 import matmul
 
-from .._kernels.e_means import assign, batch_stats, ema_update, gather_bf16
+from .._kernels.e_means import (
+    assign,
+    batch_stats,
+    ema_update,
+    gather_bf16,
+    removal_stats,
+    removal_update,
+)
 from ._recipe import resolve_recipe, scheduled_alpha
 
 
@@ -35,6 +42,9 @@ class PreparedEMeansFit:
     recipe: dict
     seed: int
     signature: tuple
+    # Per-feature (lower, upper) range of the rows and initial centroids;
+    # cost-based revival keeps split centroids inside it.
+    bounds: tuple | None = None
 
 
 @dataclass(frozen=True)
@@ -134,6 +144,139 @@ def revive(centers, counts, uniform, threshold, split_epsilon, companion=None, *
     return centers, counts, number, companion
 
 
+# Cost-based revival moves a centroid whose removal cost is zero or below this
+# fraction of the median cost (facebookresearch/faiss, contrib/e_means/base.py,
+# ``_REMOVAL_THRESHOLD``, accessed 2026-11-24).
+REMOVAL_THRESHOLD = 0.3
+# MLX's Metal argsort is verified below this many float32 keys.
+_MAX_PLAN_CLUSTERS = 2**21
+
+
+def epoch_seed(seed, epoch, *, distinct=False):
+    """Seed of one pass's row permutation.
+
+    ``distinct`` keeps a pass from replaying the initialization draw, which
+    uses the stream seeded with ``seed``: when both seeds coincide (pass 0 of
+    seeds 0 and 2**31) the pass seed moves by the golden-ratio constant, as in
+    the reference since cost-based revival. Other seeds are unchanged.
+    """
+    value = (seed * 1000003 + epoch) % 2**32
+    if distinct and value == seed % 2**32:
+        value = (value + 0x9E3779B9) % 2**32
+    return value
+
+
+def removal_plan(removal, mass, lengths, threshold=REMOVAL_THRESHOLD):
+    """Pair centroids that are cheap to remove with the donors to split, on the GPU.
+
+    ``removal`` holds each centroid's running removal cost, the sum over its
+    rows of the distance to their second-nearest centroid minus the distance
+    to their nearest one. A centroid whose cost is zero or below ``threshold``
+    times the median cost moves, cheapest first; centroids without cost go in
+    index order. Donors are the other centroids with mass, by decreasing
+    ``lengths``, the lengths of their long-axis sums. Nothing is drawn at
+    random. Returns ``is_child, is_donor, source, target, number`` with the
+    meaning of :func:`split_plan`.
+    """
+    k = removal.shape[0]
+    ids = mx.arange(k, dtype=mx.int32)
+    ordered = mx.sort(removal)
+    median = 0.5 * (ordered[(k - 1) // 2] + ordered[k // 2])
+    candidate = (removal <= 0) | (removal < threshold * median)
+    available = (~candidate) & (mass > 0)
+    number = mx.minimum(mx.sum(candidate), mx.sum(available)).astype(mx.int32)
+    # Costs are never negative. Indices below every positive cost order the
+    # centroids without cost; float32 holds them exactly for k below 2**24.
+    free = (ids - k).astype(mx.float32)
+    target_order = mx.argsort(mx.where(candidate, mx.where(removal > 0, removal, free), mx.inf))
+    donor_order = mx.argsort(mx.where(available, -lengths, mx.inf))
+    target_rank = mx.argsort(target_order)
+    donor_rank = mx.argsort(donor_order)
+    is_child = target_rank < number
+    is_donor = donor_rank < number
+    source = donor_order[target_rank]
+    target = target_order[donor_rank]
+    return is_child, is_donor, source, target, number
+
+
+def _adjacent_bf16(donor, child, upper):
+    """Coordinate zero of ``child``, moved to an adjacent BF16 value where the
+    represented child equals the represented donor (signed zeros are equal).
+
+    The value moves up unless that leaves the finite range or ``upper``.
+    """
+    donor_bits = donor.astype(mx.bfloat16).view(mx.uint16)
+    child_bits = child.astype(mx.bfloat16).view(mx.uint16)
+    both_zero = ((donor_bits & 0x7fff) == 0) & ((child_bits & 0x7fff) == 0)
+    collapsed = mx.all((donor_bits == child_bits) | both_zero, axis=1)
+    bits = child_bits[:, 0].astype(mx.uint32)
+    negative, zero = (bits & 0x8000) != 0, (bits & 0x7fff) == 0
+    upward = mx.where(zero, 1, mx.where(negative, bits - 1, bits + 1))
+    inward = mx.where(zero, 0x8001, mx.where(negative, bits + 1, bits - 1))
+    above = (upward.astype(mx.uint32) << 16).view(mx.float32)
+    rise = ((upward & 0x7fff) < 0x7f80) & (above <= upper[0])
+    neighbor = mx.where(rise, above, (inward.astype(mx.uint32) << 16).view(mx.float32))
+    return mx.where(collapsed, neighbor, child[:, 0])
+
+
+def _adjacent_float32(donor, child, upper):
+    """As :func:`_adjacent_bf16` for float32 values."""
+    collapsed = mx.all(donor == child, axis=1)
+    bits = child[:, 0].view(mx.uint32)
+    negative, zero = (bits & 0x80000000) != 0, (bits & 0x7fffffff) == 0
+    upward = mx.where(zero, 1, mx.where(negative, bits - 1, bits + 1))
+    inward = mx.where(zero, 0x80000001, mx.where(negative, bits + 1, bits - 1))
+    above = upward.view(mx.float32)
+    rise = ((upward & 0x7fffffff) < 0x7f800000) & (above <= upper[0])
+    neighbor = mx.where(rise, above, inward.view(mx.float32))
+    return mx.where(collapsed, neighbor, child[:, 0])
+
+
+def revive_by_cost(centers, mass, long_axis, removal, axes, lengths, plan, bounds, *,
+                   companion=None, precision="float32"):
+    """Move the plan's centroids onto its donors, splitting each donor along its axis.
+
+    A donor at ``c`` with mass ``N`` and long-axis sum ``U`` becomes two
+    centroids at ``c -/+ s u`` with ``u = U / |U|`` and ``s = sqrt(2 |U| /
+    (pi N))``, the half-means of a Gaussian along ``u``; ``s`` is zero when
+    ``|U|`` or ``N`` is. Both keep half of the donor's mass, long-axis sum and
+    removal cost, and the moved centroid takes the donor's axis. Positions are
+    clipped to ``bounds``, the per-feature range of the rows and initial
+    centroids, so that the magnitudes checked before training keep holding.
+    Coincident copies are separated by one adjacent value in coordinate zero
+    (BF16 values for ``precision="bfloat16"``). ``companion`` optionally
+    supplies slow-EMA (centers, counts), displaced by the same vectors.
+    Returns ``centers, mass, long_axis, removal, axes, number, companion``.
+    """
+    is_child, is_donor, source, _, number = plan
+    lower, upper = bounds
+    valid = (lengths > 0) & (mass > 0)
+    ratio = mx.where(valid, lengths, 0.0) / mx.where(valid, mass, 1.0)
+    # The ratio is at most the largest squared row-to-centroid distance; a
+    # value that is not finite could only come from unchecked operands.
+    ratio = mx.where(mx.isfinite(ratio), ratio, 0.0)
+    offset = mx.sqrt((2.0 / math.pi) * ratio)[:, None] * axes
+    adjacent = _adjacent_bf16 if precision == "bfloat16" else _adjacent_float32
+    child_offset = offset[source]
+
+    def split(position, weight):
+        donor = mx.clip(position - offset, lower, upper)
+        child = mx.clip(position[source] + child_offset, lower, upper)
+        child = mx.concatenate((adjacent(donor[source], child, upper)[:, None], child[:, 1:]), axis=1)
+        new_position = mx.where(is_child[:, None], child, mx.where(is_donor[:, None], donor, position))
+        new_weight = mx.where(is_child, weight[source] * 0.5, mx.where(is_donor, weight * 0.5, weight))
+        return new_position, new_weight
+
+    centers, mass = split(centers, mass)
+    long_axis = mx.where(is_child[:, None], long_axis[source] * 0.5,
+                         mx.where(is_donor[:, None], long_axis * 0.5, long_axis))
+    removal = mx.where(is_child, removal[source] * 0.5, mx.where(is_donor, removal * 0.5, removal))
+    axes = mx.where(is_child[:, None], axes[source], axes)
+    if companion is not None:
+        companion = split(*companion)
+    return centers, mass, long_axis, removal, axes, number, companion
+
+
 class EMeans(ClusterMixin, TransformerMixin, BaseEstimator):
     """Mini-batch clustering with scheduled EMA updates on the Metal GPU.
 
@@ -170,6 +313,17 @@ class EMeans(ClusterMixin, TransformerMixin, BaseEstimator):
         retains unprojected centers. Zero input rows remain zero.
     unused_threshold : float or None
         Revival threshold as a fraction of mean mass; 0 disables revival.
+        It applies to ``revival='mass'`` only.
+    revival : {'mass', 'cost'}, default='mass'
+        Rule that reuses poorly placed centroids, every five mini-batches.
+        ``mass`` refills centroids whose mass is below ``unused_threshold``
+        times the mean by splitting donors drawn in proportion to their mass.
+        ``cost`` moves the centroids that are cheapest to remove, by the sum
+        over their rows of the distance to the second-nearest centroid minus
+        the distance to the nearest, onto the clusters with the longest axes
+        and splits those at the Gaussian half-means along the axis. It needs
+        the second-nearest distance of every row and two more statistics per
+        centroid; see ``docs/e-means.md``.
     assignment : {'auto', 'gemm', 'fused'}, default='auto'
         Metal assignment implementation; useful for performance comparisons.
     precision : {'float32', 'float16', 'bfloat16'}, default='float32'
@@ -191,6 +345,13 @@ class EMeans(ClusterMixin, TransformerMixin, BaseEstimator):
     ``slow_ema_centers_`` is available when slow EMA was requested. These
     finalizers use moving assignments, not a fresh Lloyd pass. Final labels
     (when enabled) are reassigned against the chosen final centroids.
+
+    With ``revival='cost'`` centroids keep moving during the last pass. A
+    centroid that moved, or was split, in that pass holds rows that are no
+    longer its own; ``last_epoch_centers_`` returns its EMA position and the
+    mean of the last-pass rows for every other centroid. Splits are clipped
+    to the per-feature range of the rows and initial centroids, and the
+    selection draws no random numbers.
 
     Remaining batches are kept, unlike Algorithm 1's floor notation. GPU
     float32 reductions need not be bitwise identical to the CPU reference.
@@ -217,6 +378,7 @@ class EMeans(ClusterMixin, TransformerMixin, BaseEstimator):
         init="random",
         spherical=False,
         unused_threshold=None,
+        revival="mass",
         assignment="auto",
         precision="float32",
         assignment_batch_size=None,
@@ -236,6 +398,7 @@ class EMeans(ClusterMixin, TransformerMixin, BaseEstimator):
         self.init = init
         self.spherical = spherical
         self.unused_threshold = unused_threshold
+        self.revival = revival
         self.assignment = assignment
         self.precision = precision
         self.assignment_batch_size = assignment_batch_size
@@ -249,6 +412,10 @@ class EMeans(ClusterMixin, TransformerMixin, BaseEstimator):
             raise ValueError("assignment must be 'auto', 'gemm', or 'fused'")
         if self.precision not in {"float32", "float16", "bfloat16"}:
             raise ValueError("precision must be 'float32', 'float16', or 'bfloat16'")
+        if self.revival not in {"mass", "cost"}:
+            raise ValueError("revival must be 'mass' or 'cost'")
+        if self.revival == "cost" and self.unused_threshold is not None:
+            raise ValueError("unused_threshold applies to revival='mass'; leave it None with revival='cost'")
         if self.assignment_batch_size is not None and (
             isinstance(self.assignment_batch_size, bool)
             or not isinstance(self.assignment_batch_size, Integral)
@@ -304,7 +471,7 @@ class EMeans(ClusterMixin, TransformerMixin, BaseEstimator):
             data, maximum = _normalize(data), 0.0 if maximum == 0 else 1.0
         return (data, maximum) if return_bound else data
 
-    def _assign(self, data, centers):
+    def _assign(self, data, centers, *, second=False):
         if not self.spherical and self.precision != "bfloat16":
             data, centers = data - self._offset_mx, centers - self._offset_mx
         return assign(
@@ -314,13 +481,19 @@ class EMeans(ClusterMixin, TransformerMixin, BaseEstimator):
             spherical=self.spherical,
             method=self.assignment,
             precision=self.precision,
+            **({"second": True} if second else {}),
         )
 
     def _resolve_recipe(self, n, d):
-        return resolve_recipe(
+        recipe = resolve_recipe(
             n, self.n_clusters, d, self.max_iter, self.batch_size, self.alpha0,
             self.batch_law, self.recipe, self.unused_threshold,
         )
+        if self.revival == "cost":
+            # Neither the mass threshold nor the multiplicative split applies.
+            recipe.update(unused_threshold=None, split_epsilon=None,
+                          removal_threshold=REMOVAL_THRESHOLD)
+        return recipe
 
     def _configuration_signature(self):
         primitive = (str, int, float, bool, type(None))
@@ -345,6 +518,11 @@ class EMeans(ClusterMixin, TransformerMixin, BaseEstimator):
             k = int(self.n_clusters)
             if k * d > np.iinfo(np.uint32).max or self.recipe_["batch_size"] * d > np.iinfo(np.uint32).max:
                 raise ValueError("centroid or statistical batch size exceeds 32-bit Metal indexing; reduce n_clusters or batch_size")
+            cost = getattr(self, "revival", "mass") == "cost"
+            if cost and k >= _MAX_PLAN_CLUSTERS:
+                raise ValueError(f"revival='cost' supports fewer than {_MAX_PLAN_CLUSTERS} centroids")
+            self.recipe_["revival"] = ("cost" if cost else
+                                       "mass" if self.recipe_["unused_threshold"] > 0 else "none")
             rng = check_random_state(self.random_state)
             seed = int(self.random_state) if isinstance(self.random_state, Integral) else int(rng.randint(2**32))
             if not 0 <= seed < 2**32:
@@ -380,9 +558,23 @@ class EMeans(ClusterMixin, TransformerMixin, BaseEstimator):
             )
             if self.precision == "float16":
                 self._check_half_range(data, centers, training=True)
+            bounds = None
+            if cost:
+                # Rows and their means stay inside the per-feature range of the
+                # rows and initial centroids; splits are clipped to it. BF16
+                # rows are rounded, which can move the range by one BF16 step.
+                lower = mx.minimum(mx.min(data, axis=0), mx.min(centers, axis=0))
+                upper = mx.maximum(mx.max(data, axis=0), mx.max(centers, axis=0))
+                if self.precision == "bfloat16":
+                    lower = mx.minimum(lower, lower.astype(mx.bfloat16).astype(mx.float32))
+                    upper = mx.maximum(upper, upper.astype(mx.bfloat16).astype(mx.float32))
+                bounds = (lower, upper)
+                self.recipe_.update(closing="last_epoch_mean_or_ema_if_moved",
+                                    epoch_seed="distinct_from_initialization")
+                mx.eval(lower, upper)
             mx.eval(data, centers, self._offset_mx)
             return PreparedEMeansFit(data, centers, self._offset_mx, dict(self.recipe_), seed,
-                                     self._configuration_signature())
+                                     self._configuration_signature(), bounds)
 
     def train_device(self, prepared, *, capture_assignments=False):
         """Run a complete fit from prepared inputs, returning resident outputs.
@@ -411,9 +603,16 @@ class EMeans(ClusterMixin, TransformerMixin, BaseEstimator):
             pass_sums, pass_counts = mx.zeros((k, d), mx.float32), mx.zeros((k,), mx.float32)
             batch_size = self.recipe_["batch_size"]
             final_labels = []
+            revival = self.recipe_["revival"]
+            cost = revival == "cost"
+            if cost:
+                # Unit starting axes from a fixed key, so that a seed's fit repeats.
+                axes = _normalize(mx.random.normal((k, d), key=mx.random.key(prepared.seed)))
+                long_axis, removal = mx.zeros((k, d), mx.float32), mx.zeros((k,), mx.float32)
+                involved = mx.zeros((k,), mx.bool_)
             for epoch, rows in enumerate(self.recipe_["epoch_rows"]):
                 epoch_start = time.perf_counter()
-                order_seed = (prepared.seed * 1000003 + epoch) % 2**32
+                order_seed = epoch_seed(prepared.seed, epoch, distinct=cost)
                 order = mx.array(np.random.RandomState(order_seed).permutation(n), dtype=mx.int32)
                 final_epoch = epoch == len(self.recipe_["epoch_rows"]) - 1
                 objectives = []
@@ -422,7 +621,11 @@ class EMeans(ClusterMixin, TransformerMixin, BaseEstimator):
                     batch_order = order[start:min(start + batch_size, rows)]
                     batch = gather_bf16(data, batch_order) if self.precision == "bfloat16" else data[batch_order]
                     readout = _normalize(centers) if self.spherical else centers
-                    labels, distances = self._assign(batch, readout)
+                    if cost:
+                        labels, distances, margins = self._assign(batch, readout, second=True)
+                        axis_sums, costs = removal_stats(batch, labels, margins, readout, axes)
+                    else:
+                        labels, distances = self._assign(batch, readout)
                     sums, counts = batch_stats(batch, labels, k)
                     objectives.append(mx.sum(distances))
                     if self.precision == "bfloat16":
@@ -439,16 +642,29 @@ class EMeans(ClusterMixin, TransformerMixin, BaseEstimator):
                         centers, mass = ema_update(centers, mass, sums, counts, alpha)
                     if self.recipe == "faiss" and alpha == 1.0:
                         mass = mx.where(counts > 0, mass, previous_mass)
+                    if cost:
+                        long_axis, removal, axes, lengths = removal_update(
+                            long_axis, removal, axis_sums, costs, axes, alpha)
                     if slow is not None:
                         slow = ema_update(*slow, sums, counts, slow_alpha,
                                           **({"decay": 1.0 - slow_alpha} if self.precision == "bfloat16" else {}))
-                    if (step + 1) % 5 == 0 and self.recipe_["unused_threshold"] > 0:
+                    if (step + 1) % 5 == 0 and cost:
+                        plan = removal_plan(removal, mass, lengths)
+                        centers, mass, long_axis, removal, axes, nsplit, slow = revive_by_cost(
+                            centers, mass, long_axis, removal, axes, lengths, plan, prepared.bounds,
+                            companion=slow, precision=self.precision)
+                        total_splits = total_splits + nsplit
+                        if final_epoch:
+                            involved = involved | plan[0] | plan[1]
+                    elif (step + 1) % 5 == 0 and revival == "mass":
                         uniform = mx.array(split_rng.random_sample(k), dtype=mx.float32)
                         centers, mass, nsplit, slow = revive(
                             centers, mass, uniform, self.recipe_["unused_threshold"],
                             self.recipe_["split_epsilon"], companion=slow, precision=self.precision)
                         total_splits = total_splits + nsplit
                     pending = [centers, mass, objectives[-1], total_splits]
+                    if cost:
+                        pending.extend((long_axis, removal, axes, involved))
                     if self.precision == "bfloat16":
                         pending.append(report_counts)
                     if final_epoch:
@@ -474,6 +690,11 @@ class EMeans(ClusterMixin, TransformerMixin, BaseEstimator):
                 if self.verbose:
                     print(f"e-means pass {epoch + 1}: {rows} rows, moving MSE={stat['moving_mse']:.7g}, {stat['seconds']:.3f}s", flush=True)
             closing = mx.where((pass_counts > 0)[:, None], pass_sums / mx.maximum(pass_counts[:, None], 1), centers)
+            if cost:
+                # A centroid that moved, or was split, during the closing pass
+                # holds rows from before the move that are no longer its own:
+                # it returns its EMA position instead of their mean.
+                closing = mx.where(involved[:, None], centers, closing)
             if self.spherical:
                 closing, centers = _normalize(closing), _normalize(centers)
             slow_centers = (_normalize(slow[0]) if self.spherical else slow[0]) if slow is not None else None
@@ -577,8 +798,9 @@ class EMeans(ClusterMixin, TransformerMixin, BaseEstimator):
     def _check_float32_range(self, data_maximum, initial_maximum, *, n, d, training=False):
         """Bound float32 distances, sums and objectives before GPU execution.
 
-        A coordinate hull bounds every EMA mean. Every possible revival can
-        enlarge that hull by at most (1 + epsilon). Centering can double the
+        A coordinate hull bounds every EMA mean. Every possible mass-based
+        revival can enlarge that hull by at most (1 + epsilon); cost-based
+        revival clips its splits to the hull. Centering can double the
         coordinate magnitude, and subtraction can double it again. The margin
         below bounds squared residuals and their float32 per-pass reduction,
         as well as original-coordinate batch/closing sums. This conservative
@@ -588,7 +810,7 @@ class EMeans(ClusterMixin, TransformerMixin, BaseEstimator):
         if self.precision == "bfloat16":
             # Cover BF16 rounding and the smallest nonzero repaired donor.
             maximum = max(maximum, 2.0**-133) * (1 + 2.0**-7)
-        if training and maximum > 0 and self.recipe_["unused_threshold"] > 0:
+        if training and maximum > 0 and self.recipe_["revival"] == "mass":
             checks = self.recipe_["total_steps"] // 5
             per_check = math.log1p(self.recipe_["split_epsilon"])
             if self.precision == "bfloat16":
@@ -611,7 +833,7 @@ class EMeans(ClusterMixin, TransformerMixin, BaseEstimator):
         shift = self._offset_mx
         maximum = mx.maximum(mx.max(mx.abs(data - shift)), mx.max(mx.abs(centers - shift)))
         limit = float(maximum.item())
-        if training and not self.spherical and self.recipe_["unused_threshold"] > 0:
+        if training and not self.spherical and self.recipe_["revival"] == "mass":
             checks = self.recipe_["total_steps"] // 5
             growth_log = checks * math.log1p(self.recipe_["split_epsilon"])
             if growth_log > 700:

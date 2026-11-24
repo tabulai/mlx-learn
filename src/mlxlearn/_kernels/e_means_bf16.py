@@ -186,12 +186,78 @@ _TILE_SOURCE = r"""
     }
 """
 
-@lru_cache(None)
-def _tile_kernel():
-    return mx.fast.metal_kernel(
-        name="emeans_bf16_tiled", input_names=["x", "centers", "norms"],
-        output_names=["partial_scores", "partial_indices"], source=_TILE_SOURCE,
-        header=r"""
+# The reduction of ``_TILE_SOURCE`` starts at this line. The variant below
+# replaces it and also keeps each row's second-smallest score: the smallest
+# score among the other centroids, equal to the best one on a tie. The winner
+# and its score are selected by the same comparisons as above.
+_TILE_REDUCTION = "    threadgroup float row_scores[WN * BM];\n"
+_TILE_SECOND_REDUCTION = r"""    threadgroup float row_scores[WN * BM];
+    threadgroup float row_seconds[WN * BM];
+    threadgroup uint row_indices[WN * BM];
+    const uint qid = lane / 4;
+    const uint fm = (qid & 4) + ((lane / 2) % 4);
+    const uint fn = (qid & 2) * 2 + (lane % 2) * 2;
+    #pragma clang loop unroll(full)
+    for (uint m = 0; m < TM; ++m) {
+        float best = INFINITY, second = INFINITY;
+        uint index = c0;
+        #pragma clang loop unroll(full)
+        for (uint n = 0; n < TN; ++n) {
+            const uint col = c0 + (n * WN + wn) * 8 + fn;
+            const auto values = reinterpret_cast<thread float2&>(acc[m][n].thread_elements());
+            #pragma clang loop unroll(full)
+            for (uint q = 0; q < 2; ++q) {
+                float value = col + q < K ? (SPHERICAL ? -values[q] : norms[col + q] - 2.0f * values[q]) : INFINITY;
+                bool wins = value < best || (value == best && col + q < index);
+                second = metal::min(second, wins ? best : value);
+                if (wins) {best = value; index = col + q;}
+            }
+        }
+        // The four lanes with the same row differ only in lane bits 0 and 3.
+        // They hold disjoint centroids: the loser of two winners is a
+        // candidate for the second score, next to both seconds.
+        float other = metal::simd_shuffle_xor(best, 1);
+        float other_second = metal::simd_shuffle_xor(second, 1);
+        uint other_index = metal::simd_shuffle_xor(index, 1);
+        bool wins = other < best || (other == best && other_index < index);
+        second = metal::min(metal::min(second, other_second), wins ? best : other);
+        if (wins) {best = other; index = other_index;}
+        other = metal::simd_shuffle_xor(best, 8);
+        other_second = metal::simd_shuffle_xor(second, 8);
+        other_index = metal::simd_shuffle_xor(index, 8);
+        wins = other < best || (other == best && other_index < index);
+        second = metal::min(metal::min(second, other_second), wins ? best : other);
+        if (wins) {best = other; index = other_index;}
+        if (fn == 0) {
+            uint row = (m * WM + wm) * 8 + fm;
+            row_scores[wn * BM + row] = best;
+            row_seconds[wn * BM + row] = second;
+            row_indices[wn * BM + row] = index;
+        }
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    for (uint row = tid; row < BM; row += THREADS) {
+        if (r0 + row >= N) continue;
+        float best = INFINITY, second = INFINITY;
+        uint index = c0;
+        #pragma clang loop unroll(full)
+        for (uint j = 0; j < WN; ++j) {
+            float value = row_scores[j * BM + row];
+            uint candidate = row_indices[j * BM + row];
+            bool wins = value < best || (value == best && candidate < index);
+            second = metal::min(metal::min(second, row_seconds[j * BM + row]), wins ? best : value);
+            if (wins) {best = value; index = candidate;}
+        }
+        uint output_index = COALESCED ? (c0 / BN) * N + r0 + row
+                                     : (r0 + row) * PARTS + c0 / BN;
+        partial_scores[output_index] = best;
+        partial_seconds[output_index] = second;
+        partial_indices[output_index] = index;
+    }
+"""
+_TILE_SECOND_SOURCE = _TILE_SOURCE[:_TILE_SOURCE.index(_TILE_REDUCTION)] + _TILE_SECOND_REDUCTION
+
+_TILE_HEADER = r"""
         #include <metal_simdgroup_matrix>
         template <typename V, typename U>
         V emeans_bf16_load_vector(const device U* pointer) {
@@ -202,7 +268,25 @@ def _tile_kernel():
         V emeans_bf16_load_vector(const constant U* pointer) {
             return *reinterpret_cast<const constant V*>(pointer);
         }
-        """,
+        """
+
+
+@lru_cache(None)
+def _tile_kernel():
+    return mx.fast.metal_kernel(
+        name="emeans_bf16_tiled", input_names=["x", "centers", "norms"],
+        output_names=["partial_scores", "partial_indices"], source=_TILE_SOURCE,
+        header=_TILE_HEADER,
+        compile_options={"math_mode": "safe"},
+    )
+
+
+@lru_cache(None)
+def _tile_second_kernel():
+    return mx.fast.metal_kernel(
+        name="emeans_bf16_tiled_second", input_names=["x", "centers", "norms"],
+        output_names=["partial_scores", "partial_seconds", "partial_indices"],
+        source=_TILE_SECOND_SOURCE, header=_TILE_HEADER,
         compile_options={"math_mode": "safe"},
     )
 
@@ -289,6 +373,78 @@ def _coalesced_merge_kernel():
     )
 
 
+@lru_cache(None)
+def _merge_second_kernel():
+    """``_merge_kernel`` that also merges the tiles' second scores."""
+    return mx.fast.metal_kernel(
+        name="emeans_bf16_merge_second", input_names=["scores", "seconds", "indices"],
+        output_names=["labels", "best_scores", "second_scores"], source=r"""
+        uint row = thread_position_in_grid.x / 32;
+        uint lane = thread_index_in_simdgroup;
+        if (row >= N) return;
+        float best = INFINITY, second = INFINITY;
+        uint index = 0;
+        for (uint part = lane; part < PARTS; part += 32) {
+            float score = scores[row * PARTS + part];
+            uint candidate = indices[row * PARTS + part];
+            bool wins = score < best || (score == best && candidate < index);
+            second = metal::min(metal::min(second, seconds[row * PARTS + part]), wins ? best : score);
+            if (wins) {best = score; index = candidate;}
+        }
+        float value = metal::simd_min(best);
+        uint winner = metal::simd_min(best == value ? index : 0xffffffff);
+        // The winner's lane offers its second score, every other lane its best.
+        float other = metal::simd_min(best == value && index == winner ? second : best);
+        if (lane == 0) {
+            labels[row] = winner; best_scores[row] = value; second_scores[row] = other;
+        }
+        """,
+    )
+
+
+@lru_cache(None)
+def _coalesced_merge_second_kernel():
+    """``_coalesced_merge_kernel`` that also merges the tiles' second scores."""
+    return mx.fast.metal_kernel(
+        name="emeans_bf16_merge_coalesced_second", input_names=["scores", "seconds", "indices"],
+        output_names=["labels", "best_scores", "second_scores"], source=r"""
+        uint lane = thread_index_in_simdgroup;
+        uint warp = simdgroup_index_in_threadgroup;
+        uint tid = thread_index_in_threadgroup;
+        uint row = threadgroup_position_in_grid.x * 32 + lane;
+        float best = INFINITY, second = INFINITY;
+        uint index = 0;
+        for (uint part = warp; part < PARTS; part += WARPS) {
+            float score = row < N ? scores[part * N + row] : INFINITY;
+            float next = row < N ? seconds[part * N + row] : INFINITY;
+            uint candidate = row < N ? indices[part * N + row] : 0;
+            bool wins = score < best || (score == best && candidate < index);
+            second = metal::min(metal::min(second, next), wins ? best : score);
+            if (wins) {best = score; index = candidate;}
+        }
+        threadgroup float row_scores[WARPS * 32];
+        threadgroup float row_seconds[WARPS * 32];
+        threadgroup uint row_indices[WARPS * 32];
+        row_scores[tid] = best;
+        row_seconds[tid] = second;
+        row_indices[tid] = index;
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+        if (warp == 0 && row < N) {
+            for (uint w = 1; w < WARPS; ++w) {
+                float value = row_scores[w * 32 + lane];
+                uint candidate = row_indices[w * 32 + lane];
+                bool wins = value < best || (value == best && candidate < index);
+                second = metal::min(metal::min(second, row_seconds[w * 32 + lane]), wins ? best : value);
+                if (wins) {best = value; index = candidate;}
+            }
+            labels[row] = index;
+            best_scores[row] = best;
+            second_scores[row] = second;
+        }
+        """, compile_options={"math_mode": "safe"},
+    )
+
+
 def _check_centers(centers):
     if centers.ndim != 2 or min(centers.shape) < 1:
         raise ValueError("centers must be a nonempty matrix")
@@ -314,15 +470,21 @@ def prepare_centers(centers):
     return represented, norms
 
 
-def streaming_tile(x, centers, norms, *, spherical, bm, bk, pad, coalesced):
-    """Compute labels and winning scores for one workspace-bounded FP32 or BF16 tile."""
+def streaming_tile(x, centers, norms, *, spherical, bm, bk, pad, coalesced, second=False):
+    """Compute labels and winning scores for one workspace-bounded FP32 or BF16 tile.
+
+    ``second`` also returns each row's second-smallest score, the smallest
+    among the other centroids (infinite when there is only one centroid).
+    Labels and winning scores are those of the plain call.
+    """
     rows, d = x.shape
     k = centers.shape[0]
     bn = 64
     wm = wn = 2
     threads = 32 * wm * wn
     parts = (k + bn - 1) // bn
-    partial_scores, partial_indices = _tile_kernel()(
+    partial_shape = (parts, rows) if coalesced else (rows, parts)
+    partials = (_tile_second_kernel() if second else _tile_kernel())(
         inputs=[x, centers, norms],
         template=[("T", x.dtype), ("N", rows), ("K", k), ("D", d),
                   ("BM", bm), ("BN", bn), ("BK", bk), ("WM", wm),
@@ -331,21 +493,26 @@ def streaming_tile(x, centers, norms, *, spherical, bm, bk, pad, coalesced):
                   ("SPHERICAL", bool(spherical)), ("COALESCED", coalesced)],
         grid=(((rows + bm - 1) // bm) * threads, parts, 1),
         threadgroup=(threads, 1, 1),
-        output_shapes=[(parts, rows), (parts, rows)] if coalesced else [(rows, parts), (rows, parts)],
-        output_dtypes=[mx.float32, mx.uint32], stream=mx.gpu,
+        output_shapes=[partial_shape] * (3 if second else 2),
+        output_dtypes=[mx.float32, mx.float32, mx.uint32] if second else [mx.float32, mx.uint32],
+        stream=mx.gpu,
     )
-    merge = _coalesced_merge_kernel() if coalesced else _merge_kernel()
+    if second:
+        merge = _coalesced_merge_second_kernel() if coalesced else _merge_second_kernel()
+    else:
+        merge = _coalesced_merge_kernel() if coalesced else _merge_kernel()
     return tuple(merge(
-        inputs=[partial_scores, partial_indices],
+        inputs=list(partials),
         template=[("N", rows), ("PARTS", parts)] + ([("WARPS", 8)] if coalesced else []),
         grid=(((rows + 31) // 32) * 256 if coalesced else rows * 32, 1, 1),
         threadgroup=(256, 1, 1),
-        output_shapes=[(rows,), (rows,)],
-        output_dtypes=[mx.uint32, mx.float32], stream=mx.gpu,
+        output_shapes=[(rows,)] * (3 if second else 2),
+        output_dtypes=[mx.uint32, mx.float32, mx.float32] if second else [mx.uint32, mx.float32],
+        stream=mx.gpu,
     ))
 
 
-def assign_bf16(x, centers, *, norms=None, batch_size=None, spherical=False):
+def assign_bf16(x, centers, *, norms=None, batch_size=None, spherical=False, second=False):
     """Return uint32 labels and FP32 winning assignment scores.
 
     Euclidean scores are ``||BF16(center)||² - 2*dot(BF16(x), BF16(center))``;
@@ -357,6 +524,7 @@ def assign_bf16(x, centers, *, norms=None, batch_size=None, spherical=False):
     Supplying BF16 ``centers`` and their FP32 ``norms`` avoids preparation.
     ``batch_size`` is an optional row limit; all calls also respect a 256 MiB
     partial-score/index workspace limit and uint32 Metal indexing limits.
+    ``second`` adds a third result, each row's second-smallest score.
     """
     k, d = _check_centers(centers)
     if x.ndim != 2 or x.shape[1] != d or x.shape[0] < 1:
@@ -375,7 +543,7 @@ def assign_bf16(x, centers, *, norms=None, batch_size=None, spherical=False):
     bm, bk = (32, 16) if d <= 128 and not coalesced else (64, 32)
     parts = (k + 63) // 64
     block = min(n, _UINT32_MAX // d, _UINT32_MAX // parts,
-                _UINT32_MAX // 32, max(1, _SCRATCH_BYTES // (8 * parts)))
+                _UINT32_MAX // 32, max(1, _SCRATCH_BYTES // ((12 if second else 8) * parts)))
     if batch_size is not None:
         try:
             requested = operator.index(batch_size)
@@ -386,19 +554,19 @@ def assign_bf16(x, centers, *, norms=None, batch_size=None, spherical=False):
         block = min(block, requested)
     if block < 1:
         raise ValueError("matrix exceeds the Metal uint32 indexing limit")
-    labels, scores = [], []
+    chunks = []
     for start in range(0, n, block):
         xb = represented_x[start:start + block]
         rows = xb.shape[0]
-        batch_labels, batch_scores = streaming_tile(
+        chunk = streaming_tile(
             xb, centers, norms, spherical=spherical, bm=bm, bk=bk, pad=8, coalesced=coalesced,
+            **({"second": True} if second else {}),
         )
         # Materialize each chunk before dispatching another to bound workspace.
         # A single training batch stays lazy for fusion into the fit graph.
         if rows < n:
-            mx.eval(batch_labels, batch_scores)
-        labels.append(batch_labels)
-        scores.append(batch_scores)
-    if len(labels) == 1:
-        return labels[0], scores[0]
-    return mx.concatenate(labels), mx.concatenate(scores)
+            mx.eval(*chunk)
+        chunks.append(chunk)
+    if len(chunks) == 1:
+        return chunks[0]
+    return tuple(mx.concatenate(pieces) for pieces in zip(*chunks, strict=True))
