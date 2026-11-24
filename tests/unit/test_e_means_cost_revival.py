@@ -74,7 +74,10 @@ def test_pass_seed_avoids_the_initialization_draw_only_where_asked():
 
 
 @pytest.mark.gpu
-@pytest.mark.parametrize("n,k,d", [(7, 3, 1), (33, 17, 9), (129, 65, 31), (83, 11, 128), (67, 200, 96)])
+# The last shape reaches the coalesced BF16 tiles and, on an M4 Max, the
+# streaming float32 tiles, with ragged rows, centroid tiles and merge parts.
+@pytest.mark.parametrize("n,k,d", [(7, 3, 1), (33, 17, 9), (129, 65, 31), (83, 11, 128), (67, 200, 96),
+                                   (300, 4500, 96)])
 @pytest.mark.parametrize("spherical", [False, True])
 @pytest.mark.parametrize("precision,method", [
     ("float32", "gemm"), ("float32", "fused"), ("float32", "auto"), ("float16", "fused"),
