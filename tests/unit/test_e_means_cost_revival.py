@@ -1,4 +1,4 @@
-"""Cost-based revival of e-means: kernels, plan, split and training.
+"""Cost-based revival of e-means: kernels, plan, split, closing and training.
 
 Every oracle below is NumPy float64 with direct squared differences, stable
 sorts and indexed accumulation, independent of the Metal kernels. The
@@ -387,16 +387,175 @@ def test_split_stays_inside_the_coordinate_range_and_separates_represented_copie
     assert (represented[target, 0] != represented[source, 0]).all()
 
 
+@pytest.mark.gpu
+@pytest.mark.parametrize("n,k,d", [(1, 2, 1), (33, 5, 31), (259, 17, 96), (70, 9, 200)])
+@pytest.mark.parametrize("precision", ["float32", "bfloat16", "float16"])
+def test_twin_route_keeps_the_nearer_of_a_centroid_and_its_twin(metal, n, k, d, precision):
+    from mlxlearn._kernels.e_means import twin_route
+
+    rng = np.random.default_rng(n + k + d)
+    rows = rng.normal(size=(n, d)).astype(np.float32)
+    centers = rng.normal(size=(k, d)).astype(np.float32)
+    centers[k - 1] = centers[0]  # equal distances: the lower index wins
+    labels = rng.integers(0, k, size=n).astype(np.uint32)
+    twins = rng.integers(-1, k, size=n).astype(np.int32)
+    if n > 2:
+        labels[:2], twins[:2] = (0, k - 1), (k - 1, 0)
+    dtype = {"float32": metal.float32, "bfloat16": metal.bfloat16, "float16": metal.float16}[precision]
+    operand = metal.array(rows).astype(dtype)
+    routed = np.asarray(twin_route(operand, metal.array(labels), metal.array(twins), metal.array(centers)))
+    seen = np.asarray(operand.astype(metal.float32)).astype(np.float64)
+    other = np.where(twins < 0, labels, twins)
+    own_distance = ((seen - centers[labels].astype(np.float64)) ** 2).sum(1)
+    other_distance = ((seen - centers[other].astype(np.float64)) ** 2).sum(1)
+    switch = (other_distance < own_distance) | ((other_distance == own_distance) & (other < labels))
+    expected = np.where(switch, other, labels)
+    # Float32 sums may order two distances that float64 holds a rounding apart.
+    close = np.abs(other_distance - own_distance) <= 1e-5 * np.maximum(own_distance, 1e-30)
+    decided = ~close | (centers[other] == centers[labels]).all(1)
+    assert decided.sum() >= n - 1
+    np.testing.assert_array_equal(routed[decided], expected[decided])
+    assert np.isin(routed, np.stack((labels, other))).all() and routed.dtype == np.uint32
+    assert (routed[twins < 0] == labels[twins < 0]).all()
+    if n > 2:
+        assert routed[0] == 0 and routed[1] == 0
+    with pytest.raises(ValueError, match="uint32"):
+        twin_route(operand, metal.array(labels.astype(np.int32)), metal.array(twins), metal.array(centers))
+    with pytest.raises(ValueError, match="one entry per row"):
+        twin_route(operand, metal.array(labels), metal.array(twins[:-1]), metal.array(centers))
+
+
+def _closing_log_case(seed, k=9, steps=37):
+    """Random closing pass: labels per batch, and at some steps the moves of a check."""
+    rng = np.random.default_rng(seed)
+    batches, checks = [], {}
+    for step in range(steps):
+        batches.append(rng.integers(0, k, size=int(rng.integers(1, 12))).astype(np.uint32))
+        if step % 4 == 3:
+            pairs = int(rng.integers(0, 4))
+            chosen = rng.permutation(k)[:2 * pairs]
+            checks[step] = (chosen[:pairs], chosen[pairs:])  # donors, the centroids moved onto them
+    return batches, checks
+
+
+def _closing_log_oracle(batches, checks, k):
+    """Each row by itself: is it stale, and which centroid is its twin."""
+    labels = np.concatenate(batches)
+    events, moved_at, done = [], np.full(k, -1), 0
+    for step, batch in enumerate(batches):
+        done += len(batch)
+        if step in checks:
+            donors, children = checks[step]
+            events.append((done, dict(zip(donors.tolist(), children.tolist(), strict=True))))
+            moved_at[children] = done
+    stale, twins = np.zeros(len(labels), bool), np.full(len(labels), -1)
+    kinds = {"expired": 0, "second_split": 0}
+    for rank, label in enumerate(labels):
+        if rank < moved_at[label]:
+            stale[rank] = True
+            continue
+        later = [(time, halves[label]) for time, halves in events if time > rank and label in halves]
+        if later and moved_at[later[0][1]] == later[0][0]:
+            twins[rank] = later[0][1]
+        elif later:
+            kinds["expired"] += 1
+        kinds["second_split"] += len(later) > 1
+    return labels, stale, twins, kinds
+
+
+@pytest.mark.gpu
+@pytest.mark.parametrize("segment", [None, 1, 2, 3])
+def test_closing_log_finds_stale_rows_and_twins_as_a_row_by_row_search(metal, segment):
+    from mlxlearn.cluster._e_means import ClosingLog
+
+    k = 9
+    seen = {"stale": 0, "twins": 0, "expired": 0, "second_split": 0}
+    for seed in range(6):
+        batches, checks = _closing_log_case(seed, k)
+        # ``segment`` checks are kept between sweeps: four bytes per centroid each.
+        log = ClosingLog(k, stash_bytes=None if segment is None else 4 * k * segment)
+        for step, batch in enumerate(batches):
+            log.rows(metal.array(batch))
+            if step in checks:
+                donors, children = checks[step]
+                is_child, is_donor = np.zeros(k, bool), np.zeros(k, bool)
+                target = np.zeros(k, np.uint32)
+                is_child[children], is_donor[donors], target[donors] = True, True, children
+                metal.eval(*log.check((metal.array(is_child), metal.array(is_donor), None,
+                                       metal.array(target), metal.array(len(donors), dtype=metal.int32))))
+        labels, stale, twins = (np.asarray(value) for value in log.finish())
+        expected = _closing_log_oracle(batches, checks, k)
+        np.testing.assert_array_equal(labels, expected[0])
+        np.testing.assert_array_equal(stale, expected[1])
+        np.testing.assert_array_equal(twins, expected[2])
+        assert log.done == len(labels)
+        assert int(log.moves.item()) == sum(len(donors) for donors, _ in checks.values())
+        seen["stale"] += int(stale.sum())
+        seen["twins"] += int((twins >= 0).sum())
+        seen["expired"] += expected[3]["expired"]
+        seen["second_split"] += expected[3]["second_split"]
+    assert all(seen.values())
+
+
+@pytest.mark.gpu
+def test_closing_log_without_moves_marks_no_row(metal):
+    from mlxlearn.cluster._e_means import ClosingLog
+
+    k = 4
+    log = ClosingLog(k)
+    nothing = (metal.zeros((k,), metal.bool_), metal.zeros((k,), metal.bool_), None,
+               metal.zeros((k,), metal.uint32), metal.array(0, dtype=metal.int32))
+    log.rows(metal.array(np.array([0, 3, 1], np.uint32)))
+    log.check(nothing)
+    log.rows(metal.array(np.array([2, 2], np.uint32)))
+    labels, stale, twins = (np.asarray(value) for value in log.finish())
+    assert labels.tolist() == [0, 3, 1, 2, 2] and not stale.any() and (twins == -1).all()
+    assert int(log.moves.item()) == 0
+    empty = ClosingLog(k).finish()
+    assert all(value.shape == (0,) for value in empty)
+
+
+def test_rows_looked_up_again_are_assigned_in_recurring_call_sizes():
+    from mlxlearn.cluster._e_means import _search_chunks
+
+    assert _search_chunks(0, 4096) == []
+    assert _search_chunks(1, 4096) == [(1, 128)]
+    assert _search_chunks(4096, 4096) == [(4096, 4096)]
+    assert _search_chunks(35000, 32768) == [(32768, 32768), (2048, 2048), (184, 1024)]
+    # Just above a power of two: split, not padded to the next one.
+    assert _search_chunks(35000, 65536) == [(32768, 32768), (2048, 2048), (184, 1024)]
+    assert _search_chunks(50000, 65536) == [(50000, 65536)]
+    for batch_size in (16, 200, 1100, 4096, 65536):
+        for count in (1, 5, 127, 128, 129, 1023, 1024, 1025, 3000, 49152, 49153, 200_000):
+            chunks = _search_chunks(count, batch_size)
+            assert sum(rows for rows, _ in chunks) == count
+            assert all(0 < rows <= size <= batch_size for rows, size in chunks)
+            # A call takes a whole training batch or a power of two.
+            assert all(size == batch_size or size & (size - 1) == 0 for _, size in chunks)
+            padding = sum(size - rows for rows, size in chunks)
+            assert padding < max(1024, count // 3 + 1)
+
+
 def _oracle_fit(x, init, axes, *, seed, passes, batch_size, peak, slow_step, init_mass, bounds):
-    """Float64 e-means with cost-based revival: assignment, statistics, EMA, moves, closing."""
+    """Float64 e-means with cost-based revival: assignment, statistics, EMA, moves, closing.
+
+    The closing looks at every closing-pass row by itself. A row whose centroid
+    was moved onto a donor afterwards is assigned again to the final centroids.
+    A row whose centroid was split afterwards goes to the nearer of that
+    centroid and the one that took the other half at the first such split,
+    unless that one moved again. Returns the EMA centroids, the closing means,
+    the slow EMA centroids, the number of moves, the counts of each kind of
+    row, and the closing-pass rows with their final labels.
+    """
     x = x.astype(np.float64)
     k, d = init.shape
     centers, mass = init.astype(np.float64).copy(), np.full(k, init_mass)
     slow, slow_mass = centers.copy(), mass.copy()
     long_axis, removal, axes = np.zeros((k, d)), np.zeros(k), axes.astype(np.float64).copy()
-    last_sum, last_count, involved = np.zeros((k, d)), np.zeros(k), np.zeros(k, bool)
     lower, upper = bounds
     total_steps = sum(math.ceil(rows / batch_size) for rows in passes)
+    last = len(passes) - 1
+    seen, assigned, splits, moved_at = [], [], [], np.full(k, -1)
     step = moves = 0
     for epoch, rows in enumerate(passes):
         order = np.random.RandomState(epoch_seed(seed, epoch, distinct=True)).permutation(len(x))[:rows]
@@ -410,9 +569,9 @@ def _oracle_fit(x, init, axes, *, seed, passes, batch_size, peak, slow_step, ini
             axis_sums, costs = np.zeros((k, d)), np.zeros(k)
             np.add.at(axis_sums, labels, projection * y)
             np.add.at(costs, labels, margins)
-            if epoch == len(passes) - 1:
-                last_sum += sums
-                last_count += counts
+            if epoch == last:
+                seen.extend(order[start:start + batch_size])
+                assigned.extend(labels)
             alpha = peak * (0.1 + 0.9 * (1 + math.cos(math.pi * step / total_steps)) / 2)
             for position, weight, rate in ((centers, mass, alpha), (slow, slow_mass, slow_step)):
                 updated = (1 - rate) * weight + rate * counts
@@ -440,13 +599,38 @@ def _oracle_fit(x, init, axes, *, seed, passes, batch_size, peak, slow_step, ini
                     removal[target] = removal[source]
                     axes[target] = axes[source]
                     moves += len(source)
-                    if epoch == len(passes) - 1:
-                        involved[source] = involved[target] = True
+                    if epoch == last:
+                        splits.append((len(seen), dict(zip(source.tolist(), target.tolist(), strict=True))))
+                        moved_at[target] = len(seen)
             step += 1
+    final = np.array(assigned)
+    kinds = {"stale": 0, "twins": 0, "switched": 0, "expired": 0}
+    for rank, (row, label) in enumerate(zip(seen, assigned, strict=True)):
+        if rank < moved_at[label]:
+            final[rank] = np.argmin(((x[row] - centers) ** 2).sum(1))
+            kinds["stale"] += 1
+            continue
+        later = [(time, halves[label]) for time, halves in splits if time > rank and label in halves]
+        if not later:
+            continue
+        time, twin = later[0]
+        if moved_at[twin] != time:
+            kinds["expired"] += 1
+            continue
+        own, other = ((x[row] - centers[label]) ** 2).sum(), ((x[row] - centers[twin]) ** 2).sum()
+        kinds["twins"] += 1
+        if other < own or (other == own and twin < label):
+            final[rank] = twin
+            kinds["switched"] += 1
+    rows_seen = np.array(seen)
     closing = centers.copy()
-    kept = (last_count > 0) & ~involved
-    closing[kept] = last_sum[kept] / last_count[kept, None]
-    return centers, closing, slow, moves, involved
+    for centroid in range(k):
+        members = rows_seen[final == centroid]
+        if len(members):
+            closing[centroid] = x[members].mean(0)
+    kinds["split_again"] = sum(sum(c in halves for _, halves in splits) > 1 for c in range(k))
+    kinds["without_rows"] = k - len(np.unique(final))
+    return centers, closing, slow, moves, kinds, rows_seen, final
 
 
 def _blobs(seed, *, rows=320, blobs=8, d=6):
@@ -456,40 +640,75 @@ def _blobs(seed, *, rows=320, blobs=8, d=6):
     return (means[member] + rng.normal(size=(rows, d))).astype(np.float32), member
 
 
+def _oracle_case():
+    """Rows, initial centroids and options of the whole-fit oracle comparison."""
+    x, member = _blobs(14)
+    k, seed = 12, 23
+    # Start every centroid in three of the eight blobs: revival has to move them.
+    init = x[np.flatnonzero(member < 3)[:k]].copy()
+    bounds = (np.minimum(x.min(0), init.min(0)), np.maximum(x.max(0), init.max(0)))
+    half_life = 9
+    # Half a pass, then a closing pass in which centroids still move.
+    oracle = {"seed": seed, "passes": [160, 320], "batch_size": 16, "peak": 0.3,
+              "slow_step": 1 - 2 ** (-1 / half_life), "init_mass": 1e-10, "bounds": bounds}
+    options = {"n_clusters": k, "init": init, "max_iter": 1.5, "batch_size": 16, "alpha0": 0.3,
+               "random_state": seed, "revival": "cost", "slow_ema_half_life": half_life}
+    return x, init, oracle, options
+
+
+def _starting_axes(metal, k, d, seed):
+    axes = np.asarray(metal.random.normal((k, d), key=metal.random.key(seed))).astype(np.float64)
+    return axes / np.linalg.norm(axes, axis=1, keepdims=True)
+
+
 @pytest.mark.gpu
 @pytest.mark.parametrize("finalization,index", [("ema", 0), ("last_epoch", 1), ("slow_ema", 2)])
 def test_training_with_cost_revival_matches_independent_double_oracle(metal, finalization, index):
     from mlxlearn.cluster import EMeans
 
-    x, member = _blobs(17)
-    k, d, seed = 12, x.shape[1], 23
-    # Start every centroid in three of the eight blobs: revival has to move them.
-    init = x[np.flatnonzero(member < 3)[:k]].copy()
-    drawn = metal.random.normal((k, d), key=metal.random.key(seed))
-    axes = np.asarray(drawn).astype(np.float64)
-    axes /= np.linalg.norm(axes, axis=1, keepdims=True)
-    bounds = (np.minimum(x.min(0), init.min(0)), np.maximum(x.max(0), init.max(0)))
-    half_life = 9
-    # Half a pass, then a closing pass in which some centroids still move.
-    expected = _oracle_fit(
-        x, init, axes, seed=seed, passes=[160, 320], batch_size=16, peak=0.3,
-        slow_step=1 - 2 ** (-1 / half_life), init_mass=1e-10, bounds=bounds)
-    model = EMeans(
-        k, init=init, max_iter=1.5, batch_size=16, alpha0=0.3, random_state=seed,
-        revival="cost", finalization=finalization, slow_ema_half_life=half_life,
-    ).fit(x)
-    assert expected[3] >= 6 and expected[4].any() and not expected[4].all()
+    x, init, oracle, options = _oracle_case()
+    expected = _oracle_fit(x, init, _starting_axes(metal, *init.shape, oracle["seed"]), **oracle)
+    model = EMeans(finalization=finalization, **options).fit(x)
+    # The closing pass has every kind of row: stale ones, rows that stay with a
+    # split centroid and rows that go to its twin, rows whose twin moved again,
+    # a centroid split twice, and centroids left without rows.
+    kinds = expected[4]
+    assert expected[3] >= 6 and kinds["stale"] and kinds["expired"] and kinds["split_again"]
+    assert 0 < kinds["switched"] < kinds["twins"] and kinds["without_rows"]
     assert model.n_splits_ == expected[3]
     np.testing.assert_allclose(model.ema_centers_, expected[0], rtol=3e-5, atol=3e-5)
     np.testing.assert_allclose(model.last_epoch_centers_, expected[1], rtol=3e-5, atol=3e-5)
     np.testing.assert_allclose(model.slow_ema_centers_, expected[2], rtol=3e-5, atol=3e-5)
     np.testing.assert_allclose(model.cluster_centers_, expected[index], rtol=3e-5, atol=3e-5)
-    # A centroid involved in a closing-pass move returns its EMA position.
-    np.testing.assert_allclose(model.last_epoch_centers_[expected[4]], model.ema_centers_[expected[4]],
-                               rtol=0, atol=0)
     assert model.recipe_["revival"] == "cost"
+    assert model.recipe_["closing"] == "last_epoch_mean_of_rerouted_rows"
     assert model.recipe_["unused_threshold"] is None and model.recipe_["split_epsilon"] is None
     assert model.recipe_["removal_threshold"] == REMOVAL_THRESHOLD
+
+
+@pytest.mark.gpu
+@pytest.mark.parametrize("stash_bytes", [None, 1])
+def test_captured_assignments_are_the_rows_behind_the_closing_means(metal, monkeypatch, stash_bytes):
+    import mlxlearn.cluster._e_means as module
+    from mlxlearn.cluster import EMeans
+
+    # One byte keeps a single revival check at a time, so that every check is
+    # swept by itself and earlier rows take their twins from later sweeps.
+    if stash_bytes is not None:
+        monkeypatch.setattr(module, "_CLOSING_STASH_BYTES", stash_bytes)
+    x, init, oracle, options = _oracle_case()
+    expected = _oracle_fit(x, init, _starting_axes(metal, *init.shape, oracle["seed"]), **oracle)
+    model = EMeans(**options)
+    result = model.train_device(model.prepare_device(x), capture_assignments=True)
+    captured = np.asarray(result.assignments)
+    rows, final = expected[5], expected[6]
+    np.testing.assert_array_equal(captured[rows], final)
+    closing = np.asarray(result.last_epoch_centers)
+    np.testing.assert_allclose(closing, expected[1], rtol=3e-5, atol=3e-5)
+    for centroid in range(len(init)):
+        members = x[rows[final == centroid]].astype(np.float64)
+        if len(members):
+            np.testing.assert_allclose(closing[centroid], members.mean(0), rtol=3e-5, atol=3e-5)
 
 
 @pytest.mark.gpu
@@ -513,6 +732,31 @@ def test_cost_revival_separates_blobs_that_mass_revival_leaves_merged(metal, pre
         if revival == "cost":
             assert model.n_splits_ > 0
     assert scores["cost"] < 0.75 * scores["mass"]
+
+
+@pytest.mark.gpu
+def test_closing_means_repair_the_running_positions_when_most_centroids_move(metal):
+    from mlxlearn.cluster import EMeans
+
+    # More centroids than separated clusters: in a single pass most centroids
+    # are moved or split, many of them shortly before the end, and the running
+    # positions of those are poor. The closing means are taken over the rows
+    # each centroid holds at the end and must not inherit that.
+    rng = np.random.default_rng(1)
+    means = rng.normal(size=(1500, 32)).astype(np.float32) * 3
+    x = means[rng.integers(0, 1500, size=110_000)] + rng.normal(size=(110_000, 32)).astype(np.float32)
+    train, test = x[:100_000], x[100_000:].astype(np.float64)
+
+    def error(centers):
+        centers = centers.astype(np.float64)
+        distance = (test * test).sum(1)[:, None] - 2 * test @ centers.T + (centers * centers).sum(1)[None]
+        return float(distance.min(1).mean())
+
+    options = {"max_iter": 1, "recipe": "faiss", "random_state": 4, "compute_labels": False}
+    model = EMeans(2048, revival="cost", **options).fit(train)
+    assert model.n_splits_ > 2048
+    assert error(model.last_epoch_centers_) < 0.95 * error(model.ema_centers_)
+    assert error(model.last_epoch_centers_) < 0.97 * error(EMeans(2048, **options).fit(train).cluster_centers_)
 
 
 @pytest.mark.gpu

@@ -13,15 +13,19 @@ All notable changes to this project are documented here. The format follows
   are cheapest to remove (by the summed margin between their rows'
   second-nearest and nearest centroids) move onto the clusters with the
   longest axes, which are split at the Gaussian half-means along the axis. It
-  follows the reference's rule (facebookresearch/faiss#5915) with a closing
-  mean chosen by measurement: a centroid involved in a move during the last
-  pass returns its EMA position. On five embedding datasets at 16,384
-  centroids, held-out error fell in all 45 seed-level comparisons: by 0.5–1.2%
-  per dataset at one epoch and 0.2–0.6% at two and three. The mass rule needs
-  1.3–1.5 epochs to match one epoch and 2.7 to more than 4 to match two. Fits
-  take 1.6–4.4% longer at equal epochs (M4 Max, M5 Ultra). It works with every precision,
-  assignment route and finalizer and with spherical clustering; `OMeans` keeps
-  the mass rule. See the [guide](docs/e-means.md#cost-based-revival) and the
+  follows the reference's rule (facebookresearch/faiss#5915). Because
+  centroids keep moving during the last pass, its rows are sorted out before
+  the closing means are taken: the rows of a moved centroid are assigned
+  again, and the earlier rows of a split centroid go to the nearer half. On
+  five embedding datasets at 16,384 centroids, held-out error fell in all 45
+  seed-level comparisons: by 0.4–1.4% per dataset at one epoch and 0.2–0.7%
+  at two and three. The mass rule needs 1.3–1.7 epochs to match one epoch and
+  2.7 to more than 4 to match two. Fits take 6–11% longer at one epoch and
+  1–6% at two (M4 Max, M5 Ultra). With more centroids than well-separated
+  clusters the rule can end worse than the mass rule; the guide gives the
+  measurements. It works with every precision, assignment route and finalizer
+  and with spherical clustering; `OMeans` keeps the mass rule. See the
+  [guide](docs/e-means.md#cost-based-revival) and the
   [measurements](benchmarks/experiments/emeans-cost-revival-2026-11-24/README.md).
 - The dense assignment kernels can return each row's margin, the distance to
   its second-nearest centroid minus the distance to its nearest

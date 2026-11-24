@@ -218,6 +218,32 @@ def _kernel(name):
                 new_removal[c] = rate[1] * removal[c] + rate[0] * costs[c];
             }
             """)
+    if name == "twin_route":
+        # One SIMD group per row: squared distances to the row's centroid and
+        # to its twin, formed alike, so that a row without a twin (compared
+        # with its own centroid twice) keeps its label whatever the rounding.
+        return mx.fast.metal_kernel(
+            name="emeans_twin_route", input_names=["x", "labels", "twins", "centers"],
+            output_names=["routed"], source=r"""
+            const uint row = thread_position_in_grid.x / 32;
+            const uint lane = thread_index_in_simdgroup;
+            if (row >= N) return;
+            const uint own = uint(labels[row]);
+            const int twin = int(twins[row]);
+            const uint other = twin < 0 ? own : uint(twin);
+            float near = 0, far = 0;
+            for (uint f = lane; f < D; f += 32) {
+                float value = float(x[row * D + f]);
+                float a = value - centers[own * D + f];
+                float b = value - centers[other * D + f];
+                near += a * a;
+                far += b * b;
+            }
+            near = metal::simd_sum(near);
+            far = metal::simd_sum(far);
+            if (lane == 0)
+                routed[row] = (far < near || (far == near && other < own)) ? other : own;
+            """)
     raise ValueError(name)
 
 
@@ -613,6 +639,34 @@ def removal_update(long_axis, removal, axis_sums, costs, axes, alpha):
         grid=(k * 32, 1, 1), threadgroup=(256, 1, 1),
         output_shapes=[(k, d), (k,), (k, d), (k,)],
         output_dtypes=[mx.float32] * 4, stream=mx.gpu))
+
+
+def twin_route(x, labels, twins, centers):
+    """Send each row to the nearer of its centroid and its twin.
+
+    ``twins`` holds, per row, the centroid that took the other half when the
+    row's centroid was split after the row was assigned, or a negative number
+    for a row without one, which keeps its label. Distances are float32 sums
+    of squared differences between the row and the two ``centers`` rows; at
+    equal distance the lower index wins, as in the assignment. Returns uint32
+    labels.
+    """
+    n, d = x.shape
+    k = centers.shape[0]
+    if centers.shape != (k, d):
+        raise ValueError("centers must be a matrix with one row per centroid")
+    if labels.shape != (n,) or twins.shape != (n,):
+        raise ValueError("labels and twins must have one entry per row")
+    if labels.dtype != mx.uint32 or twins.dtype != mx.int32 or centers.dtype != mx.float32:
+        raise ValueError("labels must be uint32, twins int32 and centers float32")
+    if n * max(d, 32) > _UINT32_MAX or k * d > _UINT32_MAX:
+        raise ValueError("routing matrix exceeds Metal kernel indexing capacity")
+    if n == 0:
+        return mx.zeros((0,), mx.uint32)
+    return _kernel("twin_route")(
+        inputs=[x, labels, twins, centers], template=[("N", n), ("D", d)],
+        grid=(n * 32, 1, 1), threadgroup=(256, 1, 1),
+        output_shapes=[(n,)], output_dtypes=[mx.uint32], stream=mx.gpu)[0]
 
 
 def ema_update(centers, counts, batch_sums, batch_counts, alpha, *, decay=None):

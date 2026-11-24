@@ -242,9 +242,12 @@ MIT-licensed Faiss reference adopted in facebookresearch/faiss#5915 (merged
 2026-11-22 as `16a95d63f2980b90c19e5308b4baec8f050b9b5b`, accessed 2026-11-24;
 copyright Meta Platforms, Inc. and affiliates): the removal cost, the long
 axis by Oja's rule, the threshold of 0.3 times the median, the pairing order
-and the split at the Gaussian half-means. No upstream source was copied. The
-Metal kernels, the selection on the GPU, the clipping of splits and the
-closing rule were written for mlxlearn; a test oracle restates the
+and the split at the Gaussian half-means. The closing follows the
+reference's idea of sorting out the last pass (the rows of a moved centroid
+are handed on, and a split centroid's earlier rows go to the nearer half).
+No upstream source was copied. The Metal kernels, the selection on the GPU,
+the clipping of splits and the closing step, which assigns the rows of moved
+centroids again, were written for mlxlearn; a test oracle restates the
 reference's selection rule in NumPy.
 
 The o-means implementation follows the MIT-licensed `contrib/o_means` package

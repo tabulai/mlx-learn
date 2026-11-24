@@ -21,9 +21,13 @@ centroid without rows keeps its EMA position):
   twin      only the twin step: a donor's rows from before a split go to the
             nearer of the split's two centroids; stale rows are dropped
   handover  ``second`` and the twin step (upstream's default)
-  searchtwin ``search`` and the twin step
+  searchtwin ``search`` and the twin step (what ``EMeans`` implements)
   fresh     every closing-pass row is assigned again to the final EMA
             centroids (one more assignment pass: the reference)
+
+``none/ema-touched`` returns the EMA position of every centroid a
+closing-pass move involved and the plain closing mean of the others; it was
+the first implementation, replaced after ``surplus.py``.
 """
 
 from __future__ import annotations
@@ -47,8 +51,8 @@ from mlxlearn.cluster._e_means import revive  # noqa: E402
 from mlxlearn.cluster._recipe import resolve_recipe, scheduled_alpha  # noqa: E402
 
 CHUNK = 65536
-SHOWN = ("ema", "post", "mover", "twin", "handover", "fresh", "none+8", "mover+8", "twin+8",
-         "handover+8", "none/ema-moved", "none/ema-touched", "twin/ema-moved")
+SHOWN = ("ema", "post", "mover", "twin", "handover", "searchtwin", "fresh", "none+8", "mover+8",
+         "twin+8", "handover+8", "none/ema-moved", "none/ema-touched", "twin/ema-moved")
 
 
 def fit(x, k, epochs, seed, mode):
@@ -195,6 +199,8 @@ def fit(x, k, epochs, seed, mode):
 
         def stale_rule(kind):
             result = labels.copy()
+            if searched_all is None:  # no closing-pass row is stale
+                return result
             if kind == "second":
                 result[usable] = second[usable]
                 rest = stale & ~usable

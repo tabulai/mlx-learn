@@ -16,7 +16,7 @@ from collections import defaultdict
 
 import numpy as np
 
-RULES = ["ema", "none", "post", "mover", "twin", "handover", "handover+8", "none/ema-moved",
+RULES = ["ema", "none", "post", "mover", "twin", "handover", "searchtwin", "handover+32",
          "none/ema-touched", "fresh"]
 
 

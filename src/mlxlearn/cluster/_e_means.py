@@ -29,6 +29,7 @@ from .._kernels.e_means import (
     gather_bf16,
     removal_stats,
     removal_update,
+    twin_route,
 )
 from ._recipe import resolve_recipe, scheduled_alpha
 
@@ -288,6 +289,142 @@ def revive_by_cost(centers, mass, long_axis, removal, axes, lengths, plan, bound
     return centers, mass, long_axis, removal, axes, number, companion
 
 
+# A closing-pass revival check is kept as one int32 per centroid until the
+# rows before it have their twins; the checks kept at once stay below this.
+_CLOSING_STASH_BYTES = 128 << 20
+
+
+class ClosingLog:
+    """Rows and moves of the closing pass under cost-based revival.
+
+    A centroid's closing mean is the mean of the closing-pass rows that belong
+    to it when training ends. Rows are assigned while centroids still move, so
+    two kinds of rows are looked at again at the end:
+
+    stale rows
+        were assigned to a centroid that was moved onto a donor afterwards;
+    twin rows
+        were assigned to a centroid that was split afterwards. The first such
+        split names the row's twin, the centroid that took the other half,
+        provided that centroid did not move again.
+
+    Times count the closing-pass rows assigned so far. The pass is kept as the
+    intervals between revival checks, each with its labels. A check is kept as
+    the child of every donor until a backward sweep over the kept checks gives
+    each earlier row the first later split of its centroid; the sweep runs
+    once the kept checks reach ``stash_bytes``, and when the pass ends.
+    """
+
+    def __init__(self, k, stash_bytes=None):
+        self.k = int(k)
+        self.done = 0
+        self.moved_at = mx.full((self.k,), -1, mx.int32)
+        self.moves = mx.array(0, mx.int32)
+        budget = _CLOSING_STASH_BYTES if stash_bytes is None else stash_bytes
+        self._segment = max(1, int(budget) // (4 * self.k))
+        self._batches = []      # labels assigned since the last check
+        self._intervals = []    # [labels, time of the check that follows, twin, time of that split]
+        self._stash = []        # (child of each donor or -1, time) of the checks not swept yet
+
+    def rows(self, labels):
+        """Record one batch of closing-pass labels."""
+        self._batches.append(labels)
+        self.done += labels.shape[0]
+
+    def _interval(self):
+        labels = (mx.zeros((0,), mx.uint32) if not self._batches else
+                  self._batches[0] if len(self._batches) == 1 else mx.concatenate(self._batches))
+        self._batches = []
+        return labels
+
+    def check(self, plan):
+        """Record a revival check; returns the arrays to evaluate with the step."""
+        is_child, is_donor, _, target, number = plan
+        self.moved_at = mx.where(is_child, self.done, self.moved_at)
+        self.moves = self.moves + number
+        self._intervals.append([self._interval(), self.done, None, None])
+        self._stash.append((mx.where(is_donor, target.astype(mx.int32), -1), self.done))
+        pending = [self.moved_at, self.moves, self._intervals[-1][0], self._stash[-1][0]]
+        if len(self._stash) >= self._segment:
+            pending.extend(self._sweep())
+        return pending
+
+    def _sweep(self):
+        """Give the rows before each kept check the first later split of their centroid."""
+        child = mx.full((self.k,), -1, mx.int32)
+        born = mx.full((self.k,), -1, mx.int32)
+        first = len(self._intervals) - len(self._stash)
+        changed = []
+        for position in range(len(self._stash) - 1, -1, -1):
+            children, time = self._stash[position]
+            split = children >= 0
+            child, born = mx.where(split, children, child), mx.where(split, time, born)
+            entry = self._intervals[first + position]
+            entry[2], entry[3] = child[entry[0]], born[entry[0]]
+            changed.extend(entry[2:])
+        # Rows of earlier sweeps without a twin so far take the first split kept here.
+        for entry in self._intervals[:first]:
+            unset = entry[2] < 0
+            entry[2], entry[3] = (mx.where(unset, child[entry[0]], entry[2]),
+                                  mx.where(unset, born[entry[0]], entry[3]))
+            changed.extend(entry[2:])
+        self._stash = []
+        return changed
+
+    def finish(self):
+        """End the pass. Returns ``labels, stale, twins`` in the order of assignment.
+
+        ``stale`` marks the rows whose centroid moved after they were assigned.
+        ``twins`` holds each other row's twin, or -1: a row has one when its
+        centroid was split after the row was assigned and the centroid that
+        took the other half at the first such split has not moved since.
+        """
+        if self._stash:
+            self._sweep()
+        tail = self._interval()
+        if tail.size or not self._intervals:
+            none = mx.full(tail.shape, -1, mx.int32)
+            self._intervals.append([tail, self.done, none, none])
+        labels, stale, twins = [], [], []
+        for index, end, twin, born in self._intervals:
+            late = self.moved_at[index] >= end
+            kept = (~late) & (twin >= 0) & (self.moved_at[mx.maximum(twin, 0)] == born)
+            labels.append(index)
+            stale.append(late)
+            twins.append(mx.where(kept, twin, -1))
+        if len(labels) == 1:
+            return labels[0], stale[0], twins[0]
+        return mx.concatenate(labels), mx.concatenate(stale), mx.concatenate(twins)
+
+
+def _search_chunks(count, batch_size):
+    """Sizes of the assignment calls that look ``count`` rows up again.
+
+    Assignment kernels are compiled per number of rows, so the calls take
+    sizes that recur across fits: whole training batches, then powers of two
+    from 1,024 (from 128 for fewer rows than that). Returns ``(rows, size)``
+    pairs; where ``size`` exceeds ``rows`` the call is padded. A remainder is
+    rounded up to a power of two only when that pads by less than a third,
+    and is otherwise split.
+    """
+    chunks, smallest = [], 1024 if count >= 1024 else 128
+    while count > 0:
+        if count >= batch_size:
+            size = batch_size
+        else:
+            size = smallest
+            while 2 * size <= count:
+                size *= 2
+            # ``size`` is the largest power of two within ``count``, or the smallest call.
+            if count > size + size // 2 and 2 * size <= batch_size:
+                size *= 2
+            size = min(size, batch_size)
+        rows = min(count, size)
+        chunks.append((rows, size))
+        count -= rows
+    return chunks
+
+
 class EMeans(ClusterMixin, TransformerMixin, BaseEstimator):
     """Mini-batch clustering with scheduled EMA updates on the Metal GPU.
 
@@ -357,12 +494,17 @@ class EMeans(ClusterMixin, TransformerMixin, BaseEstimator):
     finalizers use moving assignments, not a fresh Lloyd pass. Final labels
     (when enabled) are reassigned against the chosen final centroids.
 
-    With ``revival='cost'`` centroids keep moving during the last pass. A
-    centroid that moved, or was split, in that pass holds rows that are no
-    longer its own; ``last_epoch_centers_`` returns its EMA position and the
-    mean of the last-pass rows for every other centroid. Splits are clipped
-    to the per-feature range of the rows and initial centroids, and the
-    selection draws no random numbers.
+    With ``revival='cost'`` centroids keep moving during the last pass, so
+    that pass assigns rows to centroids that move later. When it ends, a row
+    whose centroid was moved onto a donor afterwards is assigned again to the
+    final centroids, and a row whose centroid was split afterwards goes to
+    the nearer of that centroid and the one that took the other half.
+    ``last_epoch_centers_`` holds the means of the last-pass rows under these
+    labels (the EMA position for a centroid left without rows). This keeps
+    the labels of the last pass on the GPU, four bytes per row, and reads one
+    mask of its rows back to the host. Splits are clipped to the per-feature
+    range of the rows and initial centroids, and the selection draws no
+    random numbers.
 
     Remaining batches are kept, unlike Algorithm 1's floor notation. GPU
     float32 reductions need not be bitwise identical to the CPU reference.
@@ -580,12 +722,53 @@ class EMeans(ClusterMixin, TransformerMixin, BaseEstimator):
                     lower = mx.minimum(lower, lower.astype(mx.bfloat16).astype(mx.float32))
                     upper = mx.maximum(upper, upper.astype(mx.bfloat16).astype(mx.float32))
                 bounds = (lower, upper)
-                self.recipe_.update(closing="last_epoch_mean_or_ema_if_moved",
+                self.recipe_.update(closing="last_epoch_mean_of_rerouted_rows",
                                     epoch_seed="distinct_from_initialization")
                 mx.eval(lower, upper)
             mx.eval(data, centers, self._offset_mx)
             return PreparedEMeansFit(data, centers, self._offset_mx, dict(self.recipe_), seed,
                                      self._configuration_signature(), bounds)
+
+    def _reroute_closing(self, data, order, log, centers, *, keep_labels=False):
+        """Closing sums of a cost-based fit whose centroids moved during the last pass.
+
+        Stale rows are assigned again to the final centroids, and twin rows go
+        to the nearer of their centroid and its twin (see :class:`ClosingLog`).
+        The sums and counts are then rebuilt from the closing-pass rows under
+        these labels, batch by batch as in training. One host read finds the
+        stale rows. Returns ``sums, counts, labels``; ``labels`` (in the order
+        of assignment) only with ``keep_labels``.
+        """
+        k, batch_size = int(self.n_clusters), self.recipe_["batch_size"]
+        rows = log.done
+        labels, stale, twins = log.finish()
+        readout = _normalize(centers) if self.spherical else centers
+
+        def gather(batch_order):
+            return gather_bf16(data, batch_order) if self.precision == "bfloat16" else data[batch_order]
+
+        positions = np.flatnonzero(np.asarray(stale))
+        if positions.size:
+            found, start = [], 0
+            for taken, size in _search_chunks(positions.size, batch_size):
+                # Pad by repetition to a size the assignment kernels know.
+                padded = np.resize(positions[start:start + taken], size).astype(np.int32)
+                found.append(self._assign(gather(order[mx.array(padded)]), readout)[0][:taken])
+                mx.eval(found[-1])
+                start += taken
+            labels[mx.array(positions.astype(np.int32))] = found[0] if len(found) == 1 else mx.concatenate(found)
+        sums, counts = mx.zeros((k, data.shape[1]), mx.float32), mx.zeros((k,), mx.float32)
+        routed = []
+        for start in range(0, rows, batch_size):
+            stop = min(start + batch_size, rows)
+            batch = gather(order[start:stop])
+            final = twin_route(batch, labels[start:stop], twins[start:stop], readout)
+            batch_sums, batch_counts = batch_stats(batch, final, k)
+            sums, counts = sums + batch_sums, counts + batch_counts
+            if keep_labels:
+                routed.append(final)
+            mx.async_eval(sums, counts, final)
+        return sums, counts, ((routed[0] if len(routed) == 1 else mx.concatenate(routed)) if keep_labels else None)
 
     def train_device(self, prepared, *, capture_assignments=False):
         """Run a complete fit from prepared inputs, returning resident outputs.
@@ -594,6 +777,11 @@ class EMeans(ClusterMixin, TransformerMixin, BaseEstimator):
         There is no upload, finite-value scan, or NumPy centroid export here.
         All epoch permutations are generated inside this call. Optional labels
         are captured during the final pass, not reassigned after training.
+        With ``revival='cost'`` a final pass in which centroids moved ends by
+        sorting out its rows (see the class notes): one row mask is read back
+        to find the rows of moved centroids, their positions are sent to the
+        GPU and they are assigned again. The captured labels are then those
+        the closing means were taken over.
         This low-level method does not populate sklearn's host fitted attributes.
         """
         if not isinstance(prepared, PreparedEMeansFit) or prepared.signature != self._configuration_signature():
@@ -620,7 +808,7 @@ class EMeans(ClusterMixin, TransformerMixin, BaseEstimator):
                 # Unit starting axes from a fixed key, so that a seed's fit repeats.
                 axes = _normalize(mx.random.normal((k, d), key=mx.random.key(prepared.seed)))
                 long_axis, removal = mx.zeros((k, d), mx.float32), mx.zeros((k,), mx.float32)
-                involved = mx.zeros((k,), mx.bool_)
+                closing_log = ClosingLog(k)
             for epoch, rows in enumerate(self.recipe_["epoch_rows"]):
                 epoch_start = time.perf_counter()
                 order_seed = epoch_seed(prepared.seed, epoch, distinct=cost)
@@ -645,6 +833,9 @@ class EMeans(ClusterMixin, TransformerMixin, BaseEstimator):
                         pass_sums, pass_counts = pass_sums + sums, pass_counts + counts
                         if capture_assignments:
                             final_labels.append(labels)
+                        if cost:
+                            closing_log.rows(labels)
+                    recorded = []
                     alpha = scheduled_alpha(self.recipe_["alpha0"], step, self.recipe_["total_steps"])
                     previous_mass = mass
                     if self.precision == "bfloat16":
@@ -666,7 +857,7 @@ class EMeans(ClusterMixin, TransformerMixin, BaseEstimator):
                             companion=slow, precision=self.precision)
                         total_splits = total_splits + nsplit
                         if final_epoch:
-                            involved = involved | plan[0] | plan[1]
+                            recorded = closing_log.check(plan)
                     elif (step + 1) % 5 == 0 and revival == "mass":
                         uniform = mx.array(split_rng.random_sample(k), dtype=mx.float32)
                         centers, mass, nsplit, slow = revive(
@@ -675,12 +866,13 @@ class EMeans(ClusterMixin, TransformerMixin, BaseEstimator):
                         total_splits = total_splits + nsplit
                     pending = [centers, mass, objectives[-1], total_splits]
                     if cost:
-                        pending.extend((long_axis, removal, axes, involved))
+                        pending.extend((long_axis, removal, axes))
+                        pending.extend(recorded)
                     if self.precision == "bfloat16":
                         pending.append(report_counts)
                     if final_epoch:
                         pending.extend((pass_sums, pass_counts))
-                        if capture_assignments:
+                        if capture_assignments or cost:
                             pending.append(labels)
                     if slow is not None:
                         pending.extend(slow)
@@ -700,12 +892,13 @@ class EMeans(ClusterMixin, TransformerMixin, BaseEstimator):
                     stat["pass_count_squares"] = float(mx.sum(report_counts * report_counts).item())
                 if self.verbose:
                     print(f"e-means pass {epoch + 1}: {rows} rows, moving MSE={stat['moving_mse']:.7g}, {stat['seconds']:.3f}s", flush=True)
+            rerouted = None
+            if cost and int(closing_log.moves.item()) > 0:
+                # Centroids moved during the closing pass: its rows are sorted
+                # out before the means are taken.
+                pass_sums, pass_counts, rerouted = self._reroute_closing(
+                    data, order, closing_log, centers, keep_labels=capture_assignments)
             closing = mx.where((pass_counts > 0)[:, None], pass_sums / mx.maximum(pass_counts[:, None], 1), centers)
-            if cost:
-                # A centroid that moved, or was split, during the closing pass
-                # holds rows from before the move that are no longer its own:
-                # it returns its EMA position instead of their mean.
-                closing = mx.where(involved[:, None], centers, closing)
             if self.spherical:
                 closing, centers = _normalize(closing), _normalize(centers)
             slow_centers = (_normalize(slow[0]) if self.spherical else slow[0]) if slow is not None else None
@@ -714,7 +907,9 @@ class EMeans(ClusterMixin, TransformerMixin, BaseEstimator):
             if capture_assignments:
                 # Metal scatter supports 32-bit integers; widen the completed
                 # captured vector to the reference API's int64 representation.
-                moving_labels = mx.concatenate(final_labels).astype(mx.int32)
+                # After a closing-pass move these are the labels the closing
+                # means were taken over, not the ones of the first assignment.
+                moving_labels = (mx.concatenate(final_labels) if rerouted is None else rerouted).astype(mx.int32)
                 captured = mx.full((n,), -1, dtype=mx.int32)
                 captured[order[:len(moving_labels)]] = moving_labels
                 captured = captured.astype(mx.int64)

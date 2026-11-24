@@ -6,7 +6,7 @@ guide: the assessment of two reference changes
 ([facebookresearch/faiss#5915](https://github.com/facebookresearch/faiss/pull/5915),
 cost-based cluster revival, and
 [#5965](https://github.com/facebookresearch/faiss/pull/5965), fused IVF fine search), the
-prototype that preceded the implementation, the study that chose the closing rule, and the
+prototype that preceded the implementation, the two studies behind the closing rule, and the
 measurements of `EMeans(revival="cost")`. Measured on a MacBook Pro M4 Max (40-core GPU,
 128 GB) with MLX 0.32.4, Python 3.14 and faiss 1.16.0 (scoring only), and where stated on a
 Mac Studio M5 Ultra with the same packages.
@@ -32,8 +32,11 @@ untracked.
 | `analyze.py` | Change in error at equal epochs, and the epoch budget at which the mass rule reaches the same error. |
 | `closing_study.py` | Trains once per configuration, keeps the closing-pass labels, and evaluates every closing rule on that one trajectory. |
 | `closing_summary.py` | Tabulates the closing study. |
+| `surplus.py` | Mixtures of Gaussian modes with more centroids than separated modes: fits `EMeans` with both rules and, with `--rules`, scores every closing rule on the prototype loop. `--summarize` tabulates. |
+| `surplus_moves.py` | On such a mixture, counts at every check the moved centroids whose nearest centroid moves too, and the modes left without a centroid. |
 | `second_score_bench.py` | Times `assign` with and without the margin, and the two statistics kernels next to `batch_stats` and `ema_update`. |
 | `fit_time.py` | Times whole fits with both revival rules in turn from resident inputs. It waits for nominal thermal pressure before every timed call. |
+| `closing_profile.py` | Times the three parts of the closing of a cost-rule fit with a synchronizing copy of `EMeans._reroute_closing`. |
 
 This laptop's GPU throttles under sustained load. Timings were taken with the two arms in
 alternating order and at nominal thermal pressure; quality runs are not timed.
@@ -49,62 +52,92 @@ results at 1, 1.5, 2, 2.5, 3 and 4 epochs.
 
 | Dataset | 1 epoch | Needs | 2 epochs | Needs | 3 epochs | Needs |
 |---|---:|---:|---:|---:|---:|---:|
-| DEEP 1M (d=96) | −0.71% | 1.43 | −0.22% | 3.54 | −0.34% | >4 |
-| SPACEV 1M (d=100) | −1.21% | 1.41 | −0.64% | 3.29 | −0.55% | >4 |
-| FB-SSNPP 1M (d=256) | −0.50% | 1.46 | −0.19% | 2.97 | −0.24% | >4 |
-| ImageNet-CLIP (d=512) | −1.18% | 1.46 | −0.57% | >4 | −0.52% | >4 |
-| GloVe-200 | −0.87% | 1.30 | −0.43% | 2.66 | −0.39% | >4 |
-| Mean | −0.89% | | −0.41% | | −0.41% | |
+| DEEP 1M (d=96) | −0.88% | 1.55 | −0.20% | 3.59 | −0.36% | >4 |
+| SPACEV 1M (d=100) | −1.39% | 1.48 | −0.65% | 3.34 | −0.55% | >4 |
+| FB-SSNPP 1M (d=256) | −0.35% | 1.32 | −0.20% | 3.06 | −0.23% | >4 |
+| ImageNet-CLIP (d=512) | −1.38% | 1.65 | −0.58% | >4 | −0.54% | >4 |
+| GloVe-200 | −0.84% | 1.29 | −0.38% | 2.65 | −0.35% | >4 |
+| Mean | −0.97% | | −0.40% | | −0.41% | |
 
-All 45 seed-level comparisons favour the cost rule (the smallest is −0.08%).
+All 45 seed-level comparisons favour the cost rule (the smallest is −0.08%). The mass
+rule's fits at 1.5, 2.5 and 4 epochs are those of the first campaign. Its fits at 1, 2 and 3
+epochs were run again with the cost rule's: 18 of the 45 reproduced exactly and the largest
+difference was 0.10%, because the batch sums are float32 atomics whose order differs from
+run to run, and a revival decision can then differ.
 
 BF16 operands (`--option '{"precision": "bfloat16"}'`, `results/library_bf16.jsonl`):
 
 | Dataset | 1 epoch | 2 epochs |
 |---|---:|---:|
-| DEEP 1M | −0.77% | −0.36% |
-| SPACEV 1M | −1.16% | −0.63% |
-| ImageNet-CLIP | −1.25% | −0.64% |
+| DEEP 1M | −0.93% | −0.36% |
+| SPACEV 1M | −1.37% | −0.64% |
+| ImageNet-CLIP | −1.46% | −0.65% |
 
 SPACEV 10M, 65,536 centroids, seed 10 (`results/library_10m.jsonl`): mass rule 6388.48 at
-two epochs and 6363.74 at three; cost rule 6347.14 at two epochs (−0.65%).
+two epochs and 6363.74 at three; cost rule 6346.98 at two epochs (−0.65%).
 
 M5 Ultra, where float32 `auto` assignment takes the GEMM route instead of the M4 Max's
-streaming tiles (`results/library_grid_m5_ultra.jsonl`, three seeds):
+streaming tiles (`results/library_grid_m5_ultra.jsonl`, three seeds; that machine reads
+`.npy` copies of four of the datasets):
 
 | Dataset | 1 epoch | 2 epochs | 3 epochs |
 |---|---:|---:|---:|
-| SPACEV 1M | −1.15% | −0.61% | −0.55% |
-| ImageNet-CLIP | −1.18% | −0.55% | −0.54% |
+| DEEP 1M | −0.87% | −0.22% | −0.31% |
+| SPACEV 1M | −1.33% | −0.62% | −0.55% |
+| FB-SSNPP 1M | −0.35% | −0.17% | −0.22% |
+| ImageNet-CLIP | −1.38% | −0.56% | −0.55% |
 
-The clustering unit tests, including the new ones, pass on that machine (405 passed; the
-four M4 Max streaming tests skip). On a Mac Studio M1 Ultra with MLX 0.31.1 the new tests
-pass for float32 and float16 (94 passed); the 28 that use native BF16 assignment fail as the
-existing BF16 tests do there, because that route needs MLX 0.32.
+There 35 of 36 seed-level comparisons favour the cost rule; the other is +0.01% (DEEP, two
+epochs, seed 11).
+
+The e-means and o-means unit tests, including the new ones, pass on that machine (431
+passed; the four M4 Max streaming tests skip). On a Mac Studio M1 Ultra with MLX 0.31.1 the
+new test file passes for float32 and float16 (115 passed, 2 skipped); the 28 tests that use
+native BF16 assignment fail as the existing BF16 tests do there, because that route needs
+MLX 0.32.
 
 ### Fit time
 
-`fit_time.py`, two epochs, 16,384 centroids, five alternating rounds, every timed call at
-nominal thermal pressure; `results/fit_time_m4_max.jsonl`.
+`fit_time.py`, 16,384 centroids, alternating rounds from resident inputs, median seconds of
+the mass rule and of the cost rule and their ratio.
 
-| Dataset | Precision | Mass rule | Cost rule | Ratio |
-|---|---|---:|---:|---:|
-| DEEP 1M | float32 | 0.714 s | 0.746 s | 1.044 |
-| DEEP 1M | BF16 | 0.573 s | 0.589 s | 1.028 |
-| SPACEV 1M | float32 | 0.807 s | 0.837 s | 1.037 |
-| SPACEV 1M | BF16 | 0.760 s | 0.779 s | 1.025 |
-| ImageNet-CLIP | float32 | 3.376 s | 3.513 s | 1.041 |
-| ImageNet-CLIP | BF16 | 2.627 s | 2.727 s | 1.038 |
+Mac Studio M5 Ultra, which does not throttle, seven rounds
+(`results/fit_time_m5_ultra.jsonl`):
 
-On a Mac Studio M5 Ultra, which does not throttle, with seven alternating rounds
-(`results/fit_time_m5_ultra.jsonl`; that machine reads `.npy` copies of the datasets):
+| Dataset | Precision | 1 epoch | 2 epochs |
+|---|---|---:|---:|
+| DEEP 1M | float32 | 0.214 → 0.227, 1.062 | 0.426 → 0.436, 1.024 |
+| DEEP 1M | BF16 | 0.120 → 0.132, 1.103 | 0.238 → 0.252, 1.058 |
+| SPACEV 1M | float32 | 0.237 → 0.254, 1.070 | 0.473 → 0.485, 1.026 |
+| SPACEV 1M | BF16 | 0.147 → 0.163, 1.107 | 0.293 → 0.309, 1.056 |
+| ImageNet-CLIP | float32 | 0.699 → 0.754, 1.080 | 1.402 → 1.457, 1.039 |
+| ImageNet-CLIP | BF16 | 0.571 → 0.620, 1.085 | 1.148 → 1.187, 1.035 |
 
-| Dataset | Precision | Mass rule | Cost rule | Ratio |
-|---|---|---:|---:|---:|
-| SPACEV 1M | float32 | 0.471 s | 0.478 s | 1.016 |
-| SPACEV 1M | BF16 | 0.293 s | 0.306 s | 1.044 |
-| ImageNet-CLIP | float32 | 1.398 s | 1.437 s | 1.028 |
-| ImageNet-CLIP | BF16 | 1.146 s | 1.174 s | 1.024 |
+MacBook Pro M4 Max, five rounds, every timed call after waiting for nominal thermal pressure
+(`results/fit_time_m4_max.jsonl`; ImageNet-CLIP with BF16 at one epoch saw moderate pressure
+after the longest wait):
+
+| Dataset | Precision | 1 epoch | 2 epochs |
+|---|---|---:|---:|
+| DEEP 1M | float32 | 0.313 → 0.341, 1.091 | 0.744 → 0.753, 1.012 |
+| DEEP 1M | BF16 | 0.298 → 0.323, 1.086 | 0.591 → 0.625, 1.058 |
+| SPACEV 1M | float32 | 0.439 → 0.479, 1.091 | 0.894 → 0.934, 1.045 |
+| SPACEV 1M | BF16 | 0.412 → 0.457, 1.110 | 0.843 → 0.881, 1.045 |
+| ImageNet-CLIP | float32 | 2.105 → 2.258, 1.072 | 3.992 → 4.103, 1.028 |
+| ImageNet-CLIP | BF16 | 1.577 → 1.709, 1.084 | 3.025 → 3.150, 1.041 |
+
+The first implementation, which closed without looking at any row again, took 1.016–1.044
+times the mass rule's time at two epochs on both machines; one-epoch fits were not timed
+then.
+
+`closing_profile.py` on the M5 Ultra (`results/closing_profile_m5_ultra.log`). The closing
+takes 7–37 ms of a one-epoch fit (4.1–5.8%) and 4–16 ms of a two-epoch fit (1.0–1.6%):
+
+| Part of the closing | 1 epoch | 2 epochs |
+|---|---:|---:|
+| Labels, twins and the stale mask read back | 1.0–1.2 ms | 0.8–1.1 ms |
+| Stale rows assigned again (2.4–3.6% of the rows at one epoch, 0.06–0.18% at two) | 3.4–22.7 ms | 0.7–1.4 ms |
+| Twins routed and sums rebuilt (one pass over the closing rows) | 2.5–13.4 ms | 2.4–13.4 ms |
 
 `second_score_bench.py` (`results/second_score_bench_m4_max.log`): the margin changes the
 time of `assign` by −3% to +6% at 16,384 and 65,536 centroids, inside this laptop's noise;
@@ -126,13 +159,73 @@ closing, mean over five datasets:
 | Clear the moved centroid only | −0.54% | −0.37% | −0.39% |
 | Twin step: a donor's earlier rows go to the nearer half | −0.95% | −0.45% | −0.42% |
 | Hand-over: twin step and second-nearest for moved centroids (the reference's default, reimplemented) | −0.96% | −0.46% | −0.42% |
-| **EMA position for centroids involved in a closing-pass move (implemented)** | −0.95% | −0.46% | −0.42% |
+| **Twin step, and the rows of moved centroids assigned again (implemented)** | −1.02% | −0.46% | −0.42% |
+| EMA position for centroids involved in a closing-pass move (first implementation) | −0.95% | −0.46% | −0.42% |
 | Assign every closing row again to the final centroids (one more pass) | −1.51% | −0.60% | −0.49% |
 
 Closing from the rows after the last split was worse than no correction on FB-SSNPP (+0.75%
 against the mass rule at one epoch, where 23,000 moves happen in the single pass) and on
-GloVe. The implemented rule matches the hand-over within 0.02% on every average and needs
-neither second labels nor another pass over the rows.
+GloVe.
+
+On these datasets five rules are within 0.07% of each other, and the first implementation
+took the cheapest of them: the EMA position of every centroid a closing-pass move involved,
+which needs neither the labels nor another look at any row. That choice did not hold up
+where most centroids move (next section), and the implementation now assigns the rows of
+moved centroids again and applies the twin step. FB-SSNPP is where the first implementation
+was better: −0.53% against −0.36% at one epoch and −0.26% against −0.17% at 1.5.
+
+### More centroids than separated clusters
+
+`surplus.py`; `results/surplus.jsonl`. Rows are drawn around Gaussian modes with unit noise
+whose centres are spread by three noise units per feature. With 1.37 centroids per mode the
+surplus centroids pair up inside modes, a paired centroid is cheap to remove, and 32–98% of
+the centroids are involved in a move of the closing pass. Eight seeds, `recipe="faiss"`,
+20,000 held-out rows.
+
+Closing rules on the prototype loop, against the mass rule, mean over five such mixtures
+(the first five rows of the next table):
+
+| Closing rule | 1 epoch | 2 epochs | 3 epochs |
+|---|---:|---:|---:|
+| EMA centroids, no closing mean | +6.9% | +1.7% | +11.8% |
+| Mean of the closing rows, no correction | +46.6% | +10.8% | +8.9% |
+| Rows after a centroid's last split | +0.7% | −1.2% | +8.0% |
+| Twin step | +2.7% | −1.2% | +6.0% |
+| Hand-over (the reference's default, reimplemented) | −2.9% | −5.0% | −1.2% |
+| **Twin step, and the rows of moved centroids assigned again (implemented)** | −5.0% | −5.7% | −1.7% |
+| EMA position for centroids involved in a closing-pass move (first implementation) | +6.9% | +1.7% | +11.3% |
+| Assign every closing row again (one more pass) | −6.1% | −6.4% | −2.5% |
+
+`EMeans(revival="cost")` against `EMeans`, held-out error of the closing means, with the
+seeds that favour the cost rule and the worst seed where one does not:
+
+| Modes / centroids, features, rows | 1 epoch | 2 epochs | 3 epochs |
+|---|---:|---:|---:|
+| 3,000 / 4,096, 32, 200,000 | −7.90% (8 of 8) | −10.63% (8) | −6.74% (8) |
+| 1,500 / 2,048, 32, 100,000 | −10.63% (8) | −11.33% (8) | −9.08% (8) |
+| 300 / 410, 16, 40,000 | +11.43% (3, worst +42.93%) | −4.83% (7, worst +3.79%) | +0.80% (5, worst +15.44%) |
+| 200 / 273, 24, 30,000 | −9.78% (8) | −9.71% (8) | +10.88% (4, worst +51.17%) |
+| 150 / 205, 16, 20,000 | +3.53% (5, worst +40.12%) | −0.82% (5, worst +11.31%) | +7.39% (3, worst +38.08%) |
+| 3,000 / 4,096 with overlapping modes (spread 1) | −1.59% (8) | −0.64% (8) | −0.27% (8) |
+| 8,192 / 4,096 (more modes than centroids) | −3.85% (8) | −2.61% (8) | −2.01% (8) |
+
+The EMA centroids of the same fits, which the first implementation returned for nearly every
+centroid here, were +6.3%, −6.0% and +2.4% on the first mixture and between −5.2% and +57.8%
+on the three small ones.
+
+The closing repairs the positions of centroids that moved late. It cannot give a centroid to
+a cluster that has none, and the losses that remain come from that. `surplus_moves.py`
+(`results/surplus_moves.log`, eight seeds per case) counts, at every check, the moved
+centroids whose nearest centroid moves at the same check: 41–74% of them, the two centroids
+of a pair leaving together. A check leaves more modes without a centroid than it found
+(for 200 modes at three epochs, 12.7–18.2 before and 18.9–25.1 after, averaged over the
+checks of a fit), and training recovers them between checks. Where the last check falls on the last step of
+training nothing recovers: on that mixture at three epochs (45 steps) it moved up to 96
+centroids and left up to 43 modes without a centroid, against 8–18 under the mass rule; at
+one epoch (59 steps, last check at step 55) the cost rule ended with 0–4 such modes against
+8–19. The reference checks at the same steps, so this belongs to the rule; a rule that keeps
+one centroid of a pair, or stops moving centroids shortly before the end, would depart from
+it and was not tried.
 
 ### Prototype and ablation
 
