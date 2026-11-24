@@ -140,6 +140,7 @@ class OMeans(EMeans):
     """
 
     recipe = "faiss"
+    revival = "mass"
     finalization = "last_epoch"
     slow_ema_half_life = None
     slow_ema_multiplier = 1.0

@@ -75,7 +75,7 @@ The estimator makes this choice explicit rather than mixing their defaults.
 | Automatic batch cap | Number of rows | Reference half-dataset caps |
 | Initial cluster mass | `1e-10` | `2**-16` |
 | Split perturbation | BF16 epsilon, `2**-7` | `1e-4` |
-| Default revival | Threshold `0.1` | Disabled at two or fewer dimensions; otherwise `0.1` |
+| Default revival (`revival="mass"`) | Threshold `0.1` | Disabled at two or fewer dimensions; otherwise `0.1` |
 | Step-law lower clamp | None | `1e-4` |
 | Empty-cluster mass when step size α=1 | Zero, per Equation 2 | Previous mass retained |
 
@@ -104,6 +104,204 @@ seeded trajectories need not match. Shared initialization and epoch order do
 not imply identical centroids or final MSE. The relative contributions of this
 RNG difference, reduction order, centered assignment and algebraically
 equivalent EMA arithmetic have not been isolated by an ablation.
+
+## Cost-based revival
+
+`revival="cost"` replaces the rule that reuses poorly placed centroids with
+the cost-based revival of the reference
+([facebookresearch/faiss#5915](https://github.com/facebookresearch/faiss/pull/5915),
+merged there on 2026-11-22). It is opt-in: the default `revival="mass"` and
+both recipes behave as before.
+
+```python
+model = EMeans(n_clusters=16384, max_iter=2, recipe="faiss", revival="cost").fit(X)
+```
+
+The mass rule revives a centroid only when its mass falls below a tenth of the
+mean, and places it next to a donor drawn in proportion to mass. A centroid
+can hold many rows and still contribute little, because another centroid sits
+close by; the mass rule never moves it. The cost rule measures that directly.
+
+- **Removal cost.** Each centroid keeps a running sum, over the rows assigned
+  to it, of the distance to their second-nearest centroid minus the distance
+  to their nearest one: the error that removing it would add. The sum uses
+  the EMA step of the centroids.
+- **Long axis.** Each centroid keeps a running estimate of the direction along
+  which its rows spread most (Oja's rule: the EMA of `p y`, where `y` is a row
+  minus its centroid and `p` its projection on the current axis).
+- **Moves.** Every five mini-batches, the centroids whose removal cost is zero
+  or below 0.3 times the median move, cheapest first, onto the centroids with
+  the longest axis sums. A donor at `c` with mass `N` and axis sum `U` becomes
+  two centroids at `c ∓ s u`, with `u = U / |U|` and `s = sqrt(2 |U| / (π N))`:
+  the two half-means of a Gaussian along the axis. Both keep half of the
+  donor's mass and statistics. No random numbers are drawn.
+- **Closing.** Moves continue to the end of training, so the closing pass
+  assigns rows to centroids that move later. When the pass ends, its rows are
+  sorted out. A row whose centroid was moved onto a donor afterwards is
+  assigned again to the final centroids. A row whose centroid was split
+  afterwards goes to the nearer of that centroid and the one that took the
+  other half, unless that one has moved again. `finalization="last_epoch"`
+  returns the means of the rows under these labels; a centroid left without
+  rows returns its EMA position. A closing pass without moves is closed as
+  under the mass rule.
+
+`unused_threshold` belongs to the mass rule and must stay `None`. `recipe_`
+records `revival`, the removal threshold and the closing rule; `n_splits_`
+counts the moves. The option works with every `precision`, `assignment`,
+`finalization` and with `spherical=True`. [`OMeans`](o-means.md) keeps the
+mass rule.
+
+### What it costs
+
+Every row needs its second-nearest distance. The dense assignment kernels
+return it from the search they already do: each keeps the second-smallest
+score next to the smallest one in registers, so no distance is computed
+twice. Two more Metal kernels accumulate the removal cost and axis sums of a
+batch (one SIMD group per row, float32 atomics as for the centroid sums) and
+apply their EMA and normalize the axes (one SIMD group per centroid). The
+selection of moves is a few sorts over the centroids on the GPU and reads
+nothing back to the host. Training keeps three more float32 tables of the
+size of the centroid table.
+
+The closing keeps the labels of the last pass on the GPU (four bytes per row,
+and eight more while the rows are sorted out) and each revival check of that
+pass as one int32 per centroid. When the pass ends, one mask of its rows is
+read back to the host to find the rows to assign again: 2.4–3.6% of the rows
+of a one-epoch fit on the datasets below, and less than 0.2% of a two-epoch
+fit. One more pass over the closing rows then routes the rows of split
+centroids with a small kernel and rebuilds the sums with the statistics
+kernel. On an M5 Ultra the closing took 7–37 ms of one-epoch fits at 16,384
+centroids (4–6% of the fit) and 4–16 ms of two-epoch fits (1–2%).
+
+On an M4 Max, 32,768 rows against 16,384 centroids in float32
+(`second_score_bench.py` in the
+[experiment folder](../benchmarks/experiments/emeans-cost-revival-2026-11-24/README.md)):
+
+| Kernel | d=100 | d=256 | d=512 |
+|---|---:|---:|---:|
+| Assignment | 13.02 ms | 38.68 ms | 79.24 ms |
+| Assignment with the margin | 12.66 ms | 39.21 ms | 79.34 ms |
+| Centroid sums and counts | 0.28 ms | 0.49 ms | 0.85 ms |
+| Removal cost and axis sums | 0.27 ms | 0.41 ms | 0.87 ms |
+| EMA of the centroids | 0.28 ms | 0.48 ms | 0.80 ms |
+| EMA of the revival statistics, axes | 0.23 ms | 0.32 ms | 0.52 ms |
+
+The margin's cost is inside this laptop's timing noise: −3% to +6% over
+five shapes and both precisions at 16,384 and 65,536 centroids. Whole fits
+from resident inputs, the two rules taking turns, took 6–11% longer with
+`revival="cost"` at one epoch, where the closing pass is the whole fit, and
+1–6% longer at two (`fit_time.py`). On an M5 Ultra, seven rounds, mass rule
+→ cost rule:
+
+| Dataset, 16,384 centroids | float32, 1 epoch | float32, 2 epochs | BF16, 1 epoch | BF16, 2 epochs |
+|---|---:|---:|---:|---:|
+| DEEP 1M (d=96) | 0.214 s → 0.227 s, 1.062× | 0.426 s → 0.436 s, 1.024× | 0.120 s → 0.132 s, 1.103× | 0.238 s → 0.252 s, 1.058× |
+| SPACEV 1M (d=100) | 0.237 s → 0.254 s, 1.070× | 0.473 s → 0.485 s, 1.026× | 0.147 s → 0.163 s, 1.107× | 0.293 s → 0.309 s, 1.056× |
+| ImageNet-CLIP (d=512) | 0.699 s → 0.754 s, 1.080× | 1.402 s → 1.457 s, 1.039× | 0.571 s → 0.620 s, 1.085× | 1.148 s → 1.187 s, 1.035× |
+
+On the M4 Max, five rounds with every timed call waiting for nominal thermal
+pressure, the same twelve ratios were 1.07–1.11× at one epoch and 1.01–1.06×
+at two.
+
+### What it gains
+
+Held-out error against `revival="mass"` with the same recipe (`faiss`), seed,
+initial centroids and epoch budget: 16,384 centroids, three seeds, float32.
+"Mass rule needs" is the epoch budget at which the mass rule reaches the same
+error, interpolated between its results at 1, 1.5, 2, 2.5, 3 and 4 epochs.
+
+| Dataset | 1 epoch | Mass rule needs | 2 epochs | Mass rule needs | 3 epochs | Mass rule needs |
+|---|---:|---:|---:|---:|---:|---:|
+| DEEP 1M (d=96) | −0.88% | 1.55 | −0.20% | 3.59 | −0.36% | more than 4 |
+| SPACEV 1M (d=100) | −1.39% | 1.48 | −0.65% | 3.34 | −0.55% | more than 4 |
+| FB-SSNPP 1M (d=256) | −0.35% | 1.32 | −0.20% | 3.06 | −0.23% | more than 4 |
+| ImageNet-CLIP (d=512) | −1.38% | 1.65 | −0.58% | more than 4 | −0.54% | more than 4 |
+| GloVe-200 | −0.84% | 1.29 | −0.38% | 2.65 | −0.35% | more than 4 |
+
+All 45 seed-level comparisons favoured the cost rule. With BF16 operands the
+changes were −0.93% to −1.46% at one epoch and −0.36% to −0.65% at two (DEEP,
+SPACEV, ImageNet-CLIP). On SPACEV 10M with 65,536 centroids, one seed, a
+two-epoch fit was 0.65% lower and below the mass rule's three-epoch error.
+On an M5 Ultra, whose float32 assignment takes another route, DEEP, SPACEV,
+FB-SSNPP and ImageNet-CLIP gave −0.87%, −1.33%, −0.35% and −1.38% at one
+epoch, −0.22%, −0.62%, −0.17% and −0.56% at two and −0.31%, −0.55%, −0.22%
+and −0.55% at three. There 35 of 36 seed-level comparisons favoured the cost
+rule; the other was +0.01%.
+
+The differences are tenths of a percent. They matter because error falls so
+slowly with more epochs: the mass rule needs 1.3–1.7 epochs to match one epoch
+of the cost rule and 2.7 to more than 4 epochs to match two, against fits that
+take 6–11% longer at one epoch and 1–6% longer at two.
+
+### Differences from the reference
+
+- **Closing mean.** The reference hands the closing-pass rows of a moved
+  centroid to their second-nearest centroid, and assigns them afresh only
+  where that one has moved too. It routes a split donor's earlier rows to the
+  nearer of its two halves and rebuilds the means; its sharded classes close
+  from the rows after a centroid's last split instead. Here every row of a
+  moved centroid is assigned afresh, because the assignment kernels return
+  the margin to the second-nearest centroid but not its index. The routing
+  of a split donor's rows is the reference's. Scored on the same training
+  runs against a reimplementation of the reference's hand-over, assigning
+  afresh was 0.06% lower at one epoch and equal at more, on average over
+  five embedding datasets, and 0.2–2.4% lower on mixtures where most
+  centroids move. See the
+  [closing study](../benchmarks/experiments/emeans-cost-revival-2026-11-24/README.md#closing-rule).
+- **Splits stay inside the data's range.** The two halves are clipped to the
+  per-feature range of the rows and initial centroids. EMA means never leave
+  that range, so the magnitudes checked before training keep holding without
+  reading anything back between batches. The reference does not clip.
+- **Selection arithmetic.** Costs and axis lengths are float32 and are ranked
+  on the GPU; the reference ranks float64 values. Centroids without cost move
+  in index order, as in the reference; centroids with equal positive costs, or
+  donors with equal lengths, are ordered by the GPU sort.
+- **Starting axes** come from MLX's generator with the fit's seed, not from the
+  reference's NumPy stream.
+- **Coincident copies** (a donor without an axis yet) are separated by one
+  adjacent float32 value in coordinate zero, or one adjacent BF16 value with
+  `precision="bfloat16"`, upward unless that would leave the data's range,
+  and not at all where coordinate zero has no range. As in the reference,
+  such copies still score alike: the one with the higher index receives no
+  rows and moves again at a later check.
+- **Low dimension.** The cost rule runs at any dimension, as in the
+  reference. The `faiss` recipe's switch that turns revival off at two or
+  fewer dimensions belongs to the mass rule.
+- **Pass seed.** With `revival="cost"` the permutation seed of a pass moves by
+  a constant when it would equal the initialization seed (at pass 0 for seeds
+  0 and 2³¹), as in the reference since this change; otherwise the first rows
+  visited are the initial centroids themselves and their removal costs start
+  at zero. `revival="mass"` keeps the pinned reference's seed rule for every
+  seed.
+- Batch sums are float32 atomics, as everywhere in this estimator, so repeated
+  fits agree to rounding only.
+
+### Limits
+
+- Fewer than 2²¹ centroids: the selection stays inside the sort widths
+  verified for MLX's Metal sort.
+- Measured on an M4 Max and an M5 Ultra with MLX 0.32.4. The kernels are
+  plain Metal and are not gated by device. On an M1 Ultra with MLX 0.31.1 the
+  float32 and float16 tests pass; native BF16 assignment needs MLX 0.32 there,
+  with either revival rule. Fits were not timed on M1-generation GPUs.
+- The gains above are for dense embeddings at 16,384 to 65,536 centroids.
+  The reference's reviewers report much larger gains on heavy-tailed tabular
+  data, where the mass rule fails; that was not measured here.
+- **More centroids than well-separated clusters.** Surplus centroids pair up
+  inside clusters. Both centroids of a pair are cheap to remove, and both can
+  move at the same check, which leaves their cluster without a centroid until
+  another one arrives. On mixtures of separated Gaussian modes with 1.37
+  centroids per mode, 41–74% of the moved centroids had their nearest
+  centroid moving at the same check, and the moves did not die down. The
+  outcome depended on the mixture. With 2,048 or 4,096 centroids and 100,000
+  or 200,000 rows the cost rule ended 6.7–11.3% below the mass rule at one,
+  two and three epochs, on all 8 seeds. On three smaller mixtures (205 to 410
+  centroids, 20,000 to 40,000 rows) it ended between 9.8% below and 11.4%
+  above on average, and single seeds were up to 51% above, the worst of them
+  after a check on the last step of training. The mass rule leaves such
+  pairs alone. With overlapping modes, or more modes than centroids, the
+  cost rule was 0.3–3.9% below on every seed. See
+  [`surplus.py` and `surplus_moves.py`](../benchmarks/experiments/emeans-cost-revival-2026-11-24/README.md#more-centroids-than-separated-clusters).
 
 ## Metal implementation and precision
 
@@ -194,6 +392,7 @@ every large-scale execution path in the paper and reference repository.
 | Paper/reference component | Status here |
 |---|---|
 | Algorithm 1; scaling laws; cosine schedule; donor splitting | Implemented, with the explicit recipe differences above |
+| Cost-based revival (reference, after the paper) | Implemented as `revival="cost"`, with its own closing step; see [Cost-based revival](#cost-based-revival) |
 | Last-epoch means and slow EMA (Section 3.2, Appendix I) | Implemented |
 | Exhaustive GPU assignment | Implemented in Metal/MLX; float32 default |
 | BF16 cast route (Appendix J) | Implemented with native BF16 Metal assignment, float32 accumulation/state |
