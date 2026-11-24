@@ -77,9 +77,9 @@ streaming tiles (`results/library_grid_m5_ultra.jsonl`, three seeds):
 | SPACEV 1M | −1.15% | −0.61% | −0.55% |
 | ImageNet-CLIP | −1.18% | −0.55% | −0.54% |
 
-The clustering unit tests, including the new ones, pass on that machine (390 passed; the
+The clustering unit tests, including the new ones, pass on that machine (405 passed; the
 four M4 Max streaming tests skip). On a Mac Studio M1 Ultra with MLX 0.31.1 the new tests
-pass for float32 and float16 (83 passed); the 24 that use native BF16 assignment fail as the
+pass for float32 and float16 (94 passed); the 28 that use native BF16 assignment fail as the
 existing BF16 tests do there, because that route needs MLX 0.32.
 
 ### Fit time
