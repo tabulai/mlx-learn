@@ -259,6 +259,20 @@ def test_plan_pairs_cheapest_centroids_with_longest_donors_as_the_reference(meta
 
 
 @pytest.mark.gpu
+def test_plan_never_splits_a_centroid_whose_axis_length_is_not_a_number(metal):
+    from mlxlearn.cluster._e_means import removal_plan
+
+    removal = metal.array([0, 0, 1, 2, 3], dtype=metal.float32)
+    lengths = metal.array([1, 2, np.nan, np.nan, 5], dtype=metal.float32)
+    is_child, is_donor, donor_of, child_of, number = map(
+        np.asarray, removal_plan(removal, metal.ones((5,)), lengths))
+    assert int(number) == 1  # two free centroids, one usable donor
+    np.testing.assert_array_equal(is_child, [True, False, False, False, False])
+    np.testing.assert_array_equal(is_donor, [False, False, False, False, True])
+    assert donor_of[0] == 4 and child_of[4] == 0
+
+
+@pytest.mark.gpu
 @pytest.mark.parametrize("removal,mass", [
     ([0, 0, 0], [1, 1, 1]),      # every centroid is free: none is left to split
     ([1], [1]), ([0], [1]),      # a single centroid
@@ -350,11 +364,27 @@ def test_split_stays_inside_the_coordinate_range_and_separates_represented_copie
     # At the top of the range the copy moves down instead of leaving it.
     top = centers.copy()
     top[source, 0] = upper[0]
+    still = (metal.zeros((k, d)), metal.array(removal), metal.array(axes), metal.zeros((k,)), plan)
     capped = np.asarray(revive_by_cost(
-        metal.array(top), metal.array(mass), metal.zeros((k, d)), metal.array(removal),
-        metal.array(axes), metal.zeros((k,)), plan, (metal.array(lower), metal.array(upper)))[0])
+        metal.array(top), metal.array(mass), *still, (metal.array(lower), metal.array(upper)))[0])
     np.testing.assert_array_equal(capped[target, 0], np.full(len(target), np.nextafter(upper[0], np.float32(-np.inf))))
     np.testing.assert_array_equal(capped[source], top[source])
+    # A feature without any range leaves no adjacent value: the copies stay coincident.
+    flat_lower, flat_upper = lower.copy(), upper.copy()
+    flat_lower[0] = flat_upper[0]
+    for precision in ("float32", "bfloat16"):
+        flat = np.asarray(revive_by_cost(
+            metal.array(top), metal.array(mass), *still,
+            (metal.array(flat_lower), metal.array(flat_upper)), precision=precision)[0])
+        np.testing.assert_array_equal(flat[target], top[source])
+        np.testing.assert_array_equal(flat[source], top[source])
+    # BF16 copies at zero move to the smallest normal BF16 value, which MLX's cast keeps.
+    zeroed = centers.copy()
+    zeroed[source, 0] = 0
+    apart = revive_by_cost(metal.array(zeroed), metal.array(mass), *still, wide, precision="bfloat16")[0]
+    np.testing.assert_array_equal(np.asarray(apart)[target, 0], np.full(len(target), 2.0**-126, np.float32))
+    represented = np.asarray(apart.astype(metal.bfloat16).astype(metal.float32))
+    assert (represented[target, 0] != represented[source, 0]).all()
 
 
 def _oracle_fit(x, init, axes, *, seed, passes, batch_size, peak, slow_step, init_mass, bounds):

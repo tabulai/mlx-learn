@@ -238,10 +238,16 @@ take 3–4% longer per epoch.
   reference's NumPy stream.
 - **Coincident copies** (a donor without an axis yet) are separated by one
   adjacent float32 value in coordinate zero, or one adjacent BF16 value with
-  `precision="bfloat16"`, upward unless that would leave the data's range.
+  `precision="bfloat16"`, upward unless that would leave the data's range,
+  and not at all where coordinate zero has no range. As in the reference,
+  such copies still score alike: the one with the higher index receives no
+  rows and moves again at a later check.
+- **Low dimension.** The cost rule runs at any dimension, as in the
+  reference. The `faiss` recipe's switch that turns revival off at two or
+  fewer dimensions belongs to the mass rule.
 - **Pass seed.** With `revival="cost"` the permutation seed of a pass moves by
-  a constant when it would equal the initialization seed (pass 0 of seeds 0
-  and 2³¹), as in the reference since this change; otherwise the first rows
+  a constant when it would equal the initialization seed (at pass 0 for seeds
+  0 and 2³¹), as in the reference since this change; otherwise the first rows
   visited are the initial centroids themselves and their removal costs start
   at zero. `revival="mass"` keeps the pinned reference's seed rule for every
   seed.

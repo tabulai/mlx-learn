@@ -156,9 +156,10 @@ def epoch_seed(seed, epoch, *, distinct=False):
     """Seed of one pass's row permutation.
 
     ``distinct`` keeps a pass from replaying the initialization draw, which
-    uses the stream seeded with ``seed``: when both seeds coincide (pass 0 of
-    seeds 0 and 2**31) the pass seed moves by the golden-ratio constant, as in
-    the reference since cost-based revival. Other seeds are unchanged.
+    uses the stream seeded with ``seed``: a pass seed equal to ``seed`` moves
+    by the golden-ratio constant, as in the reference since cost-based
+    revival. That happens at pass 0 for seeds 0 and 2**31, and at one later
+    even pass for two other seeds each; every other pass seed is unchanged.
     """
     value = (seed * 1000003 + epoch) % 2**32
     if distinct and value == seed % 2**32:
@@ -174,16 +175,16 @@ def removal_plan(removal, mass, lengths, threshold=REMOVAL_THRESHOLD):
     to their nearest one. A centroid whose cost is zero or below ``threshold``
     times the median cost moves, cheapest first; centroids without cost go in
     index order. Donors are the other centroids with mass, by decreasing
-    ``lengths``, the lengths of their long-axis sums. Nothing is drawn at
-    random. Returns ``is_child, is_donor, source, target, number`` with the
-    meaning of :func:`split_plan`.
+    ``lengths``, the lengths of their long-axis sums; a length that is not a
+    number makes no donor. Nothing is drawn at random. Returns ``is_child,
+    is_donor, source, target, number`` with the meaning of :func:`split_plan`.
     """
     k = removal.shape[0]
     ids = mx.arange(k, dtype=mx.int32)
     ordered = mx.sort(removal)
     median = 0.5 * (ordered[(k - 1) // 2] + ordered[k // 2])
     candidate = (removal <= 0) | (removal < threshold * median)
-    available = (~candidate) & (mass > 0)
+    available = (~candidate) & (mass > 0) & (lengths >= 0)
     number = mx.minimum(mx.sum(candidate), mx.sum(available)).astype(mx.int32)
     # Costs are never negative. Indices below every positive cost order the
     # centroids without cost; float32 holds them exactly for k below 2**24.
@@ -199,37 +200,44 @@ def removal_plan(removal, mass, lengths, threshold=REMOVAL_THRESHOLD):
     return is_child, is_donor, source, target, number
 
 
-def _adjacent_bf16(donor, child, upper):
+def _adjacent_bf16(donor, child, lower, upper):
     """Coordinate zero of ``child``, moved to an adjacent BF16 value where the
     represented child equals the represented donor (signed zeros are equal).
 
-    The value moves up unless that leaves the finite range or ``upper``.
+    The value moves up if the result stays at or below ``upper``, otherwise
+    down if that stays at or above ``lower``; otherwise it is kept and the two
+    stay coincident. From zero it moves to the smallest normal BF16 value,
+    because MLX's cast returns the subnormal ones to zero.
     """
     donor_bits = donor.astype(mx.bfloat16).view(mx.uint16)
     child_bits = child.astype(mx.bfloat16).view(mx.uint16)
     both_zero = ((donor_bits & 0x7fff) == 0) & ((child_bits & 0x7fff) == 0)
     collapsed = mx.all((donor_bits == child_bits) | both_zero, axis=1)
     bits = child_bits[:, 0].astype(mx.uint32)
-    negative, zero = (bits & 0x8000) != 0, (bits & 0x7fff) == 0
-    upward = mx.where(zero, 1, mx.where(negative, bits - 1, bits + 1))
-    inward = mx.where(zero, 0x8001, mx.where(negative, bits + 1, bits - 1))
+    negative, tiny = (bits & 0x8000) != 0, (bits & 0x7f80) == 0
+    upward = mx.where(tiny, 0x0080, mx.where(negative, bits - 1, bits + 1))
+    inward = mx.where(tiny, 0x8080, mx.where(negative, bits + 1, bits - 1))
     above = (upward.astype(mx.uint32) << 16).view(mx.float32)
+    below = (inward.astype(mx.uint32) << 16).view(mx.float32)
     rise = ((upward & 0x7fff) < 0x7f80) & (above <= upper[0])
-    neighbor = mx.where(rise, above, (inward.astype(mx.uint32) << 16).view(mx.float32))
+    fall = ((inward & 0x7fff) < 0x7f80) & (below >= lower[0])
+    neighbor = mx.where(rise, above, mx.where(fall, below, child[:, 0]))
     return mx.where(collapsed, neighbor, child[:, 0])
 
 
-def _adjacent_float32(donor, child, upper):
-    """As :func:`_adjacent_bf16` for float32 values."""
+def _adjacent_float32(donor, child, lower, upper):
+    """As :func:`_adjacent_bf16` for float32 values. From zero the value moves
+    to the adjacent subnormal, as in the reference."""
     collapsed = mx.all(donor == child, axis=1)
-    bits = child[:, 0].view(mx.uint32)
+    value = child[:, 0]
+    bits = value.view(mx.uint32)
     negative, zero = (bits & 0x80000000) != 0, (bits & 0x7fffffff) == 0
     upward = mx.where(zero, 1, mx.where(negative, bits - 1, bits + 1))
     inward = mx.where(zero, 0x80000001, mx.where(negative, bits + 1, bits - 1))
-    above = upward.view(mx.float32)
-    rise = ((upward & 0x7fffffff) < 0x7f800000) & (above <= upper[0])
-    neighbor = mx.where(rise, above, inward.view(mx.float32))
-    return mx.where(collapsed, neighbor, child[:, 0])
+    # A value strictly inside the range has that neighbour inside it too.
+    neighbor = mx.where(value < upper[0], upward.view(mx.float32),
+                        mx.where(value > lower[0], inward.view(mx.float32), value))
+    return mx.where(collapsed, neighbor, value)
 
 
 def revive_by_cost(centers, mass, long_axis, removal, axes, lengths, plan, bounds, *,
@@ -244,7 +252,9 @@ def revive_by_cost(centers, mass, long_axis, removal, axes, lengths, plan, bound
     clipped to ``bounds``, the per-feature range of the rows and initial
     centroids, so that the magnitudes checked before training keep holding.
     Coincident copies are separated by one adjacent value in coordinate zero
-    (BF16 values for ``precision="bfloat16"``). ``companion`` optionally
+    (BF16 values for ``precision="bfloat16"``) where that stays inside the
+    bounds. Such copies still score alike: the one with the higher index
+    receives no rows and moves again at a later check. ``companion`` optionally
     supplies slow-EMA (centers, counts), displaced by the same vectors.
     Returns ``centers, mass, long_axis, removal, axes, number, companion``.
     """
@@ -262,7 +272,8 @@ def revive_by_cost(centers, mass, long_axis, removal, axes, lengths, plan, bound
     def split(position, weight):
         donor = mx.clip(position - offset, lower, upper)
         child = mx.clip(position[source] + child_offset, lower, upper)
-        child = mx.concatenate((adjacent(donor[source], child, upper)[:, None], child[:, 1:]), axis=1)
+        child = mx.concatenate((adjacent(donor[source], child, lower, upper)[:, None], child[:, 1:]),
+                               axis=1)
         new_position = mx.where(is_child[:, None], child, mx.where(is_donor[:, None], donor, position))
         new_weight = mx.where(is_child, weight[source] * 0.5, mx.where(is_donor, weight * 0.5, weight))
         return new_position, new_weight
